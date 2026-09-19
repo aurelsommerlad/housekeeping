@@ -16,11 +16,11 @@ import { NextResponse } from 'next/server';
  * CommonJS-Module handelt). Das Cookie-Schema (Name, Redis-Key-Praefix, TTL) ist identisch zur
  * alten Implementierung, damit Sessions kompatibel bleiben.
  */
-const { getRedis } = require('../../api/_redis');
-const { SESSION_TTL_SECONDS, COOKIE_NAME, SESSION_PREFIX } = require('../../api/_auth');
+const { getRedis, migrateLegacyKey } = require('../../api/_redis');
+const {
+  SESSION_TTL_SECONDS, COOKIE_NAME, SESSION_PREFIX, LEGACY_SESSION_PREFIX, SETUP_LOCK_KEY, LEGACY_SETUP_LOCK_KEY,
+} = require('../../api/_auth');
 const { hasAnyAdmin, getUserRawById, verifyLogin, createUser, sanitizeUser } = require('../../api/_users');
-
-const SETUP_LOCK_KEY = 'hk:setup_lock';
 
 export type SanitizedUser = Record<string, unknown> & { id: string; role: string };
 
@@ -49,6 +49,7 @@ export async function createFirstAdmin(input: {
   password: string;
 }): Promise<ActionResult<{ user: SanitizedUser; token: string }> | ActionError> {
   const redis = await getRedis();
+  await migrateLegacyKey(redis, LEGACY_SETUP_LOCK_KEY, SETUP_LOCK_KEY);
 
   // Atomare Sperre (SET...NX ist eine einzelne, atomare Redis-Operation) - schliesst
   // Rennbedingungen bei zwei nahezu gleichzeitigen Registrierungs-Requests zuverlaessig aus.
@@ -95,13 +96,24 @@ export async function logoutSessionToken(token: string | undefined): Promise<voi
   if (!token) return;
   const redis = await getRedis();
   await redis.del(SESSION_PREFIX + token);
+  await redis.del(LEGACY_SESSION_PREFIX + token);
 }
 
 export async function getSessionUser(token: string | undefined): Promise<SanitizedUser | null> {
   if (!token) return null;
   const redis = await getRedis();
-  const key = SESSION_PREFIX + token;
-  const raw = await redis.get(key);
+  let key = SESSION_PREFIX + token;
+  let raw = await redis.get(key);
+  if (!raw) {
+    // Fallback auf den alten "hk:session:"-Praefix (siehe api/_auth.js#getSession) - eine noch
+    // gueltige Session aus der Zeit vor der Namespace-Migration bleibt dadurch angemeldet und
+    // wird beim naechsten Zugriff in den neuen Namespace verschoben.
+    const legacyKey = LEGACY_SESSION_PREFIX + token;
+    raw = await redis.get(legacyKey);
+    if (raw) {
+      await redis.rename(legacyKey, key).catch(() => {});
+    }
+  }
   if (!raw) return null;
   let record: { userId: string };
   try {

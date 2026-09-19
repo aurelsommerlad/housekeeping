@@ -1,8 +1,9 @@
 // Abgeschlossene Reinigungen / Zusatzausstattungs-Aufgaben, fuer den Statistik-Screen.
-const { getRedis, parseJSON } = require('./_redis');
+const { getRedis, parseJSON, migrateLegacyKey } = require('./_redis');
 const { requireSession } = require('./_auth');
 
-const LIST_KEY = 'hk:completions';
+const LIST_KEY = 'housekeeping:completions';
+const LEGACY_LIST_KEY = 'hk:completions';
 const MAX_ENTRIES = 10000;
 
 async function allCompletions(redis) {
@@ -13,6 +14,7 @@ async function allCompletions(redis) {
 module.exports = async (req, res) => {
   try {
     const redis = await getRedis();
+    await migrateLegacyKey(redis, LEGACY_LIST_KEY, LIST_KEY);
 
     if (req.method === 'GET') {
       if (!(await requireSession(req, res))) return;

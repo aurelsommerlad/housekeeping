@@ -1,10 +1,11 @@
 // Zusatzausstattungs-Status pro Zimmer ("Aufdoppeln"), unabhaengig vom Reinigungszustand.
 // 'set' (Zusatzausstattung markieren) ist eine Admin-Funktion; 'clear' (Aufgabe erledigt)
 // darf jede angemeldete Person ausloesen.
-const { getRedis, parseJSON } = require('./_redis');
+const { getRedis, parseJSON, migrateLegacyKey } = require('./_redis');
 const { requireSession } = require('./_auth');
 
-const HASH_KEY = 'hk:doubleups';
+const HASH_KEY = 'housekeeping:doubleups';
+const LEGACY_HASH_KEY = 'hk:doubleups';
 
 async function allDoubleups(redis) {
   const all = await redis.hGetAll(HASH_KEY);
@@ -16,6 +17,7 @@ async function allDoubleups(redis) {
 module.exports = async (req, res) => {
   try {
     const redis = await getRedis();
+    await migrateLegacyKey(redis, LEGACY_HASH_KEY, HASH_KEY);
 
     if (req.method === 'GET') {
       if (!(await requireSession(req, res))) return;

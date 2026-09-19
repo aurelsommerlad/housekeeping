@@ -6,10 +6,11 @@
 // grossem Stil aufheben) sind Admin-Funktionen. 'startTimer' / 'stopTimer' / 'clear' sind
 // Selbstbedienungs-Aktionen einer Reinigungskraft fuer das eigene, zugewiesene Zimmer - ein
 // Housekeeping-Konto darf damit aber niemals die Zuweisung einer anderen Person manipulieren.
-const { getRedis, parseJSON } = require('./_redis');
+const { getRedis, parseJSON, migrateLegacyKey } = require('./_redis');
 const { requireSession } = require('./_auth');
 
-const HASH_KEY = 'hk:assignments';
+const HASH_KEY = 'housekeeping:assignments';
+const LEGACY_HASH_KEY = 'hk:assignments';
 const ADMIN_ONLY_ACTIONS = new Set(['set', 'bulkSet', 'clearProperty']);
 
 async function allAssignments(redis) {
@@ -32,6 +33,7 @@ async function canTouchAssignment(redis, session, key) {
 module.exports = async (req, res) => {
   try {
     const redis = await getRedis();
+    await migrateLegacyKey(redis, LEGACY_HASH_KEY, HASH_KEY);
 
     if (req.method === 'GET') {
       if (!(await requireSession(req, res))) return;

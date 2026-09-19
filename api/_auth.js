@@ -3,12 +3,22 @@
 // undurchsichtiges, zufaelliges Token - keine Secrets, keine Rollenangabe im Klartext beim Client).
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const { getRedis } = require('./_redis');
+const { getRedis, migrateLegacyKey } = require('./_redis');
 
-const SESSION_PREFIX = 'hk:session:';
+// Eindeutiger Housekeeping-Namespace (siehe api/_redis.js#migrateLegacyKey) - Sessions und der
+// Setup-Lock trugen frueher den generischen Praefix "hk:*". Sessions sind einzelne, nicht
+// enumerierbare Keys pro Token, daher werden sie nicht pauschal migriert, sondern jeweils beim
+// naechsten Zugriff mit dem konkret bekannten Token verschoben (siehe getSession unten) -
+// bestehende Anmeldungen bleiben dadurch gueltig, statt alle Nutzer auszuloggen.
+const SESSION_PREFIX = 'housekeeping:session:';
+const LEGACY_SESSION_PREFIX = 'hk:session:';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 Tage, gleitend verlaengert bei Aktivitaet
 const COOKIE_NAME = 'hk_session';
 const BCRYPT_ROUNDS = 12;
+// Einzige Quelle fuer den Ersteinrichtungs-Lock-Key, damit api/auth.js und lib/server/auth.ts
+// (Next-native) garantiert denselben Key verwenden.
+const SETUP_LOCK_KEY = 'housekeeping:setup_lock';
+const LEGACY_SETUP_LOCK_KEY = 'hk:setup_lock';
 
 function hashPassword(plain) {
   return bcrypt.hash(plain, BCRYPT_ROUNDS);
@@ -63,6 +73,7 @@ async function destroySession(req, res) {
   if (token) {
     const redis = await getRedis();
     await redis.del(SESSION_PREFIX + token);
+    await redis.del(LEGACY_SESSION_PREFIX + token);
   }
   clearSessionCookie(req, res);
 }
@@ -74,8 +85,18 @@ async function getSession(req) {
   const token = cookies[COOKIE_NAME];
   if (!token) return null;
   const redis = await getRedis();
-  const key = SESSION_PREFIX + token;
-  const raw = await redis.get(key);
+  let key = SESSION_PREFIX + token;
+  let raw = await redis.get(key);
+  if (!raw) {
+    // Faellt auf den alten "hk:session:"-Praefix zurueck, damit eine vor der Namespace-Migration
+    // ausgestellte, noch gueltige Session nicht abgemeldet wird - und schiebt sie bei Gebrauch
+    // gleich in den neuen Namespace.
+    const legacyKey = LEGACY_SESSION_PREFIX + token;
+    raw = await redis.get(legacyKey);
+    if (raw) {
+      await redis.rename(legacyKey, key).catch(() => {});
+    }
+  }
   if (!raw) return null;
   let record;
   try {
@@ -127,4 +148,7 @@ module.exports = {
   // Sessions zwischen beiden Implementierungen kompatibel bleiben.
   COOKIE_NAME,
   SESSION_PREFIX,
+  LEGACY_SESSION_PREFIX,
+  SETUP_LOCK_KEY,
+  LEGACY_SETUP_LOCK_KEY,
 };

@@ -41,4 +41,27 @@ function parseJSON(value, fallback) {
   }
 }
 
-module.exports = { getRedis, parseJSON };
+// Housekeeping-Daten liefen anfangs unter dem generischen Praefix "hk:*", das dieselbe
+// Redis-Instanz wie Guest Services benutzt. Um Namenskollisionen dauerhaft auszuschliessen,
+// ziehen alle Housekeeping-Keys auf den eindeutigen Namespace "housekeeping:*" um.
+//
+// RENAMENX verschiebt einen bestehenden Key verlustfrei auf den neuen Namen (kein Loeschen,
+// kein Datenverlust) und tut nichts, wenn der neue Key schon existiert oder der alte Key nicht
+// (mehr) existiert - beides ist ein Erfolgsfall (nichts zu tun) und wird hier bewusst
+// verschluckt, damit ein fehlender Alt-Key niemals einen Request zum Scheitern bringt.
+// Guest-Services-Keys sind von alledem nicht betroffen, da nur die hier explizit uebergebenen
+// alten Housekeeping-Key-Namen angefasst werden.
+const migratedKeys = new Set();
+async function migrateLegacyKey(client, oldKey, newKey) {
+  if (migratedKeys.has(newKey)) return;
+  migratedKeys.add(newKey);
+  try {
+    await client.renameNX(oldKey, newKey);
+  } catch (err) {
+    if (!/no such key/i.test(err && err.message || '')) {
+      console.error('[redis] Migration fehlgeschlagen', oldKey, '->', newKey, err);
+    }
+  }
+}
+
+module.exports = { getRedis, parseJSON, migrateLegacyKey };

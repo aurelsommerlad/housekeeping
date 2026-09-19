@@ -1,13 +1,9 @@
 // Authentifizierung: Ersteinrichtung (einmalige Admin-Registrierung), Login, Logout, Session-Status.
 // GET  -> aktueller Session-Status ({authenticated, user, setupRequired}).
 // POST -> { action: 'register-admin' | 'login' | 'logout', ... }.
-const { getRedis } = require('./_redis');
-const { createSession, destroySession, getSession } = require('./_auth');
+const { getRedis, migrateLegacyKey } = require('./_redis');
+const { createSession, destroySession, getSession, SETUP_LOCK_KEY, LEGACY_SETUP_LOCK_KEY } = require('./_auth');
 const { hasAnyAdmin, getUserRawById, sanitizeUser, createUser, verifyLogin } = require('./_users');
-
-// Atomarer Schutz gegen mehrfache Erst-Registrierung, auch bei parallelen Requests
-// (SET...NX ist in Redis eine einzelne atomare Operation).
-const SETUP_LOCK_KEY = 'hk:setup_lock';
 
 function isValidEmail(email) {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -60,6 +56,9 @@ module.exports = async (req, res) => {
       }
 
       // Serverseitige Kernregel: es kann nur EIN einziges Mal ein erster Admin registriert werden.
+      // SET...NX ist in Redis eine einzelne atomare Operation und schliesst damit Rennbedingungen
+      // bei parallelen Requests zuverlaessig aus.
+      await migrateLegacyKey(redis, LEGACY_SETUP_LOCK_KEY, SETUP_LOCK_KEY);
       const acquired = await redis.set(SETUP_LOCK_KEY, String(Date.now()), { NX: true });
       if (!acquired) {
         res.status(403).json({ error: 'Es wurde bereits ein Administrator eingerichtet.' });

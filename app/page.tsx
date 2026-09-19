@@ -1,61 +1,74 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { AppShell } from '@/components/shell/AppShell';
-import { PlaceholderSection } from '@/components/shell/PlaceholderSection';
-import { DaySummary } from '@/components/rooms/DaySummary';
-import { FilterBar, type RoomFilter } from '@/components/rooms/FilterBar';
-import { UnitsGrid } from '@/components/rooms/UnitsGrid';
-import { PROTOTYPE_PROPERTIES, PROTOTYPE_UNITS } from '@/lib/sample-data';
-import type { NavItemId } from '@/lib/nav';
+import { useEffect } from 'react';
+import { useHousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
+import { StaffHeader } from '@/components/housekeeping/StaffHeader';
+import { PropertyChips } from '@/components/housekeeping/PropertyChips';
+import { StaffNavBar } from '@/components/housekeeping/StaffNavBar';
+import { RoomsScreen } from '@/components/housekeeping/RoomsScreen';
+import { DoubleupScreen } from '@/components/housekeeping/DoubleupScreen';
+import { StatsScreen } from '@/components/housekeeping/StatsScreen';
+import { RulesScreen } from '@/components/housekeeping/RulesScreen';
+import { TeamScreen } from '@/components/housekeeping/TeamScreen';
+import { RoomDetailSheet } from '@/components/housekeeping/RoomDetailSheet';
+import { LoginScreen } from '@/components/housekeeping/LoginScreen';
+import { Toast } from '@/components/housekeeping/Toast';
 
 /**
- * UI-Prototyp der Zimmeruebersicht (Briefing Punkt 18, Schritt 6). Arbeitet ausschliesslich mit
- * lokalen Beispieldaten aus lib/sample-data.ts - keine Apaleo-/Redis-Anbindung, keine
- * persistente Housekeeping-Logik. Siehe MIGRATION_PLAN.md fuer die weiteren Schritte.
+ * Der echte, funktionierende Housekeeping-Betrieb (ersetzt den fruehen Beispieldaten-Prototyp) -
+ * dieselbe Business-Logik wie zuvor in app.js (Apaleo-Fetching, Zwangsreinigung, Zuweisung,
+ * Timer, Redis-Calls ueber die bestehenden /api/*.js-Routen), nur die Darstellung ist neu.
  */
-export default function HousekeepingPrototypePage() {
-  const [activePropertyId, setActivePropertyId] = useState(PROTOTYPE_PROPERTIES[0].id);
-  const [activeNavId, setActiveNavId] = useState<NavItemId>('rooms');
-  const [filter, setFilter] = useState<RoomFilter>('all');
+export default function HousekeepingPage() {
+  const app = useHousekeepingApp();
+  const { state } = app;
 
-  const propertyUnits = useMemo(
-    () => PROTOTYPE_UNITS.filter((unit) => unit.propertyId === activePropertyId),
-    [activePropertyId],
-  );
+  // PWA/Offline-Verhalten nur fuer den operativen Housekeeping-Bereich (wie zuvor bei
+  // APP_MODE === 'staff' in app.js) - der Adminbereich unter /admin registriert bewusst
+  // keinen Service Worker.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }, []);
 
-  const filteredUnits = useMemo(() => {
-    if (filter === 'all') return propertyUnits;
-    if (filter === 'doubleup') return propertyUnits.filter((unit) => unit.needsDoubleUp);
-    return propertyUnits.filter((unit) => unit.status === filter);
-  }, [propertyUnits, filter]);
+  if (state.authScreen === 'checking') {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-page text-sm text-muted">
+        {app.t('checking')}
+      </div>
+    );
+  }
+
+  if (state.authScreen === 'login') {
+    return <LoginScreen app={app} />;
+  }
+
+  const detailRoom = state.detailRoomKey ? app.rooms().find((r) => r.key === state.detailRoomKey) || null : null;
 
   return (
-    <AppShell
-      properties={PROTOTYPE_PROPERTIES}
-      activePropertyId={activePropertyId}
-      onPropertyChange={setActivePropertyId}
-      activeNavId={activeNavId}
-      onNavChange={setActiveNavId}
-    >
-      {activeNavId === 'rooms' ? (
-        <>
-          <DaySummary units={propertyUnits} />
-          <FilterBar active={filter} onChange={setFilter} />
-          <UnitsGrid units={filteredUnits} />
-        </>
-      ) : (
-        <PlaceholderSection
-          title={
-            {
-              stats: 'Statistik',
-              doubleup: 'Aufdoppeln',
-              rules: 'Regeln',
-              team: 'Team',
-            }[activeNavId as Exclude<NavItemId, 'rooms'>]
-          }
-        />
-      )}
-    </AppShell>
+    <div className="flex min-h-dvh flex-col bg-page">
+      <StaffHeader app={app} />
+      <PropertyChips app={app} />
+
+      <main className="flex-1 overflow-y-auto pb-4">
+        {!state.activeProperty ? (
+          <div className="px-4 py-10 text-center text-sm text-muted">{app.t('select_property')}</div>
+        ) : (
+          <>
+            {state.activeNav === 'rooms' ? <RoomsScreen app={app} /> : null}
+            {state.activeNav === 'doubleup' ? <DoubleupScreen app={app} /> : null}
+            {state.activeNav === 'stats' ? <StatsScreen app={app} /> : null}
+            {state.activeNav === 'rules' ? <RulesScreen app={app} /> : null}
+            {state.activeNav === 'team' ? <TeamScreen app={app} /> : null}
+          </>
+        )}
+      </main>
+
+      <StaffNavBar app={app} />
+      <RoomDetailSheet app={app} room={detailRoom} />
+      <Toast message={state.toast} />
+    </div>
   );
 }

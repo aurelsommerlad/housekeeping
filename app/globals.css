@@ -59,10 +59,12 @@
   --radius-card: 14px;
   --radius-control: 10px;
 
-  /* Typografie: neutraler System-Stack (siehe MIGRATION_PLAN.md - wird ausgetauscht,
-     sobald die exakte Owner-Center-Schrift bekannt ist). */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
-    sans-serif;
+  /* Typografie: UNIQUE-PLACES-Schriften - Josefin Sans fuer Ueberschriften, Roboto fuer
+     Fliess-/UI-Text (siehe Housekeeping-Redesign-Briefing). Self-hosted via next/font
+     (app/layout.tsx), Systemschriften als Fallback fuer die Ladephase/Fehlerfall. */
+  --font-sans: var(--font-roboto), -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+    Arial, sans-serif;
+  --font-heading: var(--font-josefin), var(--font-sans);
 
   /* Sehr dezenter Schatten fuer Cards - kein "Material Design"-Schatten. */
   --shadow-card: 0 1px 2px rgba(23, 24, 23, 0.04), 0 1px 1px rgba(23, 24, 23, 0.03);
@@ -76,6 +78,12 @@ body {
   background-color: var(--color-page);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-weight: 300;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: 400;
 }
 
 /* UNIQUE PLACES wird nie kursiv dargestellt - als globale Absicherung. */

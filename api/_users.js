@@ -1,4 +1,5 @@
-// Datenzugriff fuer Benutzer (Redis-Hash "hk:users"). Wird sowohl von api/users.js (CRUD)
+// Datenzugriff fuer Benutzer (Redis-Hash "housekeeping:users", eindeutiger Namespace getrennt
+// von Guest Services - siehe migrateLegacyKey in ./_redis). Wird sowohl von api/users.js (CRUD)
 // als auch von api/auth.js (Login/Registrierung) genutzt.
 //
 // Rollen: 'admin' und 'housekeeping' (Kanon ab dieser Version). Aeltere Datensaetze mit der
@@ -7,10 +8,11 @@
 // (aus der alten Seed-User-Loesung) beim naechsten erfolgreichen Login transparent auf einen
 // bcrypt-Hash migriert (siehe verifyLogin).
 const crypto = require('crypto');
-const { parseJSON } = require('./_redis');
+const { parseJSON, migrateLegacyKey } = require('./_redis');
 const { hashPassword, verifyPassword } = require('./_auth');
 
-const HASH_KEY = 'hk:users';
+const HASH_KEY = 'housekeeping:users';
+const LEGACY_HASH_KEY = 'hk:users';
 
 function sanitizeUser(u) {
   if (!u) return u;
@@ -23,6 +25,7 @@ function normalizeRole(role) {
 }
 
 async function getAllUsersRaw(redis) {
+  await migrateLegacyKey(redis, LEGACY_HASH_KEY, HASH_KEY);
   const all = await redis.hGetAll(HASH_KEY);
   return Object.values(all).map((v) => parseJSON(v, null)).filter(Boolean);
 }
@@ -105,6 +108,7 @@ async function createUser(redis, { firstName, lastName, email, password, role, p
 // Erstellt oder aktualisiert einen Benutzer (Team-Screen). `input.password` wird, falls gesetzt,
 // serverseitig gehasht - es wird nie ein Klartext-Passwort persistiert.
 async function upsertUser(redis, input) {
+  await migrateLegacyKey(redis, LEGACY_HASH_KEY, HASH_KEY);
   const key = String(input.username || input.email || '').trim().toLowerCase();
   if (!key) throw new Error('username oder email ist erforderlich.');
   const existingRaw = await redis.hGet(HASH_KEY, key);
@@ -130,11 +134,13 @@ async function upsertUser(redis, input) {
 }
 
 async function deleteUserByUsername(redis, username) {
+  await migrateLegacyKey(redis, LEGACY_HASH_KEY, HASH_KEY);
   await redis.hDel(HASH_KEY, String(username).trim().toLowerCase());
 }
 
 module.exports = {
   HASH_KEY,
+  LEGACY_HASH_KEY,
   sanitizeUser,
   normalizeRole,
   getAllUsers,

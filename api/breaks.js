@@ -1,8 +1,9 @@
 // Pausen-Log der Housekeeper, fuer Pausen-Tracking und Statistik.
-const { getRedis, parseJSON } = require('./_redis');
+const { getRedis, parseJSON, migrateLegacyKey } = require('./_redis');
 const { requireSession } = require('./_auth');
 
-const LIST_KEY = 'hk:breaks';
+const LIST_KEY = 'housekeeping:breaks';
+const LEGACY_LIST_KEY = 'hk:breaks';
 const MAX_ENTRIES = 5000;
 
 async function allBreaks(redis) {
@@ -13,6 +14,7 @@ async function allBreaks(redis) {
 module.exports = async (req, res) => {
   try {
     const redis = await getRedis();
+    await migrateLegacyKey(redis, LEGACY_LIST_KEY, LIST_KEY);
 
     if (req.method === 'GET') {
       if (!(await requireSession(req, res))) return;

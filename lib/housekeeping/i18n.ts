@@ -1,0 +1,206 @@
+/**
+ * I18N fuer den operativen Housekeeping-Bereich - 1:1 aus app.js uebernommen (keine
+ * bestehende Uebersetzung darf beim Redesign verloren gehen), ergaenzt um neue Schluessel fuer
+ * die redesignten Bildschirme (Workflow-Status-Feinheiten, Mehrfachauswahl-Leiste,
+ * Aufenthalts-/Turnover-Zeile in der Room Card/Detailansicht).
+ */
+export type Lang = 'de' | 'en' | 'pl' | 'ro';
+
+export const LANGUAGES: Lang[] = ['de', 'en', 'pl', 'ro'];
+
+export const I18N = {
+  de: {
+    app_name: 'Housekeeping', login_title: 'Anmelden', username: 'Benutzername', password: 'Passwort',
+    login_btn: 'Anmelden', login_error: 'Benutzername oder Passwort falsch.',
+    nav_rooms: 'Zimmer', nav_doubleup: 'Extras', nav_stats: 'Statistik', nav_rules: 'Regeln', nav_team: 'Team',
+    logout: 'Abmelden', my_rooms: 'Meine Zimmer', all_rooms: 'Alle Zimmer',
+    filter_all: 'Alle', filter_forced: 'Zwangsreinigung', filter_dirty: 'Dirty', filter_inspect: 'Inspektion',
+    filter_clean: 'Clean', filter_doubleup: 'Extras',
+    st_forced: 'Zwangsreinigung', st_dirty: 'Dirty', st_running: 'Laeuft', st_clean: 'Clean',
+    st_inspect: 'Inspektion', st_locked: 'Gesperrt',
+    multiselect: 'Mehrfachauswahl', multiselect_on: 'Auswahl beenden', assign_selected: 'Ausgewaehlte zuweisen',
+    clear_all: 'Alle Zuweisungen aufheben', clear_all_confirm: 'Wirklich alle Zuweisungen dieses Hauses aufheben?',
+    confirm: 'Bestaetigen', cancel: 'Abbrechen', close: 'Schliessen',
+    room_detail: 'Zimmer', condition: 'Zustand', guest_comment: 'Reservierungskommentar',
+    assign_to: 'Zuweisen an', unassigned: 'Nicht zugewiesen', workload: 'Zimmer', doubleup_needed: 'Zusatzausstattung',
+    doubleup_crib: 'Babybett', doubleup_sofabed: 'Schlafsofa', doubleup_dog: 'Hund', doubleup_extra: 'Extras',
+    note: 'Notiz', save: 'Speichern', start_clean: 'Reinigung starten', pause_clean: 'Pausieren',
+    resume_clean: 'Fortsetzen', finish_clean: 'Reinigung abschliessen', complete_inspection: 'Inspektion abschliessen',
+    finish_doubleup: 'Zusatzausstattung erledigt', running_since: 'Laeuft seit', elapsed: 'Verstrichen',
+    stats_today: 'Heute', stats_month: 'Monat', stats_year: 'Jahr', cleaned_rooms: 'Zimmer gereinigt',
+    avg_time: 'Ø Zeit', fastest: 'Schnellste', by_housekeeper: 'Leistung pro Housekeeper',
+    recent_completions: 'Letzte Abschluesse', no_data: 'Keine Daten vorhanden.',
+    rules_title: 'Aktive Regeln', rule_forced_t: 'Zwangsreinigung', rule_forced_d:
+      'Ein belegtes, als "Dirty" markiertes Zimmer wird alle {{n}} Naechte seit Anreise zur Zwangsreinigung markiert - ausser der Gast reist heute oder morgen ab.',
+    rule_dirty_t: 'Automatisch Dirty nach Check-out', rule_dirty_d:
+      'Sobald ein Gast auscheckt, setzt Apaleo den Zimmerzustand automatisch auf "Dirty".',
+    rule_inspect_t: 'Inspektions-Workflow', rule_inspect_d:
+      'Nach Abschluss der Reinigung wechselt das Zimmer zu "Inspektion". Ein Admin prueft und setzt final auf "Clean".',
+    rule_turnover_t: 'Same-Day-Turnover', rule_turnover_d:
+      'Reist am selben Tag ein neuer Gast an, wird bei der Reinigung der Kommentar der Folgereservierung angezeigt statt des abreisenden Gasts.',
+    team_title: 'Team', new_user: 'Neuer Benutzer', role: 'Rolle', role_admin: 'Admin', role_housekeeper: 'Housekeeping',
+    properties: 'Haeuser', all_properties: 'Alle', name: 'Name', delete: 'Loeschen', delete_confirm: 'Benutzer wirklich loeschen?',
+    breaks_title: 'Pause', break_start: 'Pause starten', break_end: 'Pause beenden', on_break: 'In Pause',
+    select_property: 'Bitte Haus auswaehlen.', loading: 'Lade Daten...', no_rooms: 'Keine Zimmer gefunden.',
+    saved: 'Gespeichert.', toggle_double: 'Zusatzausstattung markieren',
+    checking: 'Wird geladen...',
+    retry: 'Erneut versuchen', err_auth_status: 'Der Anmeldestatus konnte nicht geladen werden. Bitte pruefe deine Verbindung und versuche es erneut.',
+    email: 'E-Mail',
+    // Neu fuer das Redesign - Workflow-Status (Housekeeper-Perspektive, siehe Briefing).
+    wf_open: 'Offen', wf_assigned: 'Zugewiesen', wf_paused: 'Pause', wf_done: 'Fertig',
+    // Neu fuer das Redesign - Aufenthalts-/Turnover-Zeile.
+    stay_info: 'Aufenthalt', turnover_departure: 'Abreise heute', turnover_arrival: 'Anreise heute',
+    turnover_same_day: 'Abreise & Anreise heute', turnover_stayover: 'Bleiber', turnover_priority: 'Turnover',
+    nights_one: '{{n}} Nacht', nights_many: '{{n}} Naechte',
+    // Neu fuer das Redesign - Mehrfachauswahl-Leiste.
+    selected_count: '{{n}} ausgewaehlt',
+    assigned_to_label: 'Zustaendig',
+    change_assignment: 'Zuweisung aendern',
+  },
+  en: {
+    app_name: 'Housekeeping', login_title: 'Sign in', username: 'Username', password: 'Password',
+    login_btn: 'Sign in', login_error: 'Wrong username or password.',
+    nav_rooms: 'Rooms', nav_doubleup: 'Extras', nav_stats: 'Stats', nav_rules: 'Rules', nav_team: 'Team',
+    logout: 'Sign out', my_rooms: 'My rooms', all_rooms: 'All rooms',
+    filter_all: 'All', filter_forced: 'Forced clean', filter_dirty: 'Dirty', filter_inspect: 'Inspection',
+    filter_clean: 'Clean', filter_doubleup: 'Extras',
+    st_forced: 'Forced clean', st_dirty: 'Dirty', st_running: 'In progress', st_clean: 'Clean',
+    st_inspect: 'Inspection', st_locked: 'Locked',
+    multiselect: 'Multi-select', multiselect_on: 'End selection', assign_selected: 'Assign selected',
+    clear_all: 'Clear all assignments', clear_all_confirm: 'Really clear all assignments for this property?',
+    confirm: 'Confirm', cancel: 'Cancel', close: 'Close',
+    room_detail: 'Room', condition: 'Condition', guest_comment: 'Reservation comment',
+    assign_to: 'Assign to', unassigned: 'Unassigned', workload: 'rooms', doubleup_needed: 'Extra setup',
+    doubleup_crib: 'Crib', doubleup_sofabed: 'Sofa bed', doubleup_dog: 'Dog', doubleup_extra: 'Extras',
+    note: 'Note', save: 'Save', start_clean: 'Start cleaning', pause_clean: 'Pause',
+    resume_clean: 'Resume', finish_clean: 'Finish cleaning', complete_inspection: 'Complete inspection',
+    finish_doubleup: 'Extra setup done', running_since: 'Running since', elapsed: 'Elapsed',
+    stats_today: 'Today', stats_month: 'Month', stats_year: 'Year', cleaned_rooms: 'Rooms cleaned',
+    avg_time: 'Avg. time', fastest: 'Fastest', by_housekeeper: 'Performance by housekeeper',
+    recent_completions: 'Recent completions', no_data: 'No data available.',
+    rules_title: 'Active rules', rule_forced_t: 'Forced cleaning', rule_forced_d:
+      'An occupied room marked "Dirty" is flagged for forced cleaning every {{n}} nights since arrival - unless the guest departs today or tomorrow.',
+    rule_dirty_t: 'Auto-Dirty after check-out', rule_dirty_d:
+      'As soon as a guest checks out, Apaleo automatically sets the room condition to "Dirty".',
+    rule_inspect_t: 'Inspection workflow', rule_inspect_d:
+      'After cleaning is finished, the room moves to "Inspection". An admin reviews it and sets it to "Clean".',
+    rule_turnover_t: 'Same-day turnover', rule_turnover_d:
+      'If a new guest arrives the same day, the comment of the following reservation is shown instead of the departing guest’s.',
+    team_title: 'Team', new_user: 'New user', role: 'Role', role_admin: 'Admin', role_housekeeper: 'Housekeeping',
+    properties: 'Properties', all_properties: 'All', name: 'Name', delete: 'Delete', delete_confirm: 'Really delete this user?',
+    breaks_title: 'Break', break_start: 'Start break', break_end: 'End break', on_break: 'On break',
+    select_property: 'Please select a property.', loading: 'Loading data...', no_rooms: 'No rooms found.',
+    saved: 'Saved.', toggle_double: 'Mark extra setup',
+    checking: 'Loading...',
+    retry: 'Try again', err_auth_status: 'Could not load the login status. Please check your connection and try again.',
+    email: 'Email',
+    wf_open: 'Open', wf_assigned: 'Assigned', wf_paused: 'Paused', wf_done: 'Done',
+    stay_info: 'Stay', turnover_departure: 'Departure today', turnover_arrival: 'Arrival today',
+    turnover_same_day: 'Departure & arrival today', turnover_stayover: 'Staying over', turnover_priority: 'Turnover',
+    nights_one: '{{n}} night', nights_many: '{{n}} nights',
+    selected_count: '{{n}} selected',
+    assigned_to_label: 'Assigned to',
+    change_assignment: 'Change assignment',
+  },
+  pl: {
+    app_name: 'Housekeeping', login_title: 'Zaloguj sie', username: 'Nazwa uzytkownika', password: 'Haslo',
+    login_btn: 'Zaloguj', login_error: 'Bledny login lub haslo.',
+    nav_rooms: 'Pokoje', nav_doubleup: 'Dodatki', nav_stats: 'Statystyki', nav_rules: 'Zasady', nav_team: 'Zespol',
+    logout: 'Wyloguj', my_rooms: 'Moje pokoje', all_rooms: 'Wszystkie pokoje',
+    filter_all: 'Wszystkie', filter_forced: 'Sprzatanie wymuszone', filter_dirty: 'Brudny', filter_inspect: 'Inspekcja',
+    filter_clean: 'Czysty', filter_doubleup: 'Dodatki',
+    st_forced: 'Wymuszone', st_dirty: 'Brudny', st_running: 'W trakcie', st_clean: 'Czysty',
+    st_inspect: 'Inspekcja', st_locked: 'Zablokowany',
+    multiselect: 'Wybor wielokrotny', multiselect_on: 'Zakoncz wybor', assign_selected: 'Przypisz zaznaczone',
+    clear_all: 'Usun wszystkie przypisania', clear_all_confirm: 'Na pewno usunac wszystkie przypisania tego obiektu?',
+    confirm: 'Potwierdz', cancel: 'Anuluj', close: 'Zamknij',
+    room_detail: 'Pokoj', condition: 'Stan', guest_comment: 'Komentarz do rezerwacji',
+    assign_to: 'Przypisz do', unassigned: 'Nieprzypisany', workload: 'pokoi', doubleup_needed: 'Dodatkowe wyposazenie',
+    doubleup_crib: 'Lozeczko', doubleup_sofabed: 'Rozklad. sofa', doubleup_dog: 'Pies', doubleup_extra: 'Inne',
+    note: 'Notatka', save: 'Zapisz', start_clean: 'Rozpocznij sprzatanie', pause_clean: 'Pauza',
+    resume_clean: 'Wznow', finish_clean: 'Zakoncz sprzatanie', complete_inspection: 'Zakoncz inspekcje',
+    finish_doubleup: 'Wyposazenie gotowe', running_since: 'Trwa od', elapsed: 'Uplynelo',
+    stats_today: 'Dzis', stats_month: 'Miesiac', stats_year: 'Rok', cleaned_rooms: 'Posprzatane pokoje',
+    avg_time: 'Sr. czas', fastest: 'Najszybsze', by_housekeeper: 'Wyniki pracownikow',
+    recent_completions: 'Ostatnie zakonczenia', no_data: 'Brak danych.',
+    rules_title: 'Aktywne zasady', rule_forced_t: 'Sprzatanie wymuszone', rule_forced_d:
+      'Zajety pokoj oznaczony jako "Brudny" jest oznaczany do wymuszonego sprzatania co {{n}} noce od przyjazdu - chyba ze gosc wyjezdza dzis lub jutro.',
+    rule_dirty_t: 'Auto-Brudny po wymeldowaniu', rule_dirty_d:
+      'Po wymeldowaniu goscia Apaleo automatycznie ustawia stan pokoju na "Brudny".',
+    rule_inspect_t: 'Proces inspekcji', rule_inspect_d:
+      'Po zakonczeniu sprzatania pokoj przechodzi w stan "Inspekcja". Admin sprawdza i ustawia "Czysty".',
+    rule_turnover_t: 'Zmiana tego samego dnia', rule_turnover_d:
+      'Jesli nowy gosc przyjezdza tego samego dnia, pokazywany jest komentarz kolejnej rezerwacji zamiast wyjezdzajacego goscia.',
+    team_title: 'Zespol', new_user: 'Nowy uzytkownik', role: 'Rola', role_admin: 'Admin', role_housekeeper: 'Housekeeping',
+    properties: 'Obiekty', all_properties: 'Wszystkie', name: 'Imie', delete: 'Usun', delete_confirm: 'Na pewno usunac uzytkownika?',
+    breaks_title: 'Przerwa', break_start: 'Rozpocznij przerwe', break_end: 'Zakoncz przerwe', on_break: 'Na przerwie',
+    select_property: 'Wybierz obiekt.', loading: 'Ladowanie...', no_rooms: 'Brak pokoi.',
+    saved: 'Zapisano.', toggle_double: 'Oznacz dodatkowe wyposazenie',
+    checking: 'Ladowanie...',
+    retry: 'Sprobuj ponownie', err_auth_status: 'Nie udalo sie zaladowac statusu logowania. Sprawdz polaczenie i sprobuj ponownie.',
+    email: 'E-mail',
+    wf_open: 'Wolny', wf_assigned: 'Przypisany', wf_paused: 'Pauza', wf_done: 'Gotowy',
+    stay_info: 'Pobyt', turnover_departure: 'Wyjazd dzisiaj', turnover_arrival: 'Przyjazd dzisiaj',
+    turnover_same_day: 'Wyjazd i przyjazd dzisiaj', turnover_stayover: 'Kontynuacja pobytu', turnover_priority: 'Turnover',
+    nights_one: '{{n}} noc', nights_many: '{{n}} noce',
+    selected_count: 'Wybrano {{n}}',
+    assigned_to_label: 'Odpowiedzialny',
+    change_assignment: 'Zmien przypisanie',
+  },
+  ro: {
+    app_name: 'Housekeeping', login_title: 'Autentificare', username: 'Utilizator', password: 'Parola',
+    login_btn: 'Autentificare', login_error: 'Utilizator sau parola gresite.',
+    nav_rooms: 'Camere', nav_doubleup: 'Extra', nav_stats: 'Statistici', nav_rules: 'Reguli', nav_team: 'Echipa',
+    logout: 'Deconectare', my_rooms: 'Camerele mele', all_rooms: 'Toate camerele',
+    filter_all: 'Toate', filter_forced: 'Curatare fortata', filter_dirty: 'Murdar', filter_inspect: 'Inspectie',
+    filter_clean: 'Curat', filter_doubleup: 'Extra',
+    st_forced: 'Fortata', st_dirty: 'Murdar', st_running: 'In curs', st_clean: 'Curat',
+    st_inspect: 'Inspectie', st_locked: 'Blocat',
+    multiselect: 'Selectie multipla', multiselect_on: 'Incheie selectia', assign_selected: 'Atribuie selectia',
+    clear_all: 'Sterge toate atribuirile', clear_all_confirm: 'Sigur stergi toate atribuirile acestei proprietati?',
+    confirm: 'Confirma', cancel: 'Anuleaza', close: 'Inchide',
+    room_detail: 'Camera', condition: 'Stare', guest_comment: 'Comentariu rezervare',
+    assign_to: 'Atribuie lui', unassigned: 'Neatribuit', workload: 'camere', doubleup_needed: 'Dotare suplimentara',
+    doubleup_crib: 'Patut', doubleup_sofabed: 'Canapea extensibila', doubleup_dog: 'Caine', doubleup_extra: 'Altele',
+    note: 'Nota', save: 'Salveaza', start_clean: 'Incepe curatenia', pause_clean: 'Pauza',
+    resume_clean: 'Continua', finish_clean: 'Finalizeaza curatenia', complete_inspection: 'Finalizeaza inspectia',
+    finish_doubleup: 'Dotare finalizata', running_since: 'Ruleaza din', elapsed: 'Timp scurs',
+    stats_today: 'Azi', stats_month: 'Luna', stats_year: 'An', cleaned_rooms: 'Camere curatate',
+    avg_time: 'Timp mediu', fastest: 'Cel mai rapid', by_housekeeper: 'Performanta pe angajat',
+    recent_completions: 'Ultimele finalizari', no_data: 'Nu exista date.',
+    rules_title: 'Reguli active', rule_forced_t: 'Curatare fortata', rule_forced_d:
+      'O camera ocupata marcata "Murdar" este semnalata pentru curatare fortata la fiecare {{n}} nopti de la sosire - cu exceptia cazului in care oaspetele pleaca azi sau maine.',
+    rule_dirty_t: 'Auto-Murdar dupa check-out', rule_dirty_d:
+      'Imediat ce un oaspete face check-out, Apaleo seteaza automat starea camerei pe "Murdar".',
+    rule_inspect_t: 'Flux de inspectie', rule_inspect_d:
+      'Dupa finalizarea curateniei, camera trece la "Inspectie". Un admin verifica si seteaza "Curat".',
+    rule_turnover_t: 'Rotatie in aceeasi zi', rule_turnover_d:
+      'Daca un oaspete nou soseste in aceeasi zi, la curatenie se afiseaza comentariul rezervarii urmatoare, nu al celui care pleaca.',
+    team_title: 'Echipa', new_user: 'Utilizator nou', role: 'Rol', role_admin: 'Admin', role_housekeeper: 'Housekeeping',
+    properties: 'Proprietati', all_properties: 'Toate', name: 'Nume', delete: 'Sterge', delete_confirm: 'Sigur stergi acest utilizator?',
+    breaks_title: 'Pauza', break_start: 'Incepe pauza', break_end: 'Termina pauza', on_break: 'In pauza',
+    select_property: 'Selecteaza o proprietate.', loading: 'Se incarca...', no_rooms: 'Nicio camera gasita.',
+    saved: 'Salvat.', toggle_double: 'Marcheaza dotare suplimentara',
+    checking: 'Se incarca...',
+    retry: 'Incearca din nou', err_auth_status: 'Starea de autentificare nu a putut fi incarcata. Verifica conexiunea si incearca din nou.',
+    email: 'E-mail',
+    wf_open: 'Liber', wf_assigned: 'Atribuit', wf_paused: 'Pauza', wf_done: 'Gata',
+    stay_info: 'Sejur', turnover_departure: 'Plecare azi', turnover_arrival: 'Sosire azi',
+    turnover_same_day: 'Plecare si sosire azi', turnover_stayover: 'Ramane', turnover_priority: 'Turnover',
+    nights_one: '{{n}} noapte', nights_many: '{{n}} nopti',
+    selected_count: '{{n}} selectate',
+    assigned_to_label: 'Responsabil',
+    change_assignment: 'Schimba atribuirea',
+  },
+} as const;
+
+export type I18nKey = keyof (typeof I18N)['de'];
+
+export function translate(lang: Lang, key: I18nKey, vars?: Record<string, string | number>): string {
+  const dict = I18N[lang] ?? I18N.de;
+  let str: string = (dict as Record<string, string>)[key] ?? I18N.de[key] ?? key;
+  if (vars) {
+    for (const k of Object.keys(vars)) str = str.split(`{{${k}}}`).join(String(vars[k]));
+  }
+  return str;
+}
