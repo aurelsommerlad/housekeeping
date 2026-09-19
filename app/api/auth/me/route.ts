@@ -13,6 +13,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ authenticated: true, user });
   } catch (err) {
     console.error('[api/auth/me]', err);
-    return NextResponse.json({ error: 'Session konnte nicht geprueft werden.' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Session konnte nicht geprueft werden.', detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    );
   }
 }

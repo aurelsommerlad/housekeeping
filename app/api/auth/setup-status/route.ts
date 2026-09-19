@@ -15,8 +15,16 @@ export async function GET() {
     return NextResponse.json({ needsSetup });
   } catch (err) {
     console.error('[api/auth/setup-status]', err);
+    // `detail` gibt die zugrundeliegende Fehlermeldung (z. B. eine fehlende REDIS_URL oder ein
+    // Verbindungsfehler) direkt in der Antwort mit aus - das ist reine Infrastruktur-/
+    // Konfigurationsdiagnostik (kein Benutzer-, Passwort- oder sonst sensibler Inhalt kann in
+    // diesem Fehlerpfad auftreten) und macht Deployment-Probleme ohne Zugriff auf die
+    // Vercel-Runtime-Logs sofort sichtbar.
     return NextResponse.json(
-      { error: 'Der Setup-Status konnte nicht ermittelt werden.' },
+      {
+        error: 'Der Setup-Status konnte nicht ermittelt werden.',
+        detail: err instanceof Error ? err.message : String(err),
+      },
       { status: 500 },
     );
   }

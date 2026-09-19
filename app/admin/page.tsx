@@ -49,7 +49,9 @@ export default function AdminPage() {
 
       if (!statusRes.ok) {
         if (!cancelled) {
-          setErrorMessage(`Der Setup-Status konnte nicht abgerufen werden (Serverfehler ${statusRes.status}). Bitte spaeter erneut versuchen.`);
+          const errBody = await statusRes.json().catch(() => null);
+          const detail = errBody?.detail ? ` Ursache: ${errBody.detail}` : '';
+          setErrorMessage(`Der Setup-Status konnte nicht abgerufen werden (Serverfehler ${statusRes.status}).${detail}`);
           setScreen('error');
         }
         return;
@@ -120,7 +122,7 @@ export default function AdminPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setFormError(data.error || 'Registrierung fehlgeschlagen.');
+        setFormError((data.error || 'Registrierung fehlgeschlagen.') + (data.detail ? ` (${data.detail})` : ''));
         // Falls in der Zwischenzeit doch schon ein Admin angelegt wurde (Race mit einem
         // zweiten Tab/Geraet), zeige jetzt konsequent den Login statt das Formular offen zu
         // lassen.
@@ -152,7 +154,7 @@ export default function AdminPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setFormError(data.error || 'Anmeldung fehlgeschlagen.');
+        setFormError((data.error || 'Anmeldung fehlgeschlagen.') + (data.detail ? ` (${data.detail})` : ''));
         return;
       }
       setUser(data.user);

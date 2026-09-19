@@ -29,6 +29,9 @@ export async function POST(request: Request) {
     return response;
   } catch (err) {
     console.error('[api/auth/login]', err);
-    return NextResponse.json({ error: 'Anmeldung fehlgeschlagen.' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Anmeldung fehlgeschlagen.', detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    );
   }
 }
