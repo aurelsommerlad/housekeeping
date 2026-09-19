@@ -85,11 +85,20 @@ dieselben Werte als rohe CSS-Custom-Properties bereit - genau das, was Punkt 17 
   `app.js`, jetzt typisiert). Login-Flow (`/api/auth`) als Next.js-Seite nachbauen.
   Detailansicht, Zuweisung, Zusatzausstattung, Statistik, Regeln, Team - jeweils als eigene
   Route/Komponente, unter Wiederverwendung der bestehenden API-Vertraege.
-- **Phase 2 (spaeter):** `/admin`-Bereich als eigene Next.js-Route (`app/admin/**`) inkl. Setup-/
-  Login-Screen, unter Beibehaltung der bestehenden serverseitigen Schutzmechanismen
-  (`requireSession`/`requireAdmin`, Session-Cookie).
-  Erst wenn dieser Punkt steht, wird `vercel.json` (der `/admin`-Rewrite) obsolet und kann
-  entfernt werden.
+- **Phase 2 (erledigt):** `/admin` als eigene Next.js-Route (`app/admin/page.tsx`) mit
+  Setup-/Login-Screen, plus native Route Handler unter `app/api/auth/{setup-status,setup,
+  login,logout,me}/route.ts`. Grund: der in Phase 0 angenommene Parallelbetrieb von Next.js
+  und dem alten `vercel.json`-Rewrite auf `admin/index.html` erwies sich auf der echten
+  Vercel-Preview als nicht funktionsfaehig (siehe Bugreport - `vercel.json`-Rewrites haben
+  Vorrang vor Next.js' eigenem Routing und haben `/admin` faelschlich auf die alte, nicht mehr
+  zuverlaessig ausgelieferte statische Datei umgeleitet). `vercel.json` wurde deshalb bereits
+  entfernt. Die neuen Route Handler nutzen dieselbe Redis-/bcrypt-/Session-Logik wie die
+  bestehenden `/api/*.js`-Funktionen (`api/_redis.js`, `api/_auth.js`, `api/_users.js` werden
+  direkt wiederverwendet, nicht dupliziert) - nur die Cookie-Anbindung ist neu, weil Next.js
+  Route Handler das Web-Request/Response-API statt Node's klassischem (req,res) verwenden.
+  Zusaetzlich wurde dabei ein Robustheitsbug in `api/_redis.js` behoben: bei einer
+  Redis-Stoerung haengte ein Request zuvor unbegrenzt (node-redis' Offline-Queue +
+  Standard-Reconnect), statt zuegig mit einem Fehler zu antworten.
 - **Phase 3 (spaeter):** PWA-Wiederherstellung (Manifest/Service Worker/Icons nach `public/`
   migrieren, `metadata`-API von Next.js fuer `manifest.json`/Icons nutzen).
 - **Phase 4 (spaeter, nach vollstaendiger Paritaet):** Aufraeumen - `index.html`,

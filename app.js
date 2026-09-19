@@ -64,6 +64,7 @@ const I18N = {
     password_confirm: 'Passwort wiederholen', create_admin_btn: 'Admin-Konto erstellen',
     err_fill_all: 'Bitte alle Felder ausfuellen.', err_password_mismatch: 'Die Passwoerter stimmen nicht ueberein.',
     checking: 'Wird geladen...', err_no_admin_access: 'Kein Zugriff auf den Adminbereich.',
+    retry: 'Erneut versuchen', err_auth_status: 'Der Setup-/Anmeldestatus konnte nicht geladen werden. Bitte pruefe deine Verbindung und versuche es erneut.',
   },
   en: {
     app_name: 'Housekeeping', login_title: 'Sign in', username: 'Username', password: 'Password',
@@ -104,6 +105,7 @@ const I18N = {
     password_confirm: 'Confirm password', create_admin_btn: 'Create admin account',
     err_fill_all: 'Please fill in all fields.', err_password_mismatch: 'Passwords do not match.',
     checking: 'Loading...', err_no_admin_access: 'No access to the admin area.',
+    retry: 'Try again', err_auth_status: 'Could not load the setup/login status. Please check your connection and try again.',
   },
   pl: {
     app_name: 'Housekeeping', login_title: 'Zaloguj sie', username: 'Nazwa uzytkownika', password: 'Haslo',
@@ -144,6 +146,7 @@ const I18N = {
     password_confirm: 'Powtorz haslo', create_admin_btn: 'Utworz konto administratora',
     err_fill_all: 'Wypelnij wszystkie pola.', err_password_mismatch: 'Hasla nie sa identyczne.',
     checking: 'Ladowanie...', err_no_admin_access: 'Brak dostepu do panelu administratora.',
+    retry: 'Sprobuj ponownie', err_auth_status: 'Nie udalo sie zaladowac statusu konfiguracji/logowania. Sprawdz polaczenie i sprobuj ponownie.',
   },
   ro: {
     app_name: 'Housekeeping', login_title: 'Autentificare', username: 'Utilizator', password: 'Parola',
@@ -184,6 +187,7 @@ const I18N = {
     password_confirm: 'Confirma parola', create_admin_btn: 'Creeaza cont de admin',
     err_fill_all: 'Completeaza toate campurile.', err_password_mismatch: 'Parolele nu coincid.',
     checking: 'Se incarca...', err_no_admin_access: 'Fara acces la zona de administrare.',
+    retry: 'Incearca din nou', err_auth_status: 'Starea de configurare/autentificare nu a putut fi incarcata. Verifica conexiunea si incearca din nou.',
   },
 };
 
@@ -203,6 +207,7 @@ const S = {
   user: null,
   setupRequired: false,
   loginError: '',
+  authError: '',
   loading: false,
   properties: [],
   activeProperty: localStorage.getItem('hk_active_property') || null,
@@ -326,7 +331,15 @@ async function tryRestoreSession() {
     }
   } catch (e) {
     S.user = null;
-    S.screen = 'login';
+    // Wichtig: ein fehlgeschlagener Statusabruf darf im Adminbereich NIEMALS stillschweigend
+    // als "Login zeigen" (= "Admin existiert bereits") interpretiert werden - das wuerde eine
+    // noch noetige Ersteinrichtung verschleiern. Stattdessen ein klarer Fehlerzustand.
+    if (APP_MODE === 'admin') {
+      S.screen = 'auth-error';
+      S.authError = e.message || t('err_auth_status');
+    } else {
+      S.screen = 'login';
+    }
   }
   render();
 }
@@ -629,7 +642,8 @@ function render() {
   if (S.screen === 'checking') { app.innerHTML = renderChecking(); return; }
   if (!S.user) {
     if (APP_MODE === 'admin') {
-      app.innerHTML = S.screen === 'setup' ? renderSetup() : renderAdminLogin();
+      if (S.screen === 'auth-error') app.innerHTML = renderAuthError();
+      else app.innerHTML = S.screen === 'setup' ? renderSetup() : renderAdminLogin();
     } else {
       app.innerHTML = renderLogin();
     }
@@ -662,6 +676,15 @@ function renderLogin() {
     <div class="langrow">
       ${['de', 'en', 'pl', 'ro'].map((l) => `<button class="${S.lang === l ? 'active' : ''}" data-action="lang" data-lang="${l}">${l.toUpperCase()}</button>`).join('')}
     </div>
+  </div>`;
+}
+
+function renderAuthError() {
+  return `
+  <div class="login-wrap">
+    <div class="wordmark" style="margin-bottom:4px;">HOUSEKEEPING</div>
+    <div class="error-msg" style="margin-bottom:14px;">${escapeHtml(S.authError)}</div>
+    <button class="btn secondary block" style="max-width:300px;" data-action="retry-auth-status">${t('retry')}</button>
   </div>`;
 }
 
@@ -1032,6 +1055,7 @@ document.addEventListener('click', async (e) => {
         break;
       }
       case 'lang': S.lang = el.dataset.lang; saveLang(); render(); break;
+      case 'retry-auth-status': await tryRestoreSession(); break;
       case 'logout': await doLogout(); break;
       case 'select-property':
         S.activeProperty = el.dataset.code; saveActiveProperty(); S.loading = true; render();

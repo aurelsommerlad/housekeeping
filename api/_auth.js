@@ -121,4 +121,10 @@ module.exports = {
   requireSession,
   requireAdmin,
   SESSION_TTL_SECONDS,
+  // Exportiert, damit andere Auth-Implementierungen (z. B. Next.js Route Handlers unter
+  // app/api/auth/*, die mit dem Web-Request/Response-API statt Node (req,res) arbeiten und
+  // daher eigene Cookie-Helfer brauchen) exakt dasselbe Cookie/Redis-Schema verwenden und
+  // Sessions zwischen beiden Implementierungen kompatibel bleiben.
+  COOKIE_NAME,
+  SESSION_PREFIX,
 };
