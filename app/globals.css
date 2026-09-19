@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/*
+ * Design Tokens - UNIQUE PLACES
+ * ------------------------------------------------------------------
+ * Basisfarben 1:1 aus dem Owner Center uebernommen (siehe MIGRATION_PLAN.md).
+ * Tailwind v4 generiert aus jedem `--color-*`-Eintrag automatisch passende
+ * Utilities (bg-page, text-ink, border-line, ...) - dieser Block ist damit
+ * die alleinige Quelle der Wahrheit fuer Farben in der App.
+ *
+ * Statusfarben sind bewusst gedaempfte, erdige Toene, die zur
+ * UNIQUE-PLACES-Palette passen (keine grellen PMS-Ampelfarben). Jeder
+ * Status hat zusaetzlich einen dezenten Hintergrund-Ton fuer Badges/Pills.
+ * Farbe ist nirgends das einzige Statusmerkmal - siehe StatusPill/Badge-
+ * Komponenten, die immer Text/Icon mitfuehren.
+ */
+@theme {
+  /* Basisflaechen */
+  --color-page: #F8F6F1;
+  --color-surface: #F1EDE4;
+  --color-warm-white: #FAFAF7;
+
+  /* Akzent / Marke */
+  --color-sage: #87977E;
+  --color-forest: #52664E;
+
+  /* Text */
+  --color-ink: #171817;
+  --color-muted: #74736E;
+
+  /* Linien */
+  --color-line: #E4E0D8;
+
+  /* Status: Reinigung erforderlich */
+  --color-status-dirty: #BC6C4A;
+  --color-status-dirty-bg: #F3E4DB;
+
+  /* Status: In Reinigung */
+  --color-status-progress: #B98B3E;
+  --color-status-progress-bg: #F3E9D6;
+
+  /* Status: Inspektion */
+  --color-status-inspection: #7A93A0;
+  --color-status-inspection-bg: #E7EDEE;
+
+  /* Status: Sauber (nutzt den Marken-Grunton) */
+  --color-status-clean: #52664E;
+  --color-status-clean-bg: #E6EAE3;
+
+  /* Status: Gesperrt */
+  --color-status-blocked: #8F8A7E;
+  --color-status-blocked-bg: #EDEBE5;
+
+  /* Merkmal: Aufmerksamkeit erforderlich (kein Reinigungsstatus, siehe lib/status.ts) */
+  --color-status-attention: #9B4F42;
+  --color-status-attention-bg: #F1E1DD;
+
+  /* Radien - kleine, ruhige Rundungen wie im Owner Center */
+  --radius-card: 14px;
+  --radius-control: 10px;
+
+  /* Typografie: neutraler System-Stack (siehe MIGRATION_PLAN.md - wird ausgetauscht,
+     sobald die exakte Owner-Center-Schrift bekannt ist). */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+
+  /* Sehr dezenter Schatten fuer Cards - kein "Material Design"-Schatten. */
+  --shadow-card: 0 1px 2px rgba(23, 24, 23, 0.04), 0 1px 1px rgba(23, 24, 23, 0.03);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* UNIQUE PLACES wird nie kursiv dargestellt - als globale Absicherung. */
+.brand-wordmark {
+  font-style: normal;
+}

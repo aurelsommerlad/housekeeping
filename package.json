@@ -1,13 +1,31 @@
 {
   "name": "housekeeping-pwa",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Mobile Housekeeping-Management-PWA mit Live-Anbindung an Apaleo (Vercel Serverless + Redis).",
+  "description": "UNIQUE PLACES Housekeeping App (Next.js/TypeScript/Tailwind), mit Live-Anbindung an Apaleo (Vercel Serverless + Redis).",
   "scripts": {
-    "dev": "vercel dev"
+    "dev": "next dev",
+    "dev:functions": "vercel dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint ."
   },
   "dependencies": {
     "redis": "^4.7.0",
-    "bcryptjs": "^2.4.3"
+    "bcryptjs": "^2.4.3",
+    "next": "^16.3.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^4",
+    "@tailwindcss/postcss": "^4",
+    "postcss": "^8",
+    "eslint": "^9",
+    "eslint-config-next": "^16.3.5"
   }
 }
