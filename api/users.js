@@ -1,44 +1,17 @@
-// Benutzerverwaltung (CRUD) + Login. Passwoerter verlassen den Server nie im Klartext an andere Endpunkte,
-// werden aber (bewusst einfach, da rein internes Tool) unverschluesselt in Redis gehalten.
-const { getRedis, parseJSON } = require('./_redis');
-
-const HASH_KEY = 'hk:users';
-
-// Einmalige Seed-Befuellung beim allerersten Start. Danach Verwaltung ausschliesslich ueber die App.
-const SEED_USERS = [
-  { username: 'admin', password: 'admin123', name: 'Admin', role: 'admin', properties: 'alle' },
-  { username: 'hk1', password: 'hk1123', name: 'Housekeeper 1', role: 'housekeeper', properties: 'alle' },
-];
-
-function sanitize(u) {
-  if (!u) return u;
-  const { password, ...rest } = u;
-  return rest;
-}
-
-async function ensureSeed(redis) {
-  const exists = await redis.exists(HASH_KEY);
-  if (exists) return;
-  const multi = redis.multi();
-  for (const u of SEED_USERS) {
-    const record = { ...u, id: u.username };
-    multi.hSet(HASH_KEY, u.username, JSON.stringify(record));
-  }
-  await multi.exec();
-}
-
-async function allUsers(redis) {
-  const all = await redis.hGetAll(HASH_KEY);
-  return Object.values(all).map((v) => sanitize(parseJSON(v, null))).filter(Boolean);
-}
+// Benutzerverwaltung (CRUD). Login und Erstregistrierung laufen ueber /api/auth - diese Route
+// dient nur noch dazu, Benutzer zu lesen (jeder angemeldete Benutzer) bzw. anzulegen/aendern/
+// zu loeschen (ausschliesslich Administratoren).
+const { getRedis } = require('./_redis');
+const { requireSession, requireAdmin } = require('./_auth');
+const { getAllUsers, upsertUser, deleteUserByUsername, sanitizeUser } = require('./_users');
 
 module.exports = async (req, res) => {
   try {
     const redis = await getRedis();
-    await ensureSeed(redis);
 
     if (req.method === 'GET') {
-      res.status(200).json({ users: await allUsers(redis) });
+      if (!(await requireSession(req, res))) return;
+      res.status(200).json({ users: await getAllUsers(redis) });
       return;
     }
 
@@ -47,39 +20,18 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const { action } = req.body || {};
+    if (!(await requireAdmin(req, res))) return;
 
-    if (action === 'login') {
-      const { username, password } = req.body;
-      const key = String(username || '').trim().toLowerCase();
-      const raw = await redis.hGet(HASH_KEY, key);
-      const user = raw ? parseJSON(raw, null) : null;
-      if (!user || user.password !== password) {
-        res.status(401).json({ error: 'Benutzername oder Passwort falsch.' });
-        return;
-      }
-      res.status(200).json({ user: sanitize(user) });
-      return;
-    }
+    const { action } = req.body || {};
 
     if (action === 'set') {
       const { user } = req.body;
-      if (!user || !user.username) {
-        res.status(400).json({ error: 'user.username ist erforderlich.' });
+      if (!user || (!user.username && !user.email)) {
+        res.status(400).json({ error: 'username oder email ist erforderlich.' });
         return;
       }
-      const key = String(user.username).trim().toLowerCase();
-      const existingRaw = await redis.hGet(HASH_KEY, key);
-      const existing = existingRaw ? parseJSON(existingRaw, {}) : {};
-      const merged = {
-        ...existing,
-        ...user,
-        username: key,
-        id: existing.id || key,
-      };
-      if (!merged.password) merged.password = existing.password || '';
-      await redis.hSet(HASH_KEY, key, JSON.stringify(merged));
-      res.status(200).json({ users: await allUsers(redis) });
+      const saved = await upsertUser(redis, user);
+      res.status(200).json({ users: await getAllUsers(redis), user: sanitizeUser(saved) });
       return;
     }
 
@@ -89,8 +41,15 @@ module.exports = async (req, res) => {
         res.status(400).json({ error: 'username ist erforderlich.' });
         return;
       }
-      await redis.hDel(HASH_KEY, String(username).trim().toLowerCase());
-      res.status(200).json({ users: await allUsers(redis) });
+      const all = await getAllUsers(redis);
+      const target = all.find((u) => u.username === String(username).trim().toLowerCase());
+      const adminCount = all.filter((u) => u.role === 'admin').length;
+      if (target && target.role === 'admin' && adminCount <= 1) {
+        res.status(400).json({ error: 'Der letzte verbleibende Administrator kann nicht geloescht werden.' });
+        return;
+      }
+      await deleteUserByUsername(redis, username);
+      res.status(200).json({ users: await getAllUsers(redis) });
       return;
     }
 

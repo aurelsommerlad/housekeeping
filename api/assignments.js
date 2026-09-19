@@ -1,9 +1,16 @@
 // Zimmer -> Housekeeper Zuweisungen, property-scoped (Key-Schema "<PropertyCode>_<Zimmernummer>").
 // Traegt zusaetzlich den laufenden Reinigungs-Timer (cleaningStartedAt / elapsedSeconds),
 // damit er geraeteuebergreifend sichtbar ist.
+//
+// Zugriffsschutz: 'set' / 'bulkSet' / 'clearProperty' (Zuweisungen an andere vergeben bzw. in
+// grossem Stil aufheben) sind Admin-Funktionen. 'startTimer' / 'stopTimer' / 'clear' sind
+// Selbstbedienungs-Aktionen einer Reinigungskraft fuer das eigene, zugewiesene Zimmer - ein
+// Housekeeping-Konto darf damit aber niemals die Zuweisung einer anderen Person manipulieren.
 const { getRedis, parseJSON } = require('./_redis');
+const { requireSession } = require('./_auth');
 
 const HASH_KEY = 'hk:assignments';
+const ADMIN_ONLY_ACTIONS = new Set(['set', 'bulkSet', 'clearProperty']);
 
 async function allAssignments(redis) {
   const all = await redis.hGetAll(HASH_KEY);
@@ -12,11 +19,22 @@ async function allAssignments(redis) {
   return assignments;
 }
 
+// Fuer Selbstbedienungs-Aktionen: erlaubt, wenn Admin, wenn das Zimmer noch niemandem
+// zugewiesen ist (Selbst-Zuweisung beim Start), oder wenn es bereits der eigenen Person gehoert.
+async function canTouchAssignment(redis, session, key) {
+  if (session.role === 'admin') return true;
+  const raw = await redis.hGet(HASH_KEY, key);
+  if (!raw) return true;
+  const existing = parseJSON(raw, null);
+  return !existing || !existing.housekeeperId || existing.housekeeperId === session.userId;
+}
+
 module.exports = async (req, res) => {
   try {
     const redis = await getRedis();
 
     if (req.method === 'GET') {
+      if (!(await requireSession(req, res))) return;
       res.status(200).json({ assignments: await allAssignments(redis) });
       return;
     }
@@ -26,7 +44,15 @@ module.exports = async (req, res) => {
       return;
     }
 
+    const session = await requireSession(req, res);
+    if (!session) return;
+
     const { action } = req.body || {};
+
+    if (ADMIN_ONLY_ACTIONS.has(action) && session.role !== 'admin') {
+      res.status(403).json({ error: 'Nur fuer Administratoren.' });
+      return;
+    }
 
     if (action === 'set') {
       const { key, housekeeperId, housekeeperName } = req.body;
@@ -60,6 +86,10 @@ module.exports = async (req, res) => {
         res.status(400).json({ error: 'key ist erforderlich.' });
         return;
       }
+      if (!(await canTouchAssignment(redis, session, key))) {
+        res.status(403).json({ error: 'Dieses Zimmer ist einer anderen Person zugewiesen.' });
+        return;
+      }
       await redis.hDel(HASH_KEY, key);
     } else if (action === 'clearProperty') {
       const { property } = req.body;
@@ -76,16 +106,25 @@ module.exports = async (req, res) => {
         res.status(400).json({ error: 'key ist erforderlich.' });
         return;
       }
+      if (!(await canTouchAssignment(redis, session, key))) {
+        res.status(403).json({ error: 'Dieses Zimmer ist einer anderen Person zugewiesen.' });
+        return;
+      }
+      const effectiveHkId = session.role === 'admin' ? housekeeperId || session.userId : session.userId;
       const existingRaw = await redis.hGet(HASH_KEY, key);
       const existing = existingRaw
         ? parseJSON(existingRaw, {})
-        : { housekeeperId, housekeeperName: housekeeperName || '', since: Date.now(), elapsedSeconds: 0 };
+        : { housekeeperId: effectiveHkId, housekeeperName: housekeeperName || '', since: Date.now(), elapsedSeconds: 0 };
       existing.cleaningStartedAt = Date.now();
       await redis.hSet(HASH_KEY, key, JSON.stringify(existing));
     } else if (action === 'stopTimer') {
       const { key } = req.body;
       if (!key) {
         res.status(400).json({ error: 'key ist erforderlich.' });
+        return;
+      }
+      if (!(await canTouchAssignment(redis, session, key))) {
+        res.status(403).json({ error: 'Dieses Zimmer ist einer anderen Person zugewiesen.' });
         return;
       }
       const existingRaw = await redis.hGet(HASH_KEY, key);

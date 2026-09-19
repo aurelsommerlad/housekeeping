@@ -1,5 +1,6 @@
 // Pausen-Log der Housekeeper, fuer Pausen-Tracking und Statistik.
 const { getRedis, parseJSON } = require('./_redis');
+const { requireSession } = require('./_auth');
 
 const LIST_KEY = 'hk:breaks';
 const MAX_ENTRIES = 5000;
@@ -14,6 +15,7 @@ module.exports = async (req, res) => {
     const redis = await getRedis();
 
     if (req.method === 'GET') {
+      if (!(await requireSession(req, res))) return;
       res.status(200).json({ breaks: await allBreaks(redis) });
       return;
     }
@@ -22,6 +24,8 @@ module.exports = async (req, res) => {
       res.status(405).json({ error: 'Method not allowed' });
       return;
     }
+
+    if (!(await requireSession(req, res))) return;
 
     const { action } = req.body || {};
 

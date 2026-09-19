@@ -1,5 +1,6 @@
 // Abgeschlossene Reinigungen / Zusatzausstattungs-Aufgaben, fuer den Statistik-Screen.
 const { getRedis, parseJSON } = require('./_redis');
+const { requireSession } = require('./_auth');
 
 const LIST_KEY = 'hk:completions';
 const MAX_ENTRIES = 10000;
@@ -14,6 +15,7 @@ module.exports = async (req, res) => {
     const redis = await getRedis();
 
     if (req.method === 'GET') {
+      if (!(await requireSession(req, res))) return;
       res.status(200).json({ completions: await allCompletions(redis) });
       return;
     }
@@ -22,6 +24,8 @@ module.exports = async (req, res) => {
       res.status(405).json({ error: 'Method not allowed' });
       return;
     }
+
+    if (!(await requireSession(req, res))) return;
 
     const { action, entry } = req.body || {};
     if (action !== 'add' || !entry) {

@@ -1,4 +1,7 @@
 // Serverseitiger Proxy zu Apaleo. Der Client Secret verlaesst diesen Prozess nie.
+// Erfordert eine gueltige Session - anonyme Zugriffe auf die PMS-Daten sind nicht erlaubt.
+const { requireSession } = require('./_auth');
+
 const TOKEN_URL = 'https://identity.apaleo.com/connect/token';
 const API_BASE = 'https://api.apaleo.com';
 
@@ -41,6 +44,8 @@ module.exports = async (req, res) => {
     return;
   }
   try {
+    if (!(await requireSession(req, res))) return;
+
     const { path, method, body } = req.body || {};
     if (!path || typeof path !== 'string' || !path.startsWith('/')) {
       res.status(400).json({ error: 'path ist erforderlich und muss mit / beginnen.' });

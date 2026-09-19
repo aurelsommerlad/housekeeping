@@ -1,5 +1,8 @@
 // Zusatzausstattungs-Status pro Zimmer ("Aufdoppeln"), unabhaengig vom Reinigungszustand.
+// 'set' (Zusatzausstattung markieren) ist eine Admin-Funktion; 'clear' (Aufgabe erledigt)
+// darf jede angemeldete Person ausloesen.
 const { getRedis, parseJSON } = require('./_redis');
+const { requireSession } = require('./_auth');
 
 const HASH_KEY = 'hk:doubleups';
 
@@ -15,6 +18,7 @@ module.exports = async (req, res) => {
     const redis = await getRedis();
 
     if (req.method === 'GET') {
+      if (!(await requireSession(req, res))) return;
       res.status(200).json({ doubleups: await allDoubleups(redis) });
       return;
     }
@@ -24,9 +28,16 @@ module.exports = async (req, res) => {
       return;
     }
 
+    const session = await requireSession(req, res);
+    if (!session) return;
+
     const { action } = req.body || {};
 
     if (action === 'set') {
+      if (session.role !== 'admin') {
+        res.status(403).json({ error: 'Nur fuer Administratoren.' });
+        return;
+      }
       const { key, types, note } = req.body;
       if (!key || !Array.isArray(types)) {
         res.status(400).json({ error: 'key und types[] sind erforderlich.' });

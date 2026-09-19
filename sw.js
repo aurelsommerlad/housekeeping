@@ -1,5 +1,5 @@
-const CACHE = 'hk-shell-v1';
-const SHELL = ['/', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
+const CACHE = 'hk-shell-v2';
+const SHELL = ['/', '/manifest.json', '/styles.css', '/app.js', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
