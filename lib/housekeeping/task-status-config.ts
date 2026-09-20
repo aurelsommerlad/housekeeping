@@ -14,6 +14,9 @@ export interface ToneConfig {
   toneBorderClass: string;
   dotClass: string;
   pulse?: boolean;
+  /** Ersetzt den Farbpunkt durch ein Glyph (z. B. "✓" bei "Fertig") - Status/Typ wird dadurch
+   * weiterhin nie nur ueber Farbe kommuniziert, hier zusaetzlich deutlich statt nur farblich. */
+  icon?: string;
 }
 
 export const TASK_STATUS_CONFIG: Record<TaskStatus, ToneConfig> = {
@@ -52,40 +55,42 @@ export const TASK_STATUS_CONFIG: Record<TaskStatus, ToneConfig> = {
     toneBgClass: 'bg-status-clean-bg',
     toneBorderClass: 'border-status-clean/30',
     dotClass: 'bg-status-clean',
+    icon: '✓',
   },
 };
 
-/** Same-Day-Turnover behaelt die hohe, "attention"-artige Sichtbarkeit, die Turnover-Zeilen im
- * bestehenden RoomCard schon hatten (Punkt 9: TURNOVER = hoechste operative Prioritaet).
- * Stayover/Zwangsreinigung nutzt dieselbe Attention-Farbe wie das bestehende "forced"-Badge
- * (WORKFLOW_STATUS_CONFIG.forced) - unveraendert uebernommen. */
+/** Eigene, sehr zurueckhaltende Aufgabentyp-Farben (--color-type-*, app/globals.css) - bewusst
+ * getrennt von den Status-Farben oben: Kartenfarbe = Art der Aufgabe (hier), Bearbeitungsstatus
+ * bleibt ausschliesslich ueber TASK_STATUS_CONFIG sichtbar. `toneBgClass` dient TaskCard.tsx
+ * zugleich als Kartenhintergrund - ein Typ hat also GENAU einen Hintergrund- und einen
+ * Akzentton, nirgends zusaetzlich vermischt mit Status-Farben. */
 export const TASK_TYPE_CONFIG: Record<TaskType, ToneConfig> = {
   turnover: {
     labelKey: 'type_turnover',
-    toneClass: 'text-status-attention',
-    toneBgClass: 'bg-status-attention-bg',
-    toneBorderClass: 'border-status-attention/30',
-    dotClass: 'bg-status-attention',
+    toneClass: 'text-type-turnover',
+    toneBgClass: 'bg-type-turnover-bg',
+    toneBorderClass: 'border-type-turnover/30',
+    dotClass: 'bg-type-turnover',
   },
   departure: {
     labelKey: 'type_departure',
-    toneClass: 'text-status-dirty',
-    toneBgClass: 'bg-status-dirty-bg',
-    toneBorderClass: 'border-status-dirty/30',
-    dotClass: 'bg-status-dirty',
+    toneClass: 'text-type-departure',
+    toneBgClass: 'bg-type-departure-bg',
+    toneBorderClass: 'border-type-departure/30',
+    dotClass: 'bg-type-departure',
   },
   stayover: {
     labelKey: 'type_stayover',
-    toneClass: 'text-status-attention',
-    toneBgClass: 'bg-status-attention-bg',
-    toneBorderClass: 'border-status-attention/30',
-    dotClass: 'bg-status-attention',
+    toneClass: 'text-type-stayover',
+    toneBgClass: 'bg-type-stayover-bg',
+    toneBorderClass: 'border-type-stayover/30',
+    dotClass: 'bg-type-stayover',
   },
   extra: {
     labelKey: 'type_extra',
-    toneClass: 'text-status-blocked',
-    toneBgClass: 'bg-status-blocked-bg',
-    toneBorderClass: 'border-status-blocked/30',
-    dotClass: 'bg-status-blocked',
+    toneClass: 'text-type-extra',
+    toneBgClass: 'bg-type-extra-bg',
+    toneBorderClass: 'border-type-extra/30',
+    dotClass: 'bg-type-extra',
   },
 };

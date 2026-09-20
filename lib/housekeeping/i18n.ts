@@ -62,7 +62,7 @@ export const I18N = {
     nav_tasks: 'Aufgaben', nav_apartments: 'Apartments',
     day_today: 'Heute', day_tomorrow: 'Morgen', day_plus2: 'Uebermorgen', day_plus3: '+3 Tage',
     scope_all: 'Alle Standorte', my_tasks_only: 'Meine Aufgaben', all_tasks_toggle: 'Alle Aufgaben',
-    type_turnover: 'Turnover', type_departure: 'Abreise', type_stayover: 'Zwischenreinigung', type_extra: 'Extra',
+    type_turnover: 'Turnover', type_departure: 'Abreise', type_stayover: 'Zwischenreinigung', type_extra: 'Aufgabe',
     label_departure: 'Abreise', label_arrival: 'Anreise', guests_count: '{{n}} Gaeste',
     next_arrival_label: 'Naechste Anreise', no_next_arrival: 'Keine weitere Anreise bekannt',
     claim_task: 'Mir zuweisen', release_task: 'Freigeben',

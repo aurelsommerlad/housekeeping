@@ -68,6 +68,23 @@
   --color-status-attention: #9B4F42;
   --color-status-attention-bg: #F1E1DD;
 
+  /* Aufgabentyp (Task Cards, lib/housekeeping/task-status-config.ts#TASK_TYPE_CONFIG) - bewusst
+     sehr zurueckhaltende, der UNIQUE-PLACES-Palette entnommene Farbtoene, keine kraeftigen
+     Hotel-PMS-/Ampelfarben. Strikt getrennt von den Status-Farben oben: diese Tokens zeigen
+     ausschliesslich die ART der Aufgabe (Kartenhintergrund + Badge-Akzent), niemals den
+     Bearbeitungsstatus - fuer Status bleiben die vorhandenen --color-status-*-Tokens zustaendig. */
+  --color-type-turnover: #A65345;
+  --color-type-turnover-bg: #F3E6E1;
+
+  --color-type-departure: #9B8C78;
+  --color-type-departure-bg: #F1EDE4;
+
+  --color-type-stayover: #87977E;
+  --color-type-stayover-bg: #EDF1EA;
+
+  --color-type-extra: #74736E;
+  --color-type-extra-bg: #F0EFEC;
+
   /* Radien - exakt wie im Owner Center (rounded-xl fuer Felder/Controls, rounded-3xl fuer
      freistehende Auth-Karten). Room-/Stat-Cards behalten ihre kompaktere, housekeeping-eigene
      Rundung (--radius-card). */

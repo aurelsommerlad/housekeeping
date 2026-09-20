@@ -26,7 +26,11 @@ export function TonePill({ config, lang, size = 'md', className }: TonePillProps
         className,
       )}
     >
-      <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', config.dotClass, config.pulse && 'animate-pulse')} aria-hidden="true" />
+      {config.icon ? (
+        <span className={cn('shrink-0 text-[11px] leading-none', config.toneClass)} aria-hidden="true">{config.icon}</span>
+      ) : (
+        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', config.dotClass, config.pulse && 'animate-pulse')} aria-hidden="true" />
+      )}
       {translate(lang, config.labelKey)}
     </span>
   );

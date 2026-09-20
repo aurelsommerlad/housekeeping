@@ -46,8 +46,10 @@ export function TaskCard({ task, lang, selected, selectable, onOpen }: TaskCardP
       type="button"
       onClick={onOpen}
       className={cn(
-        'relative flex flex-col gap-2 rounded-card-lg border bg-warm-white p-4 text-left transition-colors',
+        'relative flex flex-col gap-2 rounded-card-lg border p-4 text-left transition-colors',
+        typeConfig.toneBgClass,
         selected ? 'border-ink ring-2 ring-ink/20' : 'border-line hover:border-sage/50',
+        task.status === 'completed' && 'opacity-70',
       )}
     >
       {selectable ? (
@@ -63,7 +65,7 @@ export function TaskCard({ task, lang, selected, selectable, onOpen }: TaskCardP
       ) : null}
 
       <div className="flex items-start justify-between gap-2 pr-6">
-        <span className="font-heading text-[17px] leading-none text-ink">
+        <span className="font-heading italic text-[17px] leading-none text-ink">
           {task.unitName} <span className="text-muted">· {task.propertyName}</span>
         </span>
       </div>
