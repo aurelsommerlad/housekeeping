@@ -3,33 +3,46 @@
 /*
  * Design Tokens - UNIQUE PLACES
  * ------------------------------------------------------------------
- * Basisfarben 1:1 aus dem Owner Center uebernommen (siehe MIGRATION_PLAN.md).
- * Tailwind v4 generiert aus jedem `--color-*`-Eintrag automatisch passende
- * Utilities (bg-page, text-ink, border-line, ...) - dieser Block ist damit
- * die alleinige Quelle der Wahrheit fuer Farben in der App.
+ * Werte 1:1 aus dem tatsaechlichen Owner-Center-Quellcode uebernommen
+ * (src/app/globals.css dort), nicht nur angenaehert - siehe
+ * https://github.com/aurelsommerlad/owner-center. Tailwind v4 generiert aus
+ * jedem `--color-*`-Eintrag automatisch passende Utilities (bg-page,
+ * text-ink, border-line, ...) - dieser Block ist damit die alleinige Quelle
+ * der Wahrheit fuer Farben in der App.
  *
- * Statusfarben sind bewusst gedaempfte, erdige Toene, die zur
- * UNIQUE-PLACES-Palette passen (keine grellen PMS-Ampelfarben). Jeder
- * Status hat zusaetzlich einen dezenten Hintergrund-Ton fuer Badges/Pills.
- * Farbe ist nirgends das einzige Statusmerkmal - siehe StatusPill/Badge-
- * Komponenten, die immer Text/Icon mitfuehren.
+ * `warm-white` entspricht bewusst exakt `page`: im Owner Center liegen
+ * Karten auf derselben Flaeche wie die Seite selbst und heben sich nur durch
+ * Border + Schatten ab (siehe Card-Komponente dort) - keine separate,
+ * hellere Kartenfarbe.
+ *
+ * Statusfarben (Reinigung/Zuweisung) sind eine housekeeping-eigene
+ * Erweiterung (das Owner Center kennt andere Status: belegt/frei/gesperrt/
+ * Eigentuemer/Uebergang) - bewusst gedaempfte, erdige Toene, die zur
+ * UNIQUE-PLACES-Palette passen. Farbe ist nirgends das einzige
+ * Statusmerkmal - siehe StatusPill/WorkflowStatusPill, die immer
+ * Text/Icon mitfuehren.
  */
 @theme {
   /* Basisflaechen */
-  --color-page: #F8F6F1;
-  --color-surface: #F1EDE4;
-  --color-warm-white: #FAFAF7;
+  --color-page: #FAF8F4;
+  --color-surface: #F1EFE8;
+  --color-warm-white: #FAF8F4;
 
-  /* Akzent / Marke */
+  /* Akzent / Marke - housekeeping-eigene Erweiterung (im Owner Center selbst gibt es keinen
+     allgemeinen Akzent, nur den Ton fuer den Eigentuemer-Status, siehe status-owner dort). */
   --color-sage: #87977E;
   --color-forest: #52664E;
 
   /* Text */
-  --color-ink: #171817;
-  --color-muted: #74736E;
+  --color-ink: #17160F;
+  --color-muted: #3A382F;
 
   /* Linien */
-  --color-line: #E4E0D8;
+  --color-line: #E4DFD3;
+
+  /* Sand-Toene (Owner Center: u. a. fuer Textauswahl) */
+  --color-sand: #E7E0D2;
+  --color-sand-dark: #CABF9F;
 
   /* Status: Reinigung erforderlich */
   --color-status-dirty: #BC6C4A;
@@ -55,22 +68,21 @@
   --color-status-attention: #9B4F42;
   --color-status-attention-bg: #F1E1DD;
 
-  /* Radien - kleine, ruhige Rundungen wie im Owner Center */
+  /* Radien - exakt wie im Owner Center (rounded-xl fuer Felder/Controls, rounded-3xl fuer
+     freistehende Auth-Karten). Room-/Stat-Cards behalten ihre kompaktere, housekeeping-eigene
+     Rundung (--radius-card). */
   --radius-card: 14px;
-  --radius-control: 10px;
-  /* Grosszuegigere Rundung fuer freistehende Auth-Karten (Login/Setup) - exakt wie im
-     Owner-Center-Login (siehe Referenz-Screenshot). */
-  --radius-card-lg: 28px;
+  --radius-control: 0.75rem;
+  --radius-card-lg: 1.5rem;
 
-  /* Typografie: UNIQUE-PLACES-Schriften - Josefin Sans fuer Ueberschriften, Roboto fuer
-     Fliess-/UI-Text (siehe Housekeeping-Redesign-Briefing). Self-hosted via next/font
-     (app/layout.tsx), Systemschriften als Fallback fuer die Ladephase/Fehlerfall. */
-  --font-sans: var(--font-roboto), -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
-    Arial, sans-serif;
-  --font-heading: var(--font-josefin), var(--font-sans);
+  /* Typografie - 1:1 aus dem Owner Center: Inter fuer Flies-/UI-Text, Fraunces (inkl.
+     Kursivschnitt) fuer Ueberschriften/Display. Self-hosted via next/font (app/layout.tsx). */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-fraunces), ui-serif, Georgia, serif;
 
-  /* Sehr dezenter Schatten fuer Cards - kein "Material Design"-Schatten. */
-  --shadow-card: 0 1px 2px rgba(23, 24, 23, 0.04), 0 1px 1px rgba(23, 24, 23, 0.03);
+  /* Schatten - exakt aus dem Owner Center (--shadow-soft / --shadow-soft-lg dort). */
+  --shadow-card: 0 1px 2px rgba(23, 22, 15, 0.04), 0 8px 24px rgba(23, 22, 15, 0.06);
+  --shadow-card-lg: 0 4px 12px rgba(23, 22, 15, 0.05), 0 16px 40px rgba(23, 22, 15, 0.08);
 }
 
 html {
@@ -81,12 +93,12 @@ body {
   background-color: var(--color-page);
   color: var(--color-ink);
   font-family: var(--font-sans);
-  font-weight: 300;
+  -webkit-font-smoothing: antialiased;
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-heading);
-  font-weight: 400;
+::selection {
+  background-color: var(--color-sand-dark);
+  color: var(--color-ink);
 }
 
 /* UNIQUE PLACES wird nie kursiv dargestellt - als globale Absicherung. */

@@ -1,24 +1,24 @@
 import type { Metadata, Viewport } from 'next';
-import { Josefin_Sans, Roboto } from 'next/font/google';
+import { Inter, Fraunces } from 'next/font/google';
 import './globals.css';
 
 /**
- * UNIQUE-PLACES-Typografie (siehe Housekeeping-Redesign-Briefing): Josefin Sans fuer
- * Ueberschriften, Roboto fuer Flies-/UI-Text. Self-hosted via next/font (kein Laufzeit-Request
- * an Google Fonts, kein Layout-Shift). Als CSS-Variablen exponiert, die app/globals.css'
- * `--font-heading` / `--font-sans`-Tokens fuettern.
+ * UNIQUE-PLACES-Typografie - 1:1 aus dem tatsaechlichen Owner-Center-Quellcode uebernommen
+ * (src/app/layout.tsx dort: Inter fuer Flies-/UI-Text, Fraunces fuer Ueberschriften/Display,
+ * inkl. Kursivschnitt fuer z. B. den Login-Titel). Self-hosted via next/font, als CSS-Variablen
+ * exponiert, die app/globals.css' `--font-heading` / `--font-sans`-Tokens fuettern.
  */
-const josefinSans = Josefin_Sans({
+const inter = Inter({
+  variable: '--font-inter',
   subsets: ['latin'],
-  weight: ['400'],
-  variable: '--font-josefin',
   display: 'swap',
 });
 
-const roboto = Roboto({
+const fraunces = Fraunces({
+  variable: '--font-fraunces',
   subsets: ['latin'],
-  weight: ['300', '400', '500'],
-  variable: '--font-roboto',
+  weight: ['400', '500'],
+  style: ['normal', 'italic'],
   display: 'swap',
 });
 
@@ -42,12 +42,12 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: 'cover',
-  themeColor: '#F8F6F1',
+  themeColor: '#FAF8F4',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="de" className={`${josefinSans.variable} ${roboto.variable}`}>
+    <html lang="de" className={`${inter.variable} ${fraunces.variable}`}>
       <body>{children}</body>
     </html>
   );
