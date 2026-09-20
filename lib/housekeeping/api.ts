@@ -12,6 +12,9 @@
  */
 import type { ApaleoReservation, ApaleoUnit, AssignmentsState, DoubleupsState, Completion, BreakEntry, Property, ReservationsState, StaffUser } from './types';
 
+// 1:1 aus app.js uebernommen (dort als APP_VERSION direkt in Header/Login-Screen angezeigt).
+export const APP_VERSION = '2.0.0';
+
 // Apaleo-Hauscode -> Anzeigename. Beim Kunden-Rollout ersetzen.
 export const PROPERTY_NAMES: Record<string, string> = {
   BER01: 'Berlin Mitte',

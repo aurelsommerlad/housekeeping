@@ -143,7 +143,14 @@ export function useHousekeepingApp() {
       refreshAll().catch(() => {});
     }, POLL_INTERVAL);
     if (!tickRef.current) {
-      tickRef.current = setInterval(() => patch({ now: Date.now() }), 1000);
+      // Wie zuvor in app.js: der Sekunden-Tick (fuer den laufenden Timer) rendert nur neu, wenn
+      // die Zimmerliste oder das Zimmer-Detail sichtbar ist - auf Team/Regeln/Statistik ist der
+      // Tick fuer die Anzeige irrelevant.
+      tickRef.current = setInterval(() => {
+        if (stateRef.current.activeNav === 'rooms' || stateRef.current.detailRoomKey) {
+          patch({ now: Date.now() });
+        }
+      }, 1000);
     }
   }, [patch, refreshAll]);
 
@@ -268,43 +275,67 @@ export function useHousekeepingApp() {
     });
   }, [state.activeProperty, state.units, state.reservations, state.assignments, state.doubleups, state.now]);
 
+  // Faengt Fehler jeder Aktion ab und zeigt sie als Toast - entspricht dem globalen try/catch,
+  // das in app.js rund um den gesamten Event-Delegation-Handler lag (jede Aktion dort landete bei
+  // einem Fehler in `showToast(err.message)`). Ohne dieses Pendant wuerden Serverfehler (z. B.
+  // "Zimmer bereits vergeben", Berechtigungsfehler) hier lautlos als unhandled rejection verpuffen.
+  const runAction = useCallback(async (fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err));
+    }
+  }, [showToast]);
+
   const assignRoom = useCallback(async (key: string, hk: { id: string; name: string }) => {
-    await assignmentsApi.set(key, hk.id, hk.name);
-    await loadBackend();
-  }, [loadBackend]);
+    await runAction(async () => {
+      await assignmentsApi.set(key, hk.id, hk.name);
+      await loadBackend();
+    });
+  }, [loadBackend, runAction]);
 
   const unassignRoom = useCallback(async (key: string) => {
-    await assignmentsApi.clear(key);
-    await loadBackend();
-  }, [loadBackend]);
+    await runAction(async () => {
+      await assignmentsApi.clear(key);
+      await loadBackend();
+    });
+  }, [loadBackend, runAction]);
 
   const bulkAssign = useCallback(async (keys: string[], hk: { id: string; name: string }) => {
-    await assignmentsApi.bulkSet(keys, hk.id, hk.name);
-    patch({ multiSelect: false, selectedRooms: new Set() });
-    await loadBackend();
-    showToast(t('saved'));
-  }, [loadBackend, patch, showToast, t]);
+    await runAction(async () => {
+      await assignmentsApi.bulkSet(keys, hk.id, hk.name);
+      patch({ multiSelect: false, selectedRooms: new Set() });
+      await loadBackend();
+      showToast(t('saved'));
+    });
+  }, [loadBackend, patch, runAction, showToast, t]);
 
   const clearAllAssignments = useCallback(async () => {
     const property = stateRef.current.activeProperty;
     if (!property) return;
-    await assignmentsApi.clearProperty(property);
-    await loadBackend();
-  }, [loadBackend]);
+    await runAction(async () => {
+      await assignmentsApi.clearProperty(property);
+      await loadBackend();
+    });
+  }, [loadBackend, runAction]);
 
   const startTimer = useCallback(async (room: Room) => {
     const user = stateRef.current.user;
     const hkId = room.assignment ? room.assignment.housekeeperId : user?.id;
     const hkName = room.assignment ? room.assignment.housekeeperName : user?.name;
     if (!hkId || !hkName) return;
-    await assignmentsApi.startTimer(room.key, hkId, hkName);
-    await loadBackend();
-  }, [loadBackend]);
+    await runAction(async () => {
+      await assignmentsApi.startTimer(room.key, hkId, hkName);
+      await loadBackend();
+    });
+  }, [loadBackend, runAction]);
 
   const pauseTimer = useCallback(async (room: Room) => {
-    await assignmentsApi.stopTimer(room.key);
-    await loadBackend();
-  }, [loadBackend]);
+    await runAction(async () => {
+      await assignmentsApi.stopTimer(room.key);
+      await loadBackend();
+    });
+  }, [loadBackend, runAction]);
 
   const finishClean = useCallback(async (room: Room) => {
     patch({ loading: true });
@@ -341,44 +372,54 @@ export function useHousekeepingApp() {
   }, [patch, refreshAll, showToast]);
 
   const toggleDoubleType = useCallback(async (room: Room, typeId: string) => {
-    const current = room.doubleup?.types ? room.doubleup.types.slice() : [];
-    const idx = current.indexOf(typeId);
-    if (idx >= 0) current.splice(idx, 1); else current.push(typeId);
-    if (current.length === 0) await doubleupsApi.clear(room.key);
-    else await doubleupsApi.set(room.key, current, room.doubleup?.note);
-    await loadBackend();
-  }, [loadBackend]);
+    await runAction(async () => {
+      const current = room.doubleup?.types ? room.doubleup.types.slice() : [];
+      const idx = current.indexOf(typeId);
+      if (idx >= 0) current.splice(idx, 1); else current.push(typeId);
+      if (current.length === 0) await doubleupsApi.clear(room.key);
+      else await doubleupsApi.set(room.key, current, room.doubleup?.note);
+      await loadBackend();
+    });
+  }, [loadBackend, runAction]);
 
   const finishDoubleup = useCallback(async (room: Room) => {
-    const user = stateRef.current.user;
-    const activeProperty = stateRef.current.activeProperty;
-    await doubleupsApi.clear(room.key);
-    await completionsApi.add({
-      property: activeProperty || '', room: room.number, housekeeperId: user?.id || '', housekeeperName: user?.name || '',
-      type: 'doubleup', durationSeconds: 0, finishedAt: Date.now(),
+    await runAction(async () => {
+      const user = stateRef.current.user;
+      const activeProperty = stateRef.current.activeProperty;
+      await doubleupsApi.clear(room.key);
+      await completionsApi.add({
+        property: activeProperty || '', room: room.number, housekeeperId: user?.id || '', housekeeperName: user?.name || '',
+        type: 'doubleup', durationSeconds: 0, finishedAt: Date.now(),
+      });
+      await loadBackend();
+      showToast(t('saved'));
     });
-    await loadBackend();
-    showToast(t('saved'));
-  }, [loadBackend, showToast, t]);
+  }, [loadBackend, runAction, showToast, t]);
 
   const toggleBreak = useCallback(async () => {
     const user = stateRef.current.user;
     if (!user) return;
-    if (stateRef.current.onBreak) await breaksApi.end(user.id);
-    else await breaksApi.start(user.id, user.name);
-    await loadBackend();
-  }, [loadBackend]);
+    await runAction(async () => {
+      if (stateRef.current.onBreak) await breaksApi.end(user.id);
+      else await breaksApi.start(user.id, user.name);
+      await loadBackend();
+    });
+  }, [loadBackend, runAction]);
 
   const saveUser = useCallback(async (userForm: Record<string, unknown>) => {
-    await usersApi.save(userForm);
-    await loadBackend();
-    showToast(t('saved'));
-  }, [loadBackend, showToast, t]);
+    await runAction(async () => {
+      await usersApi.save(userForm);
+      await loadBackend();
+      showToast(t('saved'));
+    });
+  }, [loadBackend, runAction, showToast, t]);
 
   const deleteUser = useCallback(async (username: string) => {
-    await usersApi.remove(username);
-    await loadBackend();
-  }, [loadBackend]);
+    await runAction(async () => {
+      await usersApi.remove(username);
+      await loadBackend();
+    });
+  }, [loadBackend, runAction]);
 
   return {
     state, t, roomKey,

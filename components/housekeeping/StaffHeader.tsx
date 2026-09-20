@@ -1,6 +1,7 @@
 'use client';
 
 import { LANGUAGES } from '@/lib/housekeeping/i18n';
+import { APP_VERSION } from '@/lib/housekeeping/api';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { cn } from '@/lib/cn';
 
@@ -22,7 +23,7 @@ export function StaffHeader({ app }: { app: HousekeepingApp }) {
   }).format(new Date());
 
   return (
-    <header className="shrink-0 border-b border-line bg-warm-white px-4 pt-[max(env(safe-area-inset-top),0.5rem)]">
+    <header className="shrink-0 border-b border-line bg-warm-white pt-[max(env(safe-area-inset-top),0.5rem)] pl-[max(env(safe-area-inset-left),1rem)] pr-[max(env(safe-area-inset-right),1rem)]">
       <div className="flex items-center justify-between gap-2 py-2">
         <div className="min-w-0 leading-none">
           <p className="brand-wordmark text-[10px] font-semibold tracking-[0.18em] text-muted">UNIQUE PLACES</p>
@@ -52,7 +53,9 @@ export function StaffHeader({ app }: { app: HousekeepingApp }) {
         </div>
       </div>
       <div className="flex items-center justify-between gap-2 pb-2 text-[12px] text-muted">
-        <span className="truncate">{state.user?.name} · {dateLabel}</span>
+        <span className="truncate">
+          {state.user?.name} · {state.user?.role === 'admin' ? t('role_admin') : t('role_housekeeper')} · {dateLabel} · v{APP_VERSION}
+        </span>
         <div className="flex shrink-0 gap-1">
           {LANGUAGES.map((l) => (
             <button

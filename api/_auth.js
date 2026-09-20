@@ -3,7 +3,7 @@
 // undurchsichtiges, zufaelliges Token - keine Secrets, keine Rollenangabe im Klartext beim Client).
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const { getRedis, migrateLegacyKey } = require('./_redis');
+const { getRedis } = require('./_redis');
 
 // Eindeutiger Housekeeping-Namespace (siehe api/_redis.js#migrateLegacyKey) - Sessions und der
 // Setup-Lock trugen frueher den generischen Praefix "hk:*". Sessions sind einzelne, nicht

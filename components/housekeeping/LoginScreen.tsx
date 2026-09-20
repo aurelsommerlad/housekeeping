@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { LANGUAGES } from '@/lib/housekeeping/i18n';
+import { APP_VERSION } from '@/lib/housekeeping/api';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/cn';
@@ -18,10 +19,11 @@ export function LoginScreen({ app }: { app: HousekeepingApp }) {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-page px-6 py-10">
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-page py-10 pl-[max(env(safe-area-inset-left),1.5rem)] pr-[max(env(safe-area-inset-right),1.5rem)]">
       <div className="w-full max-w-xs">
         <p className="brand-wordmark text-center text-[11px] font-semibold tracking-[0.18em] text-ink">UNIQUE PLACES</p>
         <h1 className="mt-1 text-center font-heading text-2xl text-ink">{t('app_name')}</h1>
+        <p className="mt-0.5 text-center text-[11px] text-muted">v{APP_VERSION}</p>
 
         <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-[13px] font-medium text-muted">
