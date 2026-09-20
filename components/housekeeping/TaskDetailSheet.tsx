@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
-import { formatDuration } from '@/lib/housekeeping/rooms';
 import { isAdmin, isPropertyManager } from '@/lib/housekeeping/permissions';
-import { TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
+import { TASK_STATUS_CONFIG, TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
 import type { TaskReservationSummary } from '@/lib/housekeeping/types';
 import type { HousekeepingApp, ResolvedTask } from '@/lib/housekeeping/useHousekeepingApp';
 import { BottomSheet } from './BottomSheet';
@@ -10,8 +9,8 @@ import { TonePill } from './TonePill';
 import { TimeFlag } from './TimeFlag';
 import { Button } from '@/components/ui/Button';
 import {
-  DoubleupIcon, IconAlertCircle, IconCheck, IconChevronDown, IconCircle, IconClock, IconClose, IconEdit, IconPause,
-  IconPlay, IconPlus, IconUser,
+  DoubleupIcon, IconAlertCircle, IconCheck, IconChevronDown, IconCircle, IconClock, IconClose, IconEdit, IconPlus,
+  IconUser,
 } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
@@ -89,15 +88,126 @@ function TimeBadge({ icon, tone, title, children }: { icon: Parameters<typeof Ti
   );
 }
 
-/** Elapsed-Anzeige + Primaeraktion (Punkt 10) - EIN gemeinsamer Block statt der zuvor doppelt
- * (Admin/Housekeeper) vorhandenen Kopie. Nutzt ausschliesslich die bereits vorhandenen
- * Timer-/Status-Funktionen (startTaskTimer/pauseTaskTimer/finishTask/claimTask/releaseTask) - kein
- * zweiter Mechanismus. `canAct` = Admin/Standortverantwortlicher oder eigene Zuweisung (identisch
- * zur bereits serverseitig erlaubten Selbstbedienungs-Regel fuer startTimer/stopTimer/release,
- * siehe api/task-assignments.js) - vorher konnten Admin/Standortverantwortliche den Timer eines
- * Tasks ueberhaupt nicht ueber die UI bedienen, obwohl der Server es schon erlaubte.
+/**
+ * "Reinigung"-Abschnitt (Punkt "Zuweisung + Reinigungsstatus zusammenfuehren") - EINE Zeile mit
+ * Name/"Nicht zugewiesen" links und Status rechts statt zweier getrennter Bereiche ("Zuweisen an"
+ * + "Reinigungsstatus"). Admin/Standortverantwortlich koennen die Zeile aufklappen, um denselben,
+ * unveraenderten Zuweisungs-Picker (Mitarbeiterliste mit Auslastung + Freigeben) zu nutzen, statt
+ * dass er dauerhaft sichtbar ist; ein normaler Housekeeper sieht nur die schreibgeschuetzte
+ * Anzeige (bestehende Berechtigungslogik, unveraendert - nur isManager darf zuweisen/freigeben).
  */
-function CleaningStatusSection({ app, task, isManager, mine }: { app: HousekeepingApp; task: ResolvedTask; isManager: boolean; mine: boolean }) {
+function CleaningAssignmentSection({
+  app, task, isManager, assignmentOpen, onToggleAssignment,
+}: { app: HousekeepingApp; task: ResolvedTask; isManager: boolean; assignmentOpen: boolean; onToggleAssignment: () => void }) {
+  const { t, state, assignTask, releaseTask, workloadForPropertyDay } = app;
+  const workload = workloadForPropertyDay(task.propertyCode, task.date);
+  const propHks = state.users.filter(
+    (u) => u.role !== 'admin' &&
+      (u.properties === 'alle' || u.properties === 'all' || (Array.isArray(u.properties) && u.properties.includes(task.propertyCode))),
+  );
+  const assigneeWorkload = task.assignedUserId ? workload[task.assignedUserId] || 0 : null;
+  const firstStartedAt = task.history.find((h) => h.action === 'started')?.at ?? task.cleaningStartedAt ?? null;
+  const lastPausedAt = [...task.history].reverse().find((h) => h.action === 'paused')?.at ?? null;
+
+  let statusNode: ReactNode;
+  if (task.status === 'completed') {
+    statusNode = (
+      <span className="flex shrink-0 items-center gap-1 text-[12.5px] font-medium text-muted">
+        <IconCheck width={14} height={14} className="text-sage" aria-hidden="true" />
+        {t('wf_done')}{task.completedAt ? ` · ${formatClock(task.completedAt)}` : ''}
+      </span>
+    );
+  } else if (task.status === 'in_progress') {
+    statusNode = (
+      <span className="shrink-0 text-[12.5px] font-medium text-status-progress">
+        {t('task_running_label')}{firstStartedAt ? ` · ${t('since_label', { time: formatClock(firstStartedAt) })}` : ''}
+      </span>
+    );
+  } else if (task.status === 'paused') {
+    statusNode = (
+      <span className="shrink-0 text-[12.5px] font-medium text-status-blocked">
+        {t('task_paused_label')}{lastPausedAt ? ` · ${t('since_label', { time: formatClock(lastPausedAt) })}` : ''}
+      </span>
+    );
+  } else {
+    statusNode = <TonePill config={TASK_STATUS_CONFIG[task.status]} lang={state.lang} size="sm" className="shrink-0" />;
+  }
+
+  const summaryRow = (
+    <div className="flex items-center justify-between gap-2">
+      <span className="flex min-w-0 items-center gap-1.5">
+        <IconUser width={15} height={15} className="shrink-0 text-muted" aria-hidden="true" />
+        <span className={cn('truncate text-[13px]', task.assignedUserName ? 'font-medium text-ink' : 'text-muted')}>
+          {task.assignedUserName || t('unassigned')}
+        </span>
+      </span>
+      <span className="flex shrink-0 items-center gap-1.5">
+        {statusNode}
+        {isManager ? (
+          <IconChevronDown width={14} height={14} className={cn('text-muted transition-transform', assignmentOpen && 'rotate-180')} aria-hidden="true" />
+        ) : null}
+      </span>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('cleaning_status_title')}</p>
+      {isManager ? (
+        <button type="button" onClick={onToggleAssignment} className="flex flex-col gap-0.5 rounded-control py-0.5 text-left transition-colors hover:bg-surface">
+          {summaryRow}
+          {assigneeWorkload != null ? <p className="pl-6 text-[11.5px] text-muted">{t('task_count_today', { n: assigneeWorkload })}</p> : null}
+        </button>
+      ) : (
+        <div className="flex flex-col gap-0.5">
+          {summaryRow}
+          {assigneeWorkload != null ? <p className="pl-6 text-[11.5px] text-muted">{t('task_count_today', { n: assigneeWorkload })}</p> : null}
+        </div>
+      )}
+
+      {isManager && assignmentOpen ? (
+        <div className="mt-1 flex flex-col">
+          {propHks.map((hk) => {
+            const isAssigned = task.assignedUserId === hk.id;
+            return (
+              <button
+                key={hk.id}
+                type="button"
+                onClick={() => assignTask(task.id, { id: hk.id, name: hk.name })}
+                className={cn(
+                  'flex items-center justify-between rounded-control px-2.5 py-2 text-left text-sm transition-colors',
+                  isAssigned ? 'font-medium text-ink' : 'text-muted hover:bg-surface',
+                )}
+              >
+                <span>{hk.name} · {workload[hk.id] || 0} {t('task_count_suffix')}</span>
+                {isAssigned ? <IconCheck width={15} height={15} aria-hidden="true" /> : null}
+              </button>
+            );
+          })}
+          {task.assignedUserId ? (
+            <button
+              type="button"
+              onClick={() => releaseTask(task.id)}
+              className="flex items-center justify-between rounded-control px-2.5 py-2 text-left text-sm text-muted transition-colors hover:bg-surface"
+            >
+              {t('unassigned')}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Primaeraktion (Punkt "Primary Action") - EIN breiter, klar erkennbarer Button je Status statt
+ * eines separaten Elapsed-Zeit-Blocks. Nutzt ausschliesslich die bereits vorhandenen Timer-/
+ * Status-Funktionen (startTaskTimer/pauseTaskTimer/finishTask/claimTask/releaseTask/
+ * completeTaskInspection) - kein zweiter Mechanismus. `canAct` = Admin/Standortverantwortlicher
+ * oder eigene Zuweisung (identisch zur bereits serverseitig erlaubten Selbstbedienungs-Regel fuer
+ * startTimer/stopTimer/release, siehe api/task-assignments.js) - vorher konnten Admin/
+ * Standortverantwortliche den Timer eines Tasks ueberhaupt nicht ueber die UI bedienen, obwohl der
+ * Server es schon erlaubte. */
+function PrimaryAction({ app, task, isManager, mine }: { app: HousekeepingApp; task: ResolvedTask; isManager: boolean; mine: boolean }) {
   const { t, claimTask, releaseTask, startTaskTimer, pauseTaskTimer, finishTask, completeTaskInspection, noticeForTask, state } = app;
   const canAct = isManager || mine;
   const notice = noticeForTask(task.id);
@@ -105,90 +215,74 @@ function CleaningStatusSection({ app, task, isManager, mine }: { app: Housekeepi
   const currentUserAck = currentUserId ? state.taskNoticeAcks[`${task.id}|${currentUserId}`] : null;
   const currentUserAckCurrent = !!(notice && currentUserAck && currentUserAck.noticeVersion === notice.version);
 
-  const firstStartedAt = task.history.find((h) => h.action === 'started')?.at ?? task.cleaningStartedAt ?? null;
-  const lastPausedAt = [...task.history].reverse().find((h) => h.action === 'paused')?.at ?? null;
+  if (task.status === 'inspection' && isManager) {
+    return (
+      <Button variant="primary" className="w-full" onClick={() => completeTaskInspection(task)}>
+        {t('complete_inspection')}
+      </Button>
+    );
+  }
 
-  return (
-    <div className="flex flex-col gap-2.5">
-      <h4 className="text-[13px] font-medium text-muted">{t('cleaning_status_title')}</h4>
+  if (task.status === 'completed') {
+    return (
+      <Button variant="secondary" className="w-full" disabled>
+        <IconCheck width={15} height={15} className="text-sage" aria-hidden="true" />
+        {t('cleaning_completed_status')}
+      </Button>
+    );
+  }
 
-      {task.status === 'completed' ? (
-        <p className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
-          <IconCheck width={16} height={16} className="text-sage" aria-hidden="true" />
-          {t('cleaning_completed_status')}{task.completedAt ? ` · ${formatClock(task.completedAt)}` : ''}
-        </p>
-      ) : task.status === 'in_progress' || task.status === 'paused' ? (
-        <div className={cn(
-          'rounded-control border px-4 py-3 text-center',
-          task.status === 'in_progress' ? 'border-status-progress/30 bg-status-progress-bg' : 'border-status-blocked/30 bg-status-blocked-bg',
-        )}
+  if (task.status === 'open' && !isManager) {
+    return (
+      <Button variant="primary" className="w-full" onClick={() => claimTask(task.id)}>
+        {t('claim_task')}
+      </Button>
+    );
+  }
+
+  if (task.status === 'assigned' && canAct) {
+    return (
+      <div className="flex flex-col gap-2">
+        {notice && !currentUserAckCurrent && !isManager ? (
+          <p className="text-[12px] text-muted">{t('notice_start_blocked')}</p>
+        ) : null}
+        <Button
+          variant="primary"
+          className="w-full"
+          disabled={!isManager && !!notice && !currentUserAckCurrent}
+          onClick={() => startTaskTimer(task.id)}
         >
-          {firstStartedAt ? <p className="text-[12px] text-muted">{t('started_at_label', { time: formatClock(firstStartedAt) })}</p> : null}
-          {task.status === 'paused' && lastPausedAt ? (
-            <p className="text-[12px] text-muted">{t('paused_at_label', { time: formatClock(lastPausedAt) })}</p>
-          ) : null}
-          <p className={cn(
-            'mt-1 text-[11.5px] font-medium uppercase tracking-wide',
-            task.status === 'in_progress' ? 'text-status-progress' : 'text-status-blocked',
-          )}
-          >
-            {t('elapsed')}
-          </p>
-          <p className="mt-0.5 text-3xl tabular-nums text-ink">{formatDuration(task.elapsedSeconds)}</p>
-        </div>
-      ) : (
-        <TonePill config={{ labelKey: task.status === 'assigned' ? 'wf_assigned' : 'wf_open', toneClass: 'text-muted', toneBgClass: 'bg-surface', toneBorderClass: 'border-line', dotClass: 'bg-muted' }} lang={state.lang} size="sm" className="self-start" />
-      )}
-
-      {task.status === 'inspection' && isManager ? (
-        <Button variant="primary" className="w-full" onClick={() => completeTaskInspection(task)}>
-          {t('complete_inspection')}
+          {t('start_clean')}
         </Button>
-      ) : null}
-
-      {task.status === 'open' && !isManager ? (
-        <Button variant="primary" className="w-full" onClick={() => claimTask(task.id)}>
-          {t('claim_task')}
+        <Button variant="ghost" className="w-full" onClick={() => releaseTask(task.id)}>
+          {t('release_task')}
         </Button>
-      ) : null}
+      </div>
+    );
+  }
 
-      {task.status === 'assigned' && canAct ? (
-        <div className="flex flex-col gap-2">
-          {notice && !currentUserAckCurrent && !isManager ? (
-            <p className="text-[12px] text-muted">{t('notice_start_blocked')}</p>
-          ) : null}
-          <Button
-            variant="primary"
-            className="w-full"
-            disabled={!isManager && !!notice && !currentUserAckCurrent}
-            onClick={() => startTaskTimer(task.id)}
-          >
-            {t('start_clean')}
-          </Button>
-          <Button variant="ghost" className="w-full" onClick={() => releaseTask(task.id)}>
-            {t('release_task')}
-          </Button>
-        </div>
-      ) : null}
-
-      {task.status === 'in_progress' && canAct ? (
-        <div className="flex flex-col gap-2">
-          <Button variant="secondary" className="w-full" onClick={() => pauseTaskTimer(task.id)}>
-            {t('pause_clean')}
-          </Button>
-          <Button variant="primary" className="w-full" onClick={() => finishTask(task)}>
-            {t('finish_clean')}
-          </Button>
-        </div>
-      ) : null}
-
-      {task.status === 'paused' && canAct ? (
-        <Button variant="primary" className="w-full" onClick={() => startTaskTimer(task.id)}>
-          {t('resume_clean')}
+  if (task.status === 'in_progress' && canAct) {
+    return (
+      <div className="flex flex-col gap-2">
+        <Button variant="secondary" className="w-full" onClick={() => pauseTaskTimer(task.id)}>
+          {t('pause_clean')}
         </Button>
-      ) : null}
-    </div>
-  );
+        <Button variant="primary" className="w-full" onClick={() => finishTask(task)}>
+          {t('finish_clean')}
+        </Button>
+      </div>
+    );
+  }
+
+  if (task.status === 'paused' && canAct) {
+    return (
+      <Button variant="primary" className="w-full" onClick={() => startTaskTimer(task.id)}>
+        {t('resume_clean')}
+      </Button>
+    );
+  }
+
+  return null;
 }
 
 /**
@@ -205,8 +299,8 @@ function CleaningStatusSection({ app, task, isManager, mine }: { app: Housekeepi
  */
 export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   const {
-    state, t, closeTaskModal, releaseTask, assignTask, toggleTaskDoubleType,
-    finishTaskDoubleup, workloadForPropertyDay,
+    state, t, closeTaskModal, toggleTaskDoubleType,
+    finishTaskDoubleup,
     noticeForTask, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice,
     saveTaskTimeOverride, removeTaskTimeOverride,
   } = app;
@@ -217,6 +311,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   const [departureDraft, setDepartureDraft] = useState('');
   const [arrivalDraft, setArrivalDraft] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [assignmentOpen, setAssignmentOpen] = useState(false);
 
   if (!task) {
     return <BottomSheet open={false} onClose={closeTaskModal}><div /></BottomSheet>;
@@ -227,11 +322,6 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   // beim "Wichtigen Hinweis" ist das hier bewusst echtem Admin vorbehalten (serverseitig ebenso
   // durchgesetzt, siehe api/task-time-overrides.js).
   const canEditTimes = isAdmin(state.user);
-  const propHks = state.users.filter(
-    (u) => u.role !== 'admin' &&
-      (u.properties === 'alle' || u.properties === 'all' || (Array.isArray(u.properties) && u.properties.includes(task.propertyCode))),
-  );
-  const workload = workloadForPropertyDay(task.propertyCode, task.date);
   const mine = !!(task.assignedUserId && state.user && task.assignedUserId === state.user.id);
   const selectedTypes = task.doubleupTypes;
 
@@ -476,14 +566,17 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
             </div>
           </div>
         ) : isManager && !noticeFormOpen ? (
-          <button
-            type="button"
-            onClick={openNoticeForm}
-            className="inline-flex items-center gap-1.5 self-start text-[13px] font-medium text-muted hover:text-ink"
-          >
-            <IconPlus width={16} height={16} aria-hidden="true" />
-            {t('important_notice_add')}
-          </button>
+          <div className="flex flex-col gap-1">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('important_notice_title')}</p>
+            <button
+              type="button"
+              onClick={openNoticeForm}
+              className="inline-flex items-center gap-1.5 self-start text-[13px] font-medium text-muted hover:text-ink"
+            >
+              <IconPlus width={16} height={16} aria-hidden="true" />
+              {t('important_notice_add')}
+            </button>
+          </div>
         ) : null}
 
         {noticeFormOpen ? (
@@ -503,44 +596,21 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           </div>
         ) : null}
 
-        {/* Zuweisung (Punkt 8) - Admin/Standortverantwortlich: interaktive Liste; sonst nur die
-         * bereits ausgewaehlte Zusatzausstattung als Chips (read-only), unveraendert. */}
-        {isManager ? (
-          <div>
-            <h4 className="mb-1.5 text-[13px] font-medium text-muted">{t('assign_to')}</h4>
-            <div className="flex flex-col">
-              {propHks.map((hk) => {
-                const isAssigned = task.assignedUserId === hk.id;
-                return (
-                  <button
-                    key={hk.id}
-                    type="button"
-                    onClick={() => assignTask(task!.id, { id: hk.id, name: hk.name })}
-                    className={cn(
-                      'flex items-center justify-between rounded-control px-2.5 py-2 text-left text-sm transition-colors',
-                      isAssigned ? 'font-medium text-ink' : 'text-muted hover:bg-surface',
-                    )}
-                  >
-                    <span>{hk.name} · {workload[hk.id] || 0} {t('task_count_suffix')}</span>
-                    {isAssigned ? <IconCheck width={15} height={15} aria-hidden="true" /> : null}
-                  </button>
-                );
-              })}
-              {task.assignedUserId ? (
-                <button
-                  type="button"
-                  onClick={() => releaseTask(task!.id)}
-                  className="flex items-center justify-between rounded-control px-2.5 py-2 text-left text-sm text-muted transition-colors hover:bg-surface"
-                >
-                  {t('unassigned')}
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
+        {/* "Reinigung" (Zuweisung + Reinigungsstatus zusammengefuehrt) - Admin/Standortverantwortlich
+         * koennen die Zeile aufklappen, um denselben Zuweisungs-Picker wie zuvor zu nutzen, statt
+         * dass die Mitarbeiterliste dauerhaft sichtbar ist; Housekeeper sehen nur die Anzeige. */}
+        <CleaningAssignmentSection
+          app={app}
+          task={task}
+          isManager={isManager}
+          assignmentOpen={assignmentOpen}
+          onToggleAssignment={() => setAssignmentOpen((v) => !v)}
+        />
 
-        <div>
-          <h4 className="mb-1.5 text-[13px] font-medium text-muted">{t('doubleup_needed')}</h4>
+        {/* "Vorbereitung" (vormals "Zusatzausstattung") - Admin/Standortverantwortlich: interaktive
+         * Toggles; sonst nur die bereits ausgewaehlte Ausstattung als Chips (read-only), unveraendert. */}
+        <div className="flex flex-col gap-1">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('task_prep_title')}</p>
           <div className="flex flex-wrap gap-1.5">
             {isManager
               ? DOUBLEUP_TYPES.map((dt) => {
@@ -551,22 +621,22 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                     type="button"
                     onClick={() => toggleTaskDoubleType(task!, dt.id)}
                     className={cn(
-                      'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors',
+                      'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors',
                       on ? 'border-sage bg-type-stayover-bg text-ink' : 'border-line bg-warm-white text-muted hover:text-ink',
                     )}
                   >
-                    <DoubleupIcon id={dt.id} width={15} height={15} aria-hidden="true" />
+                    <DoubleupIcon id={dt.id} width={14} height={14} aria-hidden="true" />
                     {t(dt.label)}
-                    {on ? <IconCheck width={13} height={13} className="text-sage" aria-hidden="true" /> : null}
+                    {on ? <IconCheck width={12} height={12} className="text-sage" aria-hidden="true" /> : null}
                   </button>
                 );
               })
               : DOUBLEUP_TYPES.filter((dt) => selectedTypes.includes(dt.id)).map((dt) => (
                 <span
                   key={dt.id}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-sage bg-type-stayover-bg px-3 py-1.5 text-[12.5px] font-medium text-ink"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-sage bg-type-stayover-bg px-2.5 py-1 text-[12px] font-medium text-ink"
                 >
-                  <DoubleupIcon id={dt.id} width={15} height={15} aria-hidden="true" />
+                  <DoubleupIcon id={dt.id} width={14} height={14} aria-hidden="true" />
                   {t(dt.label)}
                 </span>
               ))}
@@ -579,7 +649,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           </Button>
         ) : null}
 
-        <CleaningStatusSection app={app} task={task} isManager={isManager} mine={mine} />
+        <PrimaryAction app={app} task={task} isManager={isManager} mine={mine} />
 
         {/* Reinigungsverlauf (Punkt 13: bei Bedarf aufklappbar statt immer sichtbar, reduziert
          * das Scrollen fuer den operativ wichtigeren Teil oberhalb). */}
@@ -606,10 +676,6 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           </div>
         ) : null}
       </div>
-
-      <Button variant="ghost" className="mt-4 w-full" onClick={closeTaskModal}>
-        {t('close')}
-      </Button>
     </BottomSheet>
   );
 }

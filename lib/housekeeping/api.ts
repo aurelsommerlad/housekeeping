@@ -54,7 +54,20 @@ import type {
 // aeussere Zeilenabstand der Karte minimal reduziert (gap-2 -> gap-1.5) - gegen einen git-
 // gestashten Vorher/Nachher-Vergleich verifiziert: die Kartenhoehe ist fuer jeden geprueften
 // Zustand identisch oder niedriger geblieben, nie hoeher.
-export const APP_VERSION = '2.8.1';
+// MINOR-Bump (2.8.1 -> 2.9.0): TaskDetailSheet - operativer unterer Bereich neu strukturiert.
+// "Zuweisen an" + "Reinigungsstatus" zu einer "Reinigung"-Zeile zusammengefuehrt (Name + kompakter
+// Status auf einer Zeile, Auslastung als Subline); der Zuweisungs-Picker (unveraendert dieselbe
+// Logik) ist jetzt nur noch fuer Admin/Standortverantwortlich per Klick/Chevron aufklappbar statt
+// dauerhaft sichtbar. "Zusatzausstattung" in "Vorbereitung" umbenannt (nur fuer TaskDetailSheet -
+// RoomDetailSheet/DoubleupScreen behalten ihre eigene Bezeichnung). Ein einzelner breiter
+// "Primary Action"-Button je Status ersetzt den fruesheren Elapsed-Zeit-Block (Start/Pause+
+// Abschliessen/Fortsetzen/abgeschlossen-Anzeige) - reine Button-Reorganisation, es wird
+// ausschliesslich bestehende Timer-/Status-/Zuweisungslogik wiederverwendet. Der "Wichtiger
+// Hinweis"-Doppel-Plus-Darstellungsfehler (Icon + textinternes "+ ") ist behoben. Der grosse
+// "Schliessen"-Button am Ende wurde entfernt (Header-X/Backdrop schliessen weiterhin). Vertikale
+// Abstaende zwischen den Abschnitten vereinheitlicht/reduziert. Reservierungsdaten, Zeiten,
+// Turnover-Logik und der bereits ueberarbeitete obere Teil der Detailansicht sind unveraendert.
+export const APP_VERSION = '2.9.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
