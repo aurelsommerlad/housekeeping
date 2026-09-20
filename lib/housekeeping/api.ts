@@ -12,15 +12,17 @@
  */
 import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, DoubleupsState, Completion, BreakEntry, NfcTagStatusesState, Property,
-  ReservationsState, StaffUser, TaskAssignmentsState, TaskNotice, TaskNoticeAck, TaskNoticeAcksState, TaskNoticesState,
-  TaskStartSource, TaskTimeOverride, TaskTimeOverridesState,
+  ReservationSearchResult, ReservationsState, StaffUser, TaskAssignmentsState, TaskNotice, TaskNoticeAck, TaskNoticeAcksState,
+  TaskNoticesState, TaskStartSource, TaskTimeOverride, TaskTimeOverridesState,
 } from './types';
 
-// MINOR-Bump (2.2.0 -> 2.3.0): NFC-Tag-Verwaltung (Admin-Einstellungen -> NFC-Tags) + NFC-Scan-
-// Einstieg (/nfc/[token]) - rein additiv (neue Redis-Hashes housekeeping:nfc_tags/
-// housekeeping:nfc_units, neues optionales source-Feld auf TaskHistoryEntry), baut vollstaendig
-// auf der bestehenden Task-/Timer-/Berechtigungslogik auf statt einer parallelen Implementierung.
-export const APP_VERSION = '2.3.0';
+// MINOR-Bump (2.3.0 -> 2.4.0): Reservierungsinformationen an Tasks (Buchungsnummer/Gast/
+// Gaestezahl/Kinderalter/gebucht am, strikt getrennt Abreise vs. naechste Anreise bei Turnover)
+// + Admin-Reservierungssuche live gegen Apaleo (textSearch, ueber alle Properties/Zeitraeume) -
+// rein additiv (neue Task-Felder reservationInfo/nextReservationInfo, keine neuen Redis-Keys,
+// keine Aenderung bestehender Datenformate). Die kompakte Task Card behaelt ihre bisherige
+// Groesse (dieselbe Zeile wird nur inhaltlich angereichert, siehe TaskCard.tsx).
+export const APP_VERSION = '2.4.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -425,3 +427,11 @@ export const usersApi = {
   save: (user: Record<string, unknown>) => backendPost('users', { action: 'set', user }),
   remove: (username: string) => backendPost('users', { action: 'delete', username }),
 };
+
+/** Admin-Reservierungssuche (Punkt 5-9) - sucht live gegen Apaleo ueber alle Properties/Zeitraeume
+ * hinweg (nicht nur die vier geladenen Planungstage), siehe api/reservation-search.js fuer die
+ * serverseitige role==='admin'-Pruefung. */
+export async function searchReservations(query: string): Promise<ReservationSearchResult[]> {
+  const data = await backendPost<{ results?: ReservationSearchResult[] }>('reservation-search', { query });
+  return data.results || [];
+}

@@ -15,8 +15,8 @@
 import { FORCED_CLEAN_INTERVAL_NIGHTS } from './api';
 import { addDaysISO, unitCondition } from './rooms';
 import type {
-  ApaleoReservation, ApaleoUnit, CapacityEntry, DaySummary, DoubleupsState, Task, TaskAssignmentsState, TaskHistoryEntry, TaskStatus,
-  TaskTimeOverride, TaskTimeOverridesState, TaskType,
+  ApaleoReservation, ApaleoUnit, CapacityEntry, DaySummary, DoubleupsState, Task, TaskAssignmentsState, TaskHistoryEntry,
+  TaskReservationSummary, TaskStatus, TaskTimeOverride, TaskTimeOverridesState, TaskType,
 } from './types';
 
 /** Standardzeiten (Prioritaet 3, ohne gebuchtes Extra/Override) - siehe Briefing Punkt 1. */
@@ -58,6 +58,23 @@ function guestCount(r: ApaleoReservation): number | null {
 
 function reservationComment(r: ApaleoReservation): string {
   return r.comment || r.booker?.comment || '';
+}
+
+/** Reservierungsinformationen (Punkt 1) ausschliesslich aus echten Apaleo-Feldern - `created` fuer
+ * "gebucht am", `id` (nicht `bookingId`) als anzuzeigende Buchungsnummer (siehe
+ * types.ts#TaskReservationSummary). */
+function reservationSummary(r: ApaleoReservation): TaskReservationSummary {
+  return {
+    reservationId: r.id,
+    bookingId: r.bookingId || r.id,
+    bookingDate: dateOnly(r.created),
+    arrivalDate: dateOnly(r.arrival) || '',
+    departureDate: dateOnly(r.departure) || '',
+    guestName: guestName(r),
+    adults: typeof r.adults === 'number' ? r.adults : null,
+    childrenCount: r.childrenAges?.length || 0,
+    childAges: r.childrenAges || [],
+  };
 }
 
 function resUnitId(r: ApaleoReservation): string | undefined {
@@ -143,6 +160,9 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
           hasLateCheckout, hasEarlyCheckin,
           bookedDepartureTime: hasLateCheckout ? EXTRA_TIME : STANDARD_DEPARTURE_TIME,
           bookedArrivalTime: hasEarlyCheckin ? EXTRA_TIME : STANDARD_ARRIVAL_TIME,
+          // Punkt 4: strikt getrennt - reservationInfo IMMER von departingRes, nextReservationInfo
+          // IMMER von arrivingRes, nie vermischt.
+          reservationInfo: reservationSummary(departingRes), nextReservationInfo: reservationSummary(arrivingRes),
         });
         continue;
       }
@@ -164,6 +184,7 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
           hasLateCheckout, hasEarlyCheckin: false,
           bookedDepartureTime: hasLateCheckout ? EXTRA_TIME : STANDARD_DEPARTURE_TIME,
           bookedArrivalTime: null,
+          reservationInfo: reservationSummary(departingRes), nextReservationInfo: null,
         });
         continue;
       }
@@ -194,6 +215,7 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
             forced: true, nights, condition: conditionNow,
             hasLateCheckout: false, hasEarlyCheckin: false,
             bookedDepartureTime: STANDARD_DEPARTURE_TIME, bookedArrivalTime: null,
+            reservationInfo: reservationSummary(occupiedRes), nextReservationInfo: null,
           });
           continue;
         }
@@ -215,6 +237,7 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
           forced: false, nights: null, condition: conditionNow,
           hasLateCheckout: false, hasEarlyCheckin: false,
           bookedDepartureTime: STANDARD_DEPARTURE_TIME, bookedArrivalTime: null,
+          reservationInfo: null, nextReservationInfo: null,
         });
       }
     }

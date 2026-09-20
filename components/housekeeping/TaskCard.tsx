@@ -67,6 +67,11 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
   const isCompleted = task.status === 'completed';
   const startedAt = lastHistoryAt(task, 'started') ?? task.cleaningStartedAt;
   const pausedAt = lastHistoryAt(task, 'paused');
+  // Punkt "Wichtige Korrektur": dieselbe, bereits vorhandene sekundaere Zeile (frueher reine
+  // Gaestezahl) zeigt jetzt kompakt Gastname+Buchungsnummer - EXAKT dieselbe Zeile/Klasse, damit
+  // sich Kartenhoehe/-abmessungen nicht aendern. Dieselbe Konvention wie bisher bei guestCount/
+  // comment (Turnover -> ankommende Reservierung, sonst die dieses Tasks) - siehe tasks.ts Punkt 8.
+  const cardReservation = task.type === 'turnover' ? task.nextReservationInfo : task.reservationInfo;
 
   return (
     <button
@@ -163,7 +168,11 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
         </div>
       ) : null}
 
-      {typeof task.guestCount === 'number' ? (
+      {cardReservation ? (
+        <p className="truncate text-[12.5px] text-muted">
+          {cardReservation.guestName || translate(lang, 'unassigned')} · {cardReservation.reservationId}
+        </p>
+      ) : typeof task.guestCount === 'number' ? (
         <p className="text-[12.5px] text-muted">{translate(lang, 'guests_count', { n: task.guestCount })}</p>
       ) : null}
 

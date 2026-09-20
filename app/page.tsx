@@ -11,6 +11,7 @@ import { StatsScreen } from '@/components/housekeeping/StatsScreen';
 import { TeamScreen } from '@/components/housekeeping/TeamScreen';
 import { RoomDetailSheet } from '@/components/housekeeping/RoomDetailSheet';
 import { SettingsSheet } from '@/components/housekeeping/SettingsSheet';
+import { ReservationSearchSheet } from '@/components/housekeeping/ReservationSearchSheet';
 import { LoginScreen } from '@/components/housekeeping/LoginScreen';
 import { Toast } from '@/components/housekeeping/Toast';
 
@@ -28,6 +29,7 @@ export default function HousekeepingPage() {
   const app = useHousekeepingApp();
   const { state } = app;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // PWA/Offline-Verhalten nur fuer den operativen Housekeeping-Bereich (wie zuvor bei
   // APP_MODE === 'staff' in app.js) - der Adminbereich unter /admin registriert bewusst
@@ -55,7 +57,7 @@ export default function HousekeepingPage() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-page">
-      <StaffHeader app={app} onOpenSettings={() => setSettingsOpen(true)} />
+      <StaffHeader app={app} onOpenSettings={() => setSettingsOpen(true)} onOpenSearch={() => setSearchOpen(true)} />
       {state.activeNav === 'rooms' ? <PropertyChips app={app} /> : null}
 
       <main className="flex-1 overflow-y-auto pb-4">
@@ -74,6 +76,7 @@ export default function HousekeepingPage() {
       <StaffNavBar app={app} />
       <RoomDetailSheet app={app} room={detailRoom} />
       <SettingsSheet app={app} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <ReservationSearchSheet app={app} open={searchOpen} onClose={() => setSearchOpen(false)} />
       <Toast message={state.toast} />
     </div>
   );

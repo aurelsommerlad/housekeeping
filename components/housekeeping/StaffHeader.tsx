@@ -3,7 +3,7 @@
 import { LANGUAGES } from '@/lib/housekeeping/i18n';
 import { APP_VERSION, getPropertyDisplayName } from '@/lib/housekeeping/api';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
-import { IconUser } from '@/components/ui/icons';
+import { IconSearch, IconUser } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
 const LOCALES: Record<string, string> = { de: 'de-DE', en: 'en-GB', pl: 'pl-PL', ro: 'ro-RO' };
@@ -11,6 +11,7 @@ const LOCALES: Record<string, string> = { de: 'de-DE', en: 'en-GB', pl: 'pl-PL',
 export interface StaffHeaderProps {
   app: HousekeepingApp;
   onOpenSettings: () => void;
+  onOpenSearch: () => void;
 }
 
 /**
@@ -23,7 +24,7 @@ export interface StaffHeaderProps {
  * - ersetzt den bisherigen alleinstehenden Logout-Button, damit selten benoetigte Funktionen
  * (allen voran "Regeln") nicht laenger als gleichwertige Hauptpunkte erscheinen.
  */
-export function StaffHeader({ app, onOpenSettings }: StaffHeaderProps) {
+export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderProps) {
   const { state, t, setLang, toggleBreak } = app;
   const activeProperty = state.properties.find((p) => p.code === state.activeProperty);
   const dateLabel = new Intl.DateTimeFormat(LOCALES[state.lang] || 'de-DE', {
@@ -50,6 +51,16 @@ export function StaffHeader({ app, onOpenSettings }: StaffHeaderProps) {
               )}
             >
               {state.onBreak ? t('break_end') : t('break_start')}
+            </button>
+          ) : null}
+          {state.user?.role === 'admin' ? (
+            <button
+              type="button"
+              aria-label={t('search_aria_label')}
+              onClick={onOpenSearch}
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-muted transition-colors hover:text-ink"
+            >
+              <IconSearch width={16} height={16} />
             </button>
           ) : null}
           <button

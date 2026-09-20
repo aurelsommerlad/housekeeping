@@ -61,6 +61,14 @@ export interface ApaleoReservation {
   adults?: number;
   childrenAges?: number[];
   status?: string;
+  /** Buchungszeitpunkt (live verifiziert: Top-Level-Feld, kein `bookingDate`/`createdAt`,
+   * bereits ohne jedes `expand` in der Bulk-Abfrage vorhanden) - Quelle fuer "gebucht am". */
+  created?: string;
+  /** Booking-Id OHNE die Reservierungs-Sequenznummer (z. B. "WJBMFCDY" zu Reservierungs-`id`
+   * "WJBMFCDY-1") - mehrere Reservierungen einer Mehrfachzimmer-Buchung teilen dieselbe
+   * bookingId. Fuer die housekeeping-App ist weiterhin `id` die anzuzeigende "Buchungsnummer"
+   * (matcht das bestehende Slack-Format "AUPZXZSN-1"), bookingId dient nur als interne Referenz. */
+  bookingId?: string;
   /** Gebuchte Zusatzleistungen (nur gesetzt, wenn mit expand=services geladen, siehe
    * loadReservationsRangeForProperties) - Quelle fuer Early-Check-in/Late-Check-out-Erkennung
    * (service.code === 'ECI'/'LCO', live gegen Apaleo verifiziert). Bewusst ueber `code` statt `id`
@@ -154,6 +162,42 @@ export type RoomFilter = 'all' | 'forced' | 'dirty' | 'inspect' | 'clean' | 'dou
  */
 export type TaskType = 'turnover' | 'departure' | 'stayover' | 'extra';
 
+/**
+ * Kompakte, ausschliesslich aus echten Apaleo-Feldern abgeleitete Zusammenfassung EINER
+ * Reservierung (Punkt "Reservierungsinformationen am Task") - fachliche Referenz war die
+ * bestehende Slack-Reinigungsnachricht, die Felder selbst kommen aber ausschliesslich aus der
+ * Apaleo-Reservierung (nie aus Freitext/Strings/Slack). Wird sowohl fuer die abreisende als auch
+ * (bei Turnover) die ankommende Reservierung separat gebildet (siehe tasks.ts#reservationSummary)
+ * - beide Datensaetze duerfen sich NIE vermischen (Punkt 4).
+ */
+export interface TaskReservationSummary {
+  /** Apaleo-Reservierungs-`id` (z. B. "AUPZXZSN-1") - das ist die im Slack-Format gezeigte
+   * "Buchungsnummer", NICHT die kuerzere bookingId. */
+  reservationId: string;
+  bookingId: string;
+  /** ISO yyyy-mm-dd, aus `created` - null, falls Apaleo kein Erstellungsdatum liefert. */
+  bookingDate: string | null;
+  arrivalDate: string;
+  departureDate: string;
+  guestName: string;
+  adults: number | null;
+  /** Anzahl Kinder = Laenge von childAges - kein separates Apaleo-Feld dafuer. */
+  childrenCount: number;
+  childAges: number[];
+}
+
+/** Suchergebnis der Admin-Reservierungssuche (Punkt 5-8) - direkt aus einer live Apaleo-Suche
+ * gemappt (api/reservation-search.js), NICHT aus den bereits geladenen vier Planungstagen. Traegt
+ * zusaetzlich Property-/Unit-Identitaet, damit der Client pruefen kann, ob dafuer bereits ein
+ * geladener Housekeeping-Task existiert (siehe ReservationSearchSheet.tsx). */
+export interface ReservationSearchResult extends TaskReservationSummary {
+  propertyCode: string;
+  propertyName: string;
+  unitId: string;
+  unitName: string;
+  status: string;
+}
+
 export interface Task {
   /** Deterministisch, siehe lib/housekeeping/tasks.ts#taskId - bei jedem Reload identisch. */
   id: string;
@@ -212,6 +256,16 @@ export interface Task {
    * allen anderen Tagen keine Ankunft in diesem Apartment stattfindet). */
   bookedDepartureTime: string;
   bookedArrivalTime: string | null;
+  /** Reservierungsinformationen der fuer DIESEN Task massgeblichen Reservierung (Punkt 1-3):
+   * departingRes fuer turnover/departure, occupiedRes fuer stayover, null fuer extra (keine
+   * eigene Reservierung). Getrennt von `guestName`/`guestCount`/`comment` oben, die eine aeltere,
+   * bewusst andere Konvention verfolgen (bei Turnover schon bisher die ANKOMMENDE Reservierung,
+   * siehe Punkt 8) - dieses Feld hier ist immer eindeutig "die abreisende/aktuelle Belegung". */
+  reservationInfo: TaskReservationSummary | null;
+  /** NUR bei type==='turnover' gesetzt: die ankommende Folgereservierung, fuer die vorbereitet
+   * wird (Punkt 4) - niemals mit reservationInfo vermischt (z. B. Babybett-Bedarf gehoert
+   * eindeutig zur Anreise, nicht zur Abreise). */
+  nextReservationInfo: TaskReservationSummary | null;
 }
 
 export type TaskStatus = 'open' | 'assigned' | 'in_progress' | 'paused' | 'inspection' | 'completed';

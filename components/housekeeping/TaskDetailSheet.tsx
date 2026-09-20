@@ -3,6 +3,7 @@ import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
 import { formatDuration } from '@/lib/housekeeping/rooms';
 import { isAdmin, isPropertyManager } from '@/lib/housekeeping/permissions';
 import { TASK_STATUS_CONFIG, TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
+import type { TaskReservationSummary } from '@/lib/housekeeping/types';
 import type { HousekeepingApp, ResolvedTask } from '@/lib/housekeeping/useHousekeepingApp';
 import { BottomSheet } from './BottomSheet';
 import { TonePill } from './TonePill';
@@ -35,6 +36,39 @@ function formatDateShort(ms: number): string {
 const HISTORY_LABEL_KEYS = {
   started: 'history_started', paused: 'history_paused', resumed: 'history_resumed', completed: 'history_completed',
 } as const;
+
+function formatFullDate(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(`${iso}T00:00:00`);
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+}
+
+function ReservationRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 text-[13px]">
+      <span className="text-muted">{label}</span>
+      <span className="text-right font-medium text-ink">{value}</span>
+    </div>
+  );
+}
+
+/** Punkt 3: ausfuehrliche Reservierungsinformationen im Task Detail - ausschliesslich aus
+ * TaskReservationSummary (siehe types.ts), NIE aus Freitext. Punkt 4: wird fuer Turnover ZWEIMAL
+ * mit jeweils der korrekten, nie vermischten Reservierung aufgerufen (siehe unten). */
+function ReservationDetails({ info, t }: { info: TaskReservationSummary; t: HousekeepingApp['t'] }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <ReservationRow label={t('reservation_guest')} value={info.guestName || '–'} />
+      <ReservationRow label={t('reservation_booking_number')} value={info.reservationId} />
+      <ReservationRow label={t('reservation_booked_on')} value={info.bookingDate ? formatFullDate(info.bookingDate) : '–'} />
+      <ReservationRow label={t('reservation_adults')} value={info.adults != null ? String(info.adults) : '–'} />
+      <ReservationRow label={t('reservation_children')} value={info.childrenCount > 0 ? String(info.childrenCount) : '–'} />
+      {info.childrenCount > 0 ? (
+        <ReservationRow label={t('reservation_children_ages')} value={t('reservation_children_ages_value', { ages: info.childAges.join(', ') })} />
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * Auftrags-Detail als Bottom Sheet - analog zu RoomDetailSheet, aber auftragszentriert (Punkt 4):
@@ -219,8 +253,33 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           </div>
         ) : null}
 
-        {task.nextGuestName || task.guestName ? (
-          <p className="text-[13px] text-muted">{task.type === 'turnover' ? task.nextGuestName : task.guestName}</p>
+        {/* Reservierung (Punkt 3) - bei Turnover strikt getrennt in Abreise/Naechste Anreise
+         * (Punkt 4), sonst ein einzelner Block. Ersetzt die vorherige einzeilige Gastnamen-Zeile
+         * durch die vollstaendigen, aus echten Apaleo-Feldern stammenden Reservierungsdaten. */}
+        {task.reservationInfo || task.nextReservationInfo ? (
+          <div className="rounded-control border border-line bg-surface px-3.5 py-3">
+            <p className="mb-2 text-[13px] font-medium text-ink">{t('reservation_title')}</p>
+            <div className="flex flex-col gap-3">
+              {task.type === 'turnover' ? (
+                <>
+                  {task.reservationInfo ? (
+                    <div>
+                      <p className="mb-1.5 text-[11.5px] font-medium uppercase tracking-wide text-muted">{t('reservation_departure_title')}</p>
+                      <ReservationDetails info={task.reservationInfo} t={t} />
+                    </div>
+                  ) : null}
+                  {task.nextReservationInfo ? (
+                    <div className="border-t border-line pt-3">
+                      <p className="mb-1.5 text-[11.5px] font-medium uppercase tracking-wide text-muted">{t('reservation_arrival_title')}</p>
+                      <ReservationDetails info={task.nextReservationInfo} t={t} />
+                    </div>
+                  ) : null}
+                </>
+              ) : task.reservationInfo ? (
+                <ReservationDetails info={task.reservationInfo} t={t} />
+              ) : null}
+            </div>
+          </div>
         ) : null}
 
         {task.comment ? (

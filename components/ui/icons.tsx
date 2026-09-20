@@ -190,6 +190,17 @@ export function IconNfc(props: IconProps) {
   );
 }
 
+/** Fuer die Admin-Reservierungssuche (Header-Button) - klassische Lupe, dieselbe Outline-Sprache
+ * wie die uebrigen Icons. */
+export function IconSearch(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="m20 20-4.7-4.7" />
+    </svg>
+  );
+}
+
 export const NAV_ICONS = {
   bed: IconBed,
   chart: IconChart,
