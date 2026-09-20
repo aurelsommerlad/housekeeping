@@ -1,24 +1,19 @@
 import { useState } from 'react';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
 import { formatDuration } from '@/lib/housekeeping/rooms';
-import { isPropertyManager } from '@/lib/housekeeping/permissions';
+import { isAdmin, isPropertyManager } from '@/lib/housekeeping/permissions';
 import { TASK_STATUS_CONFIG, TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
 import type { HousekeepingApp, ResolvedTask } from '@/lib/housekeeping/useHousekeepingApp';
 import { BottomSheet } from './BottomSheet';
 import { TonePill } from './TonePill';
+import { TimeFlag } from './TimeFlag';
 import { Button } from '@/components/ui/Button';
-import { DoubleupIcon, IconAlertCircle, IconCheck, IconCircle, IconPlus } from '@/components/ui/icons';
+import { DoubleupIcon, IconAlertCircle, IconCheck, IconCircle, IconClock, IconEdit, IconPlus } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
 export interface TaskDetailSheetProps {
   app: HousekeepingApp;
   task: ResolvedTask | null;
-}
-
-function formatTime(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 function formatDayMonth(iso: string | null): string {
@@ -31,6 +26,15 @@ function formatClock(ms: number): string {
   const d = new Date(ms);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
+
+function formatDateShort(ms: number): string {
+  const d = new Date(ms);
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.`;
+}
+
+const HISTORY_LABEL_KEYS = {
+  started: 'history_started', paused: 'history_paused', resumed: 'history_resumed', completed: 'history_completed',
+} as const;
 
 /**
  * Auftrags-Detail als Bottom Sheet - analog zu RoomDetailSheet, aber auftragszentriert (Punkt 4):
@@ -48,16 +52,29 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
     state, t, closeTaskModal, claimTask, releaseTask, assignTask, toggleTaskDoubleType,
     startTaskTimer, pauseTaskTimer, finishTask, completeTaskInspection, finishTaskDoubleup, workloadForPropertyDay,
     noticeForTask, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice,
+    saveTaskTimeOverride, removeTaskTimeOverride,
   } = app;
   const open = !!task;
   const [noticeFormOpen, setNoticeFormOpen] = useState(false);
   const [noticeDraft, setNoticeDraft] = useState('');
+  const [timeFormOpen, setTimeFormOpen] = useState(false);
+  const [departureDraft, setDepartureDraft] = useState('');
+  const [arrivalDraft, setArrivalDraft] = useState('');
 
   if (!task) {
     return <BottomSheet open={false} onClose={closeTaskModal}><div /></BottomSheet>;
   }
 
+  // Fuer die "Gestartet HH:MM"/"Pausiert seit HH:MM"-Zeilen (Punkt "In Reinigung"/"Pausiert") -
+  // direkt aus dem ohnehin vorhandenen Reinigungsverlauf abgeleitet, kein zweiter Zeitstempel.
+  const firstStartedAt = task.history.find((h) => h.action === 'started')?.at ?? task.cleaningStartedAt ?? null;
+  const lastPausedAt = [...task.history].reverse().find((h) => h.action === 'paused')?.at ?? null;
+
   const isManager = isPropertyManager(state.user, task.propertyCode);
+  // Punkt 13: Standortverantwortliche duerfen die Zeiten NUR sehen, nicht bearbeiten - anders als
+  // beim "Wichtigen Hinweis" ist das hier bewusst echtem Admin vorbehalten (serverseitig ebenso
+  // durchgesetzt, siehe api/task-time-overrides.js).
+  const canEditTimes = isAdmin(state.user);
   const propHks = state.users.filter(
     (u) => u.role !== 'admin' &&
       (u.properties === 'alle' || u.properties === 'all' || (Array.isArray(u.properties) && u.properties.includes(task.propertyCode))),
@@ -86,6 +103,26 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
     await removeTaskNotice(task!.id);
   }
 
+  function openTimeForm() {
+    setDepartureDraft(task!.effectiveDepartureTime);
+    setArrivalDraft(task!.effectiveArrivalTime || '');
+    setTimeFormOpen(true);
+  }
+  async function handleSaveTimes() {
+    // Nur tatsaechlich vom gebuchten/Standard-Wert abweichende Felder werden als Override
+    // gesendet (Punkt 9/14) - ein unveraendert wieder abgeschicktes Feld erzeugt keine falsche
+    // "Geaenderte Zeit"-Kennzeichnung fuer eine Seite, die der Admin gar nicht anfassen wollte.
+    const times: { departureTime?: string; arrivalTime?: string } = {};
+    if (departureDraft && departureDraft !== task!.bookedDepartureTime) times.departureTime = departureDraft;
+    if (task!.type === 'turnover' && arrivalDraft && arrivalDraft !== task!.bookedArrivalTime) times.arrivalTime = arrivalDraft;
+    if (Object.keys(times).length > 0) await saveTaskTimeOverride(task!.id, times);
+    setTimeFormOpen(false);
+  }
+  async function handleResetTimes() {
+    if (typeof window !== 'undefined' && !window.confirm(t('reset_times_confirm'))) return;
+    await removeTaskTimeOverride(task!.id);
+  }
+
   return (
     <BottomSheet open={open} onClose={closeTaskModal}>
       <h3 className="font-heading text-xl italic text-ink">
@@ -98,15 +135,88 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           <TonePill config={TASK_STATUS_CONFIG[task.status]} lang={state.lang} />
         </div>
 
-        {task.type === 'turnover' ? (
-          <p className="text-[13px] text-muted">
-            {t('label_departure')} {formatTime(task.departureTime)} → {t('label_arrival')} {formatTime(task.nextArrivalTime)}
-          </p>
-        ) : task.type === 'departure' ? (
-          <p className="text-[13px] text-muted">
-            {t('label_departure')} {formatTime(task.departureTime)}
-            {task.followingArrivalDate ? <> · {t('next_arrival_label')}: {formatDayMonth(task.followingArrivalDate)}</> : null}
-          </p>
+        {task.type === 'turnover' || task.type === 'departure' ? (
+          <div className="flex flex-col gap-1.5">
+            {task.type === 'turnover' ? (
+              <p className="text-[13px] text-muted">
+                {t('label_departure')} {task.effectiveDepartureTime} → {t('label_arrival')} {task.effectiveArrivalTime}
+              </p>
+            ) : (
+              <p className="text-[13px] text-muted">
+                {t('label_departure')} {task.effectiveDepartureTime}
+                {task.followingArrivalDate ? <> · {t('next_arrival_label')}: {formatDayMonth(task.followingArrivalDate)}</> : null}
+              </p>
+            )}
+
+            {task.timeConflict || task.hasLateCheckout || task.hasEarlyCheckin || task.departureOverridden || task.arrivalOverridden ? (
+              <div className="flex flex-col gap-1">
+                {task.timeConflict ? (
+                  <TimeFlag icon={IconAlertCircle} tone="attention">
+                    {t('time_conflict_detail', { t1: task.bookedDepartureTime, t2: task.bookedArrivalTime || '' })}
+                  </TimeFlag>
+                ) : null}
+                {task.hasLateCheckout ? (
+                  <TimeFlag icon={IconClock}>{t('late_checkout_detail', { time: task.bookedDepartureTime })}</TimeFlag>
+                ) : null}
+                {task.hasEarlyCheckin ? (
+                  <TimeFlag icon={IconClock}>{t('early_checkin_detail', { time: task.bookedArrivalTime || '' })}</TimeFlag>
+                ) : null}
+                {(task.departureOverridden || task.arrivalOverridden) && task.timeOverride ? (
+                  <TimeFlag icon={IconEdit}>
+                    {t('time_changed_detail', {
+                      name: task.timeOverride.changedByName,
+                      date: formatDateShort(task.timeOverride.changedAt),
+                      time: formatClock(task.timeOverride.changedAt),
+                    })}
+                  </TimeFlag>
+                ) : null}
+              </div>
+            ) : null}
+
+            {canEditTimes && !timeFormOpen ? (
+              <div className="flex flex-wrap gap-3">
+                <button type="button" onClick={openTimeForm} className="self-start text-[12.5px] font-medium text-muted hover:text-ink">
+                  {t('edit_times')}
+                </button>
+                {task.timeOverride ? (
+                  <button type="button" onClick={handleResetTimes} className="self-start text-[12.5px] font-medium text-muted hover:text-ink">
+                    {t('reset_times')}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            {canEditTimes && timeFormOpen ? (
+              <div className="rounded-control border border-line bg-warm-white px-3.5 py-3">
+                <div className="flex gap-3">
+                  <label className="flex flex-1 flex-col gap-1 text-[12.5px] font-medium text-muted">
+                    {t('label_departure')}
+                    <input
+                      type="time"
+                      value={departureDraft}
+                      onChange={(e) => setDepartureDraft(e.target.value)}
+                      className="rounded-control border border-line bg-warm-white px-2.5 py-1.5 text-[13px] text-ink"
+                    />
+                  </label>
+                  {task.type === 'turnover' ? (
+                    <label className="flex flex-1 flex-col gap-1 text-[12.5px] font-medium text-muted">
+                      {t('label_arrival')}
+                      <input
+                        type="time"
+                        value={arrivalDraft}
+                        onChange={(e) => setArrivalDraft(e.target.value)}
+                        className="rounded-control border border-line bg-warm-white px-2.5 py-1.5 text-[13px] text-ink"
+                      />
+                    </label>
+                  ) : null}
+                </div>
+                <div className="mt-2.5 flex justify-end gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => setTimeFormOpen(false)}>{t('cancel')}</Button>
+                  <Button variant="primary" size="sm" onClick={handleSaveTimes}>{t('save')}</Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
         {task.nextGuestName || task.guestName ? (
@@ -240,9 +350,23 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
               </div>
             </div>
 
-            {task.status === 'in_progress' ? (
-              <div className="rounded-control border border-status-progress/30 bg-status-progress-bg px-4 py-3 text-center">
-                <p className="text-[11.5px] font-medium uppercase tracking-wide text-status-progress">{t('elapsed')}</p>
+            {task.status === 'in_progress' || task.status === 'paused' ? (
+              <div className={cn(
+                'rounded-control border px-4 py-3 text-center',
+                task.status === 'in_progress' ? 'border-status-progress/30 bg-status-progress-bg' : 'border-status-blocked/30 bg-status-blocked-bg',
+              )}
+              >
+                {firstStartedAt ? <p className="text-[12px] text-muted">{t('started_at_label', { time: formatClock(firstStartedAt) })}</p> : null}
+                {task.status === 'paused' && lastPausedAt ? (
+                  <p className="text-[12px] text-muted">{t('paused_at_label', { time: formatClock(lastPausedAt) })}</p>
+                ) : null}
+                <p className={cn(
+                  'mt-1 text-[11.5px] font-medium uppercase tracking-wide',
+                  task.status === 'in_progress' ? 'text-status-progress' : 'text-status-blocked',
+                )}
+                >
+                  {t('elapsed')}
+                </p>
                 <p className="mt-0.5 font-heading text-3xl tabular-nums text-ink">{formatDuration(task.elapsedSeconds)}</p>
               </div>
             ) : null}
@@ -269,9 +393,23 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
               </div>
             ) : null}
 
-            {task.status === 'in_progress' ? (
-              <div className="rounded-control border border-status-progress/30 bg-status-progress-bg px-4 py-3 text-center">
-                <p className="text-[11.5px] font-medium uppercase tracking-wide text-status-progress">{t('elapsed')}</p>
+            {task.status === 'in_progress' || task.status === 'paused' ? (
+              <div className={cn(
+                'rounded-control border px-4 py-3 text-center',
+                task.status === 'in_progress' ? 'border-status-progress/30 bg-status-progress-bg' : 'border-status-blocked/30 bg-status-blocked-bg',
+              )}
+              >
+                {firstStartedAt ? <p className="text-[12px] text-muted">{t('started_at_label', { time: formatClock(firstStartedAt) })}</p> : null}
+                {task.status === 'paused' && lastPausedAt ? (
+                  <p className="text-[12px] text-muted">{t('paused_at_label', { time: formatClock(lastPausedAt) })}</p>
+                ) : null}
+                <p className={cn(
+                  'mt-1 text-[11.5px] font-medium uppercase tracking-wide',
+                  task.status === 'in_progress' ? 'text-status-progress' : 'text-status-blocked',
+                )}
+                >
+                  {t('elapsed')}
+                </p>
                 <p className="mt-0.5 font-heading text-3xl tabular-nums text-ink">{formatDuration(task.elapsedSeconds)}</p>
               </div>
             ) : null}
@@ -317,8 +455,30 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                 </Button>
               </div>
             ) : null}
+
+            {mine && task.status === 'paused' ? (
+              <Button variant="primary" className="w-full" onClick={() => startTaskTimer(task!.id)}>
+                {t('resume_clean')}
+              </Button>
+            ) : null}
           </>
         )}
+
+        {/* Reinigungsverlauf - direkt aus dem bestehenden Timer-/Abschluss-Datensatz (kein
+         * zweiter, paralleler Speicherort), sichtbar fuer jeden, der diesen Task ueberhaupt
+         * oeffnen kann (Admin/Standortverantwortliche/Housekeeper). */}
+        {task.history.length > 0 ? (
+          <div>
+            <h4 className="mb-2 text-[13px] font-medium text-muted">{t('cleaning_history_title')}</h4>
+            <div className="flex flex-col gap-1">
+              {task.history.map((entry, i) => (
+                <p key={i} className="text-[12.5px] text-muted">
+                  {formatClock(entry.at)} · {t(HISTORY_LABEL_KEYS[entry.action])} · {entry.byUserName}
+                </p>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <Button variant="ghost" className="mt-4 w-full" onClick={closeTaskModal}>

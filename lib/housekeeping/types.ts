@@ -61,6 +61,15 @@ export interface ApaleoReservation {
   adults?: number;
   childrenAges?: number[];
   status?: string;
+  /** Gebuchte Zusatzleistungen (nur gesetzt, wenn mit expand=services geladen, siehe
+   * loadReservationsRangeForProperties) - Quelle fuer Early-Check-in/Late-Check-out-Erkennung
+   * (service.code === 'ECI'/'LCO', live gegen Apaleo verifiziert). Bewusst ueber `code` statt `id`
+   * geprueft, da `code` property-uebergreifend identisch ist ("ECI"/"LCO"), waehrend `id`
+   * property-praefigiert ist (z. B. "LAEKE-LCO"). NIE anhand von `comment` erkennen (siehe
+   * tasks.ts) - das Apaleo-Kommentarfeld enthaelt teils redundante/unzuverlaessige Freitext-Spuren
+   * von Gaeste-Portal-Anfragen, die mit dem tatsaechlich gebuchten Service auseinanderlaufen koennen.
+   */
+  services?: { service?: { id?: string; code?: string; name?: string } }[];
 }
 
 export interface ReservationsState {
@@ -187,9 +196,40 @@ export interface Task {
   /** Aktueller Apaleo-Zimmerzustand (Snapshot) - rein informativ, siehe Punkt 23: Apaleo-
    * Zustand und unser Task-Status sind bewusst getrennt. */
   condition: string;
+  /** Late Check-out auf der ABREISENDEN Reservierung gebucht (Apaleo `services[].service.code
+   * === 'LCO'`, live verifiziert - NIE aus `comment` abgeleitet, siehe ApaleoReservation.services).
+   * Property-uebergreifend einheitlich benannt (ALPILA/ALTUS/HUESLE/LAEKE-LCO teilen denselben
+   * `code`). */
+  hasLateCheckout: boolean;
+  /** Early Check-in auf der ANKOMMENDEN (naechsten) Reservierung gebucht - nur bei
+   * type==='turnover' ueberhaupt moeglich, da nur dort an diesem Tag eine Ankunft in genau diesem
+   * Apartment stattfindet (siehe ApaleoReservation.services-Kommentar). */
+  hasEarlyCheckin: boolean;
+  /** Abreise-/Anreisezeit NACH Beruecksichtigung eines gebuchten Extras, aber VOR einem
+   * moeglichen manuellen Admin-Override (Prioritaet 2 vor 3, siehe resolveTasks in tasks.ts fuer
+   * Prioritaet 1). Format "HH:MM" (kein Datum, keine Zeitzone - rein die Uhrzeit fuer die
+   * Planungsanzeige). bookedArrivalTime ist nur bei type==='turnover' gesetzt (sonst null, da an
+   * allen anderen Tagen keine Ankunft in diesem Apartment stattfindet). */
+  bookedDepartureTime: string;
+  bookedArrivalTime: string | null;
 }
 
-export type TaskStatus = 'open' | 'assigned' | 'in_progress' | 'inspection' | 'completed';
+export type TaskStatus = 'open' | 'assigned' | 'in_progress' | 'paused' | 'inspection' | 'completed';
+
+/** Ein Eintrag im Reinigungsverlauf (Punkt "Reinigungsverlauf") - wird an denselben
+ * TaskAssignment-Datensatz angehaengt, auf dem `status`/`cleaningStartedAt`/`elapsedSeconds`
+ * bereits liegen (KEIN zweiter, paralleler Speicherort). `action` ist bewusst ereignisbezogen
+ * ("started" vs. "resumed") statt nur den Status zu spiegeln, damit die Verlaufszeile ohne
+ * weitere Herleitung exakt den geforderten Text ("Reinigung gestartet" vs. "Fortgesetzt") tragen
+ * kann. */
+export type TaskHistoryAction = 'started' | 'paused' | 'resumed' | 'completed';
+
+export interface TaskHistoryEntry {
+  action: TaskHistoryAction;
+  at: number;
+  byUserId: string;
+  byUserName: string;
+}
 
 /**
  * Persistierter Zuweisungs-/Fortschrittszustand eines Tasks (Redis, Key = Task-ID) - Gegenstueck
@@ -205,9 +245,34 @@ export interface TaskAssignment {
   cleaningStartedAt: number | null;
   elapsedSeconds: number;
   completedAt?: number;
+  /** Chronologischer Reinigungsverlauf (start/pause/fortsetzen/abschluss) - additiv, aeltere
+   * Eintraege ohne dieses Feld werden einfach als leerer Verlauf behandelt (siehe resolveTasks). */
+  history?: TaskHistoryEntry[];
 }
 
 export type TaskAssignmentsState = Record<string, TaskAssignment | null>;
+
+/**
+ * Manueller Admin-Override der operativen Abreise-/Anreisezeit EINES Tasks (Redis
+ * housekeeping:task_time_overrides, Key = Task-ID) - hoechste Prioritaetsstufe (1) vor einem
+ * gebuchten Extra (2) und der Standardzeit (3), siehe tasks.ts#resolveTasks. Aendert NIEMALS die
+ * zugrundeliegende Apaleo-Reservierung oder einen dort gebuchten Service (Late Check-out/Early
+ * Check-in bleiben dort unangetastet und weiterhin einzeln sichtbar/nachvollziehbar) - rein ein
+ * housekeeping-internes Anzeige-/Planungsfeld. Beide Zeiten sind unabhaengig voneinander optional
+ * (nur Abreise, nur Anreise, oder beides ueberschrieben).
+ */
+export interface TaskTimeOverride {
+  taskId: string;
+  /** Format "HH:MM", jeweils nur gesetzt, wenn diese Seite tatsaechlich manuell ueberschrieben
+   * wurde (fehlt das Feld, gilt fuer diese Seite weiterhin Prioritaet 2/3). */
+  departureTime?: string;
+  arrivalTime?: string;
+  changedBy: string;
+  changedByName: string;
+  changedAt: number;
+}
+
+export type TaskTimeOverridesState = Record<string, TaskTimeOverride | null>;
 
 /**
  * Interner "Wichtiger Hinweis" pro Task (Redis housekeeping:task_notices, Key = Task-ID) - eine
@@ -258,6 +323,8 @@ export interface DaySummary {
   total: number;
   assigned: number;
   open: number;
+  inProgress: number;
+  paused: number;
   completed: number;
   turnover: number;
 }

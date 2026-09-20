@@ -43,6 +43,15 @@ async function claimTask(redis, taskId, record) {
 
 // Fuer Selbstbedienungs-Aktionen (release/startTimer/stopTimer): erlaubt fuer Admin, fuer
 // Standortverantwortliche des betreffenden Property, oder wenn es die eigene Zuweisung ist.
+// Reinigungsverlauf (Punkt "Reinigungsverlauf"): haengt an genau demselben TaskAssignment-Datensatz
+// an, auf dem status/cleaningStartedAt/elapsedSeconds bereits liegen - kein zweiter, paralleler
+// Speicherort. `action` ist ereignisbezogen (started/paused/resumed/completed) statt nur den
+// Status zu spiegeln, damit die Verlaufszeile ohne weitere Herleitung den geforderten Text traegt.
+function appendHistory(record, action, user) {
+  record.history = [...(record.history || []), { action, at: Date.now(), byUserId: user.id, byUserName: user.name || user.username }];
+  return record;
+}
+
 async function canTouchOwnAssignment(redis, user, taskId) {
   if (user.role === 'admin') return true;
   const propertyCode = propertyCodeFromTaskId(taskId);
@@ -179,6 +188,10 @@ module.exports = async (req, res) => {
         res.status(409).json({ error: 'Bitte bestaetige zuerst den wichtigen Hinweis.' });
         return;
       }
+      // Punkt "Reinigungsverlauf": ein bereits einmal begonnener Task (elapsedSeconds > 0, z. B.
+      // nach einer Pause) wird beim erneuten Start als "Fortgesetzt" statt "Reinigung gestartet"
+      // protokolliert - reine Ableitung aus dem ohnehin vorhandenen Feld, kein zweiter Zaehler.
+      appendHistory(existing, (existing.elapsedSeconds || 0) > 0 ? 'resumed' : 'started', user);
       existing.status = 'in_progress';
       existing.cleaningStartedAt = Date.now();
       await redis.hSet(HASH_KEY, taskId, JSON.stringify(existing));
@@ -194,7 +207,11 @@ module.exports = async (req, res) => {
       if (existing && existing.cleaningStartedAt) {
         existing.elapsedSeconds = (existing.elapsedSeconds || 0) + Math.round((Date.now() - existing.cleaningStartedAt) / 1000);
         existing.cleaningStartedAt = null;
-        existing.status = 'assigned';
+        // Eigener, von "assigned" (noch nie gestartet) unterscheidbarer Status - siehe
+        // types.ts#TaskStatus. Vorher fiel eine pausierte Aufgabe optisch mit einer frisch
+        // zugewiesenen, noch nie begonnenen zusammen.
+        existing.status = 'paused';
+        appendHistory(existing, 'paused', user);
         await redis.hSet(HASH_KEY, taskId, JSON.stringify(existing));
       }
     } else if (action === 'complete') {
@@ -216,6 +233,7 @@ module.exports = async (req, res) => {
       }
       existing.status = needsInspection ? 'inspection' : 'completed';
       existing.completedAt = Date.now();
+      appendHistory(existing, 'completed', user);
       await redis.hSet(HASH_KEY, taskId, JSON.stringify(existing));
     } else if (action === 'completeInspection') {
       const { taskId } = req.body;

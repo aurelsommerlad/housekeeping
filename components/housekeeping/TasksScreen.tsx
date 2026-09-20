@@ -100,12 +100,17 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
 
       {summary ? (
         <div className="px-4 pt-3">
+          {/* Reihenfolge/Beispieltext: "8 Reinigungen · 2 offen · 2 in Reinigung · 4 fertig" +
+           * optional "· 1 pausiert" - erlaubt Admin/Standortverantwortlichen den Baustellenstand
+           * ohne Oeffnen einzelner Aufgaben einzuschaetzen. */}
           <p className="text-[13px] text-muted">
             {t('tasks_count', { n: summary.total })}
             {summary.total > 0 ? (
               <>
-                {' · '}{t('summary_assigned', { n: summary.assigned })}
                 {' · '}{t('summary_open', { n: summary.open })}
+                {' · '}{t('summary_in_progress', { n: summary.inProgress })}
+                {summary.paused > 0 ? <> · {t('summary_paused', { n: summary.paused })}</> : null}
+                {' · '}{t('summary_completed', { n: summary.completed })}
                 {summary.turnover > 0 ? <> · {t('summary_turnover', { n: summary.turnover })}</> : null}
               </>
             ) : null}

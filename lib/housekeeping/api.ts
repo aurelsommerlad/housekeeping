@@ -12,14 +12,15 @@
  */
 import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, DoubleupsState, Completion, BreakEntry, Property, ReservationsState, StaffUser,
-  TaskAssignmentsState, TaskNotice, TaskNoticeAck, TaskNoticeAcksState, TaskNoticesState,
+  TaskAssignmentsState, TaskNotice, TaskNoticeAck, TaskNoticeAcksState, TaskNoticesState, TaskTimeOverride, TaskTimeOverridesState,
 } from './types';
 
-// MINOR-Bump (2.0.0 -> 2.1.0): neue, rein additive Reinigungsplanung (Aufgaben/Task-Modell,
-// Standortverantwortliche) neben der unveraenderten alten Zimmer-Logik - keine bestehenden
-// Redis-Keys/Datenformate wurden geaendert oder geloescht (siehe migrateLegacyKey), daher kein
-// MAJOR/Breaking-Bump.
-export const APP_VERSION = '2.1.0';
+// MINOR-Bump (2.1.0 -> 2.2.0): An-/Abreisezeiten-Logik (Late Check-out/Early Check-in aus Apaleo-
+// Services, manueller Admin-Override) + Echtzeit-Reinigungsstatus (Pausiert, Reinigungsverlauf,
+// zurueckgenommene "Fertig"-Karten) - beides rein additiv (neuer Redis-Hash
+// housekeeping:task_time_overrides, neues optionales history-Feld auf TaskAssignment, neuer
+// TaskStatus-Wert 'paused'), keine bestehenden Keys/Datenformate geaendert oder geloescht.
+export const APP_VERSION = '2.2.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -230,6 +231,11 @@ export async function loadUnitsForProperties(propertyCodes: string[]): Promise<A
  * ihre eigene `property` bereits ohne jedes `expand` mit (live bestaetigt), daher hier ausschliesslich
  * anhand DIESES vom Server selbst gelieferten Felds gefiltert - keine blinde Uebernahme des
  * angefragten Codes mehr fuer Datensaetze ohne (oder mit abweichender) eigener Property-Angabe.
+ *
+ * `expand=services` (live gegen den echten Account verifiziert, siehe Rechercheergebnis zu Early
+ * Check-in/Late Check-out): liefert `services[].service.{id,code,name}` direkt eingebettet mit,
+ * OHNE einen separaten GetReservationServices-Aufruf pro Reservierung - dieselbe Struktur wie
+ * `expand=property` oben, nur fuer eine andere Apaleo-Relation.
  */
 export async function loadReservationsRangeForProperties(
   propertyCodes: string[],
@@ -241,7 +247,7 @@ export async function loadReservationsRangeForProperties(
   const toInstant = encodeURIComponent(`${addDaysISO(toISO, 1)}T00:00:00Z`);
   const perProperty = await Promise.all(propertyCodes.map(async (code) => {
     const reservations = await apaleoPaged<ApaleoReservation>(
-      `/booking/v1/reservations?propertyId=${encodeURIComponent(code)}&dateFilter=Stay&from=${fromInstant}&to=${toInstant}&status=InHouse,Confirmed,CheckedOut`,
+      `/booking/v1/reservations?propertyId=${encodeURIComponent(code)}&dateFilter=Stay&from=${fromInstant}&to=${toInstant}&status=InHouse,Confirmed,CheckedOut&expand=services`,
       (data) => (data.reservations as ApaleoReservation[]) || (data.results as ApaleoReservation[]),
     );
     return reservations.filter((r) => (r.property?.code || r.property?.id) === code);
@@ -340,6 +346,20 @@ export const taskNoticesApi = {
   set: (taskId: string, text: string) => backendPost<{ notice: TaskNotice }>('task-notices', { action: 'set', taskId, text }),
   remove: (taskId: string) => backendPost<{ ok: true }>('task-notices', { action: 'remove', taskId }),
   acknowledge: (taskId: string) => backendPost<{ ack: TaskNoticeAck }>('task-notices', { action: 'acknowledge', taskId }),
+};
+
+export async function loadTaskTimeOverrides(): Promise<TaskTimeOverridesState> {
+  const data = await backendGet<{ overrides?: TaskTimeOverridesState }>('task-time-overrides');
+  return data.overrides || {};
+}
+
+/** Manueller Admin-Override der Abreise-/Anreisezeit (Prioritaet 1, siehe types.ts#TaskTimeOverride)
+ * - siehe api/task-time-overrides.js fuer die serverseitige Rechtepruefung (nur Admin darf
+ * schreiben; Standortverantwortliche und Housekeeper koennen den Stand nur lesen). */
+export const taskTimeOverridesApi = {
+  set: (taskId: string, times: { departureTime?: string; arrivalTime?: string }) =>
+    backendPost<{ override: TaskTimeOverride }>('task-time-overrides', { action: 'set', taskId, ...times }),
+  remove: (taskId: string) => backendPost<{ ok: true }>('task-time-overrides', { action: 'remove', taskId }),
 };
 
 export const breaksApi = {

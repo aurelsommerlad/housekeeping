@@ -42,6 +42,18 @@ export const TASK_STATUS_CONFIG: Record<TaskStatus, ToneConfig> = {
     dotClass: 'bg-status-progress',
     pulse: true,
   },
+  // Eigener, dezenter Grauton (--color-status-blocked, bisher ungenutzt) statt Wiederverwendung
+  // einer der "aktiven" Statusfarben - "Pausiert" ist bewusst weder dringend (progress) noch neu
+  // (dirty), sondern ein neutraler Zwischenzustand. Glyph "Ⅱ" statt Punkt, analog zu "✓" bei
+  // completed - Status wird dadurch nie nur ueber Farbe kommuniziert.
+  paused: {
+    labelKey: 'task_paused_label',
+    toneClass: 'text-status-blocked',
+    toneBgClass: 'bg-status-blocked-bg',
+    toneBorderClass: 'border-status-blocked/30',
+    dotClass: 'bg-status-blocked',
+    icon: 'Ⅱ',
+  },
   inspection: {
     labelKey: 'st_inspect',
     toneClass: 'text-status-inspection',

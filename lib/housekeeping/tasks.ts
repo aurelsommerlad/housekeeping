@@ -15,8 +15,33 @@
 import { FORCED_CLEAN_INTERVAL_NIGHTS } from './api';
 import { addDaysISO, unitCondition } from './rooms';
 import type {
-  ApaleoReservation, ApaleoUnit, CapacityEntry, DaySummary, DoubleupsState, Task, TaskAssignmentsState, TaskStatus, TaskType,
+  ApaleoReservation, ApaleoUnit, CapacityEntry, DaySummary, DoubleupsState, Task, TaskAssignmentsState, TaskHistoryEntry, TaskStatus,
+  TaskTimeOverride, TaskTimeOverridesState, TaskType,
 } from './types';
+
+/** Standardzeiten (Prioritaet 3, ohne gebuchtes Extra/Override) - siehe Briefing Punkt 1. */
+const STANDARD_DEPARTURE_TIME = '10:00';
+const STANDARD_ARRIVAL_TIME = '16:00';
+/** Late Check-out/Early Check-in verschieben die jeweilige Zeit auf 13:00 (Prioritaet 2) - die
+ * Stunde selbst steht bei Apaleo NICHT strukturiert am gebuchten Service (live verifiziert: weder
+ * am Service noch an der gebuchten Instanz existiert ein Zeitfeld, nur ein Datum), sondern ist
+ * eine reine UNIQUE-PLACES-Geschaeftsregel (siehe Service-Beschreibungstext "bis maximal/fruehestens
+ * ab 13:00 Uhr") - deshalb hier bewusst als benannte Konstante hinterlegt statt aus Apaleo geraten.
+ */
+const EXTRA_TIME = '13:00';
+
+/** Apaleo-Servicecode ('ECI'/'LCO') statt `id` (property-praefigiert, z. B. "LAEKE-LCO") oder
+ * `name`/`description` (Freitext, siehe HUESLE-OTHER-Decoy in der Recherche) - property-
+ * uebergreifend einheitlich und robust gegen Namensaenderungen. NIEMALS `comment` heranziehen. */
+function hasBookedService(r: ApaleoReservation | undefined, code: 'ECI' | 'LCO'): boolean {
+  return !!r?.services?.some((s) => s.service?.code === code);
+}
+
+/** "HH:MM" -> Minuten seit Mitternacht, fuer Sortierung/Fensterberechnung. */
+function timeToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map((n) => parseInt(n, 10));
+  return (h || 0) * 60 + (m || 0);
+}
 
 function dateOnly(dt?: string): string | null {
   return dt ? String(dt).slice(0, 10) : null;
@@ -102,6 +127,10 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
       const arrivingRes = unitReservations.find((r) => dateOnly(r.arrival) === date);
 
       if (departingRes && arrivingRes) {
+        // Punkt 5/6: LCO IMMER von der ABREISENDEN Reservierung, ECI IMMER von der ANKOMMENDEN
+        // (naechsten) Reservierung - niemals beide von derselben Reservierung lesen.
+        const hasLateCheckout = hasBookedService(departingRes, 'LCO');
+        const hasEarlyCheckin = hasBookedService(arrivingRes, 'ECI');
         tasks.push({
           id: taskId(propertyCode, unit.id, date, 'turnover', departingRes.id),
           propertyId: propertyCode, propertyCode, propertyName, unitId: unit.id, unitName, date, type: 'turnover',
@@ -111,6 +140,9 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
           guestCount: guestCount(arrivingRes), comment: reservationComment(arrivingRes),
           doubleupTypes: doubleup?.types || [], followingArrivalDate: null,
           forced: false, nights: null, condition: conditionNow,
+          hasLateCheckout, hasEarlyCheckin,
+          bookedDepartureTime: hasLateCheckout ? EXTRA_TIME : STANDARD_DEPARTURE_TIME,
+          bookedArrivalTime: hasEarlyCheckin ? EXTRA_TIME : STANDARD_ARRIVAL_TIME,
         });
         continue;
       }
@@ -119,6 +151,7 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
         const nextArrival = unitReservations
           .filter((r) => { const a = dateOnly(r.arrival); return !!a && a > date; })
           .sort((a, b) => (dateOnly(a.arrival) as string).localeCompare(dateOnly(b.arrival) as string))[0];
+        const hasLateCheckout = hasBookedService(departingRes, 'LCO');
         tasks.push({
           id: taskId(propertyCode, unit.id, date, 'departure', departingRes.id),
           propertyId: propertyCode, propertyCode, propertyName, unitId: unit.id, unitName, date, type: 'departure',
@@ -128,6 +161,9 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
           guestCount: guestCount(departingRes), comment: reservationComment(departingRes),
           doubleupTypes: doubleup?.types || [], followingArrivalDate: nextArrival ? dateOnly(nextArrival.arrival) : null,
           forced: false, nights: null, condition: conditionNow,
+          hasLateCheckout, hasEarlyCheckin: false,
+          bookedDepartureTime: hasLateCheckout ? EXTRA_TIME : STANDARD_DEPARTURE_TIME,
+          bookedArrivalTime: null,
         });
         continue;
       }
@@ -156,6 +192,8 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
             guestCount: guestCount(occupiedRes), comment: reservationComment(occupiedRes),
             doubleupTypes: doubleup?.types || [], followingArrivalDate: null,
             forced: true, nights, condition: conditionNow,
+            hasLateCheckout: false, hasEarlyCheckin: false,
+            bookedDepartureTime: STANDARD_DEPARTURE_TIME, bookedArrivalTime: null,
           });
           continue;
         }
@@ -175,6 +213,8 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
           guestName: '', nextGuestName: '', guestCount: null, comment: doubleup.note || '',
           doubleupTypes: doubleup.types, followingArrivalDate: null,
           forced: false, nights: null, condition: conditionNow,
+          hasLateCheckout: false, hasEarlyCheckin: false,
+          bookedDepartureTime: STANDARD_DEPARTURE_TIME, bookedArrivalTime: null,
         });
       }
     }
@@ -185,44 +225,108 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
 
 const TYPE_TIER: Record<TaskType, number> = { turnover: 0, departure: 1, stayover: 2, extra: 3 };
 
-/** Priorisierung innerhalb eines Tages (Punkt 9) - bewusst simple, deterministische Regeln statt
- * KI-Priorisierung: 1) Turnover, 2) Departure mit bekannter naher Folgeanreise, 3) sonstige
- * Departures, 4) Stayover/Extra. */
-export function sortTasksForDay<T extends Task>(tasks: T[]): T[] {
-  function tier(t: Task): number {
-    if (t.type === 'departure' && t.followingArrivalDate) return 1;
-    return TYPE_TIER[t.type];
-  }
-  return tasks.slice().sort((a, b) => {
-    const diff = tier(a) - tier(b);
-    if (diff !== 0) return diff;
-    if (a.propertyCode !== b.propertyCode) return a.propertyCode.localeCompare(b.propertyCode);
-    return a.unitName.localeCompare(b.unitName, undefined, { numeric: true });
-  });
-}
-
 export interface ResolvedTask extends Task {
   status: TaskStatus;
   assignedUserId: string | null;
   assignedUserName: string | null;
   cleaningStartedAt: number | null;
   elapsedSeconds: number;
+  completedAt: number | null;
+  history: TaskHistoryEntry[];
+  /** Aktiver manueller Override (Prioritaet 1) - `null`, wenn keiner gesetzt ist. */
+  timeOverride: TaskTimeOverride | null;
+  /** Operative Abreise-/Anreisezeit NACH Anwendung der vollen Prioritaetskette (1: Override, 2:
+   * gebuchtes Extra, 3: Standard), Format "HH:MM". effectiveArrivalTime ist nur bei
+   * type==='turnover' gesetzt. */
+  effectiveDepartureTime: string;
+  effectiveArrivalTime: string | null;
+  /** true, wenn GENAU diese Seite manuell ueberschrieben wurde (fuer die "Geaenderte Zeit"-
+   * Kennzeichnung, Punkt 9/14). */
+  departureOverridden: boolean;
+  arrivalOverridden: boolean;
+  /** Reinigungsfenster in Minuten (effectiveArrivalTime - effectiveDepartureTime), nur bei
+   * type==='turnover' gesetzt - negativ/0 bedeutet ein kritisches/nicht vorhandenes Fenster
+   * (Punkt 15). */
+  cleaningWindowMinutes: number | null;
+  /** Kritischer Turnover (Punkt 4/15): das TATSAECHLICHE operative Fenster (nach Override) ist
+   * <= 0 Minuten - deckt sowohl den gebuchten LCO+ECI-Fall (13:00->13:00) als auch einen durch
+   * einen Override versehentlich erzeugten Konflikt ab, ohne die beiden Faelle separat pflegen zu
+   * muessen. */
+  timeConflict: boolean;
 }
 
 /** Fuehrt die rein aus Apaleo abgeleiteten Tasks mit dem persistierten Zuweisungs-/
- * Fortschrittszustand aus Redis zusammen - analog zu buildRooms(), das assignments[key] in jedes
- * abgeleitete Room-Objekt mischt. */
-export function resolveTasks(tasks: Task[], assignments: TaskAssignmentsState, now: number): ResolvedTask[] {
+ * Fortschrittszustand UND dem manuellen Zeiten-Override aus Redis zusammen - analog zu
+ * buildRooms(), das assignments[key] in jedes abgeleitete Room-Objekt mischt. */
+export function resolveTasks(
+  tasks: Task[],
+  assignments: TaskAssignmentsState,
+  overrides: TaskTimeOverridesState,
+  now: number,
+): ResolvedTask[] {
   return tasks.map((task) => {
     const a = assignments[task.id];
+    const override = overrides[task.id] || null;
+    const effectiveDepartureTime = override?.departureTime || task.bookedDepartureTime;
+    const effectiveArrivalTime = task.type === 'turnover' ? (override?.arrivalTime || task.bookedArrivalTime) : null;
+    const cleaningWindowMinutes = task.type === 'turnover' && effectiveArrivalTime
+      ? timeToMinutes(effectiveArrivalTime) - timeToMinutes(effectiveDepartureTime)
+      : null;
+    const timeMeta = {
+      timeOverride: override,
+      effectiveDepartureTime,
+      effectiveArrivalTime,
+      departureOverridden: !!override?.departureTime,
+      arrivalOverridden: !!override?.arrivalTime,
+      cleaningWindowMinutes,
+      timeConflict: cleaningWindowMinutes !== null && cleaningWindowMinutes <= 0,
+    };
     if (!a) {
-      return { ...task, status: 'open', assignedUserId: null, assignedUserName: null, cleaningStartedAt: null, elapsedSeconds: 0 };
+      return {
+        ...task, ...timeMeta, status: 'open', assignedUserId: null, assignedUserName: null,
+        cleaningStartedAt: null, elapsedSeconds: 0, completedAt: null, history: [],
+      };
     }
     const elapsed = (a.elapsedSeconds || 0) + (a.cleaningStartedAt ? Math.round((now - a.cleaningStartedAt) / 1000) : 0);
     return {
-      ...task, status: a.status, assignedUserId: a.housekeeperId, assignedUserName: a.housekeeperName,
-      cleaningStartedAt: a.cleaningStartedAt, elapsedSeconds: elapsed,
+      ...task, ...timeMeta, status: a.status, assignedUserId: a.housekeeperId, assignedUserName: a.housekeeperName,
+      cleaningStartedAt: a.cleaningStartedAt, elapsedSeconds: elapsed, completedAt: a.completedAt || null,
+      history: a.history || [],
     };
+  });
+}
+
+/** Priorisierung innerhalb eines Tages - kombiniert den Bearbeitungsstatus (Punkt "Sortierung
+ * innerhalb eines Tages": kritische Turnovers/Zeitkonflikte zuerst, dann laufend, pausiert,
+ * offen/zugewiesen, zuletzt fertig) mit der bestehenden Typ-/Zeitpriorisierung (Punkt 9/15): 1)
+ * Turnover, 2) Departure mit bekannter naher Folgeanreise, 3) sonstige Departures, 4)
+ * Stayover/Extra - und darunter nach der EFFEKTIVEN Anreisezeit (ein ECI-Turnover um 13:00 kommt
+ * vor einem regulaeren um 16:00). Ein abgeschlossener kritischer Turnover gilt nicht mehr als
+ * dringend und sinkt wie jede andere fertige Aufgabe ans Ende. */
+export function sortTasksForDay(tasks: ResolvedTask[]): ResolvedTask[] {
+  function statusTier(t: ResolvedTask): number {
+    if (t.status === 'completed') return 5;
+    if (t.timeConflict) return 1;
+    if (t.status === 'in_progress') return 2;
+    if (t.status === 'paused') return 3;
+    return 4;
+  }
+  function typeTier(t: ResolvedTask): number {
+    if (t.type === 'departure' && t.followingArrivalDate) return 1;
+    return TYPE_TIER[t.type];
+  }
+  function arrivalMinutes(t: ResolvedTask): number {
+    return t.type === 'turnover' && t.effectiveArrivalTime ? timeToMinutes(t.effectiveArrivalTime) : Number.MAX_SAFE_INTEGER;
+  }
+  return tasks.slice().sort((a, b) => {
+    const st = statusTier(a) - statusTier(b);
+    if (st !== 0) return st;
+    const tt = typeTier(a) - typeTier(b);
+    if (tt !== 0) return tt;
+    const am = arrivalMinutes(a) - arrivalMinutes(b);
+    if (am !== 0) return am;
+    if (a.propertyCode !== b.propertyCode) return a.propertyCode.localeCompare(b.propertyCode);
+    return a.unitName.localeCompare(b.unitName, undefined, { numeric: true });
   });
 }
 
@@ -231,8 +335,10 @@ export function daySummary(date: string, tasks: ResolvedTask[]): DaySummary {
   return {
     date,
     total: dayTasks.length,
-    assigned: dayTasks.filter((t) => t.status !== 'open').length,
+    assigned: dayTasks.filter((t) => t.status === 'assigned').length,
     open: dayTasks.filter((t) => t.status === 'open').length,
+    inProgress: dayTasks.filter((t) => t.status === 'in_progress').length,
+    paused: dayTasks.filter((t) => t.status === 'paused').length,
     completed: dayTasks.filter((t) => t.status === 'completed').length,
     turnover: dayTasks.filter((t) => t.type === 'turnover').length,
   };

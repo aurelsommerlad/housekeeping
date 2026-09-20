@@ -26,8 +26,8 @@ import { fetchMe, login as loginRequest, logout as logoutRequest } from './auth'
 import {
   DOUBLEUP_TYPES, POLL_INTERVAL, assignmentsApi, breaksApi, completionsApi, doubleupsApi, getPropertyDisplayName,
   loadBackendState, loadProperties, loadReservations, loadReservationsRangeForProperties,
-  loadTaskAssignments, loadTaskNotices, loadUnits, loadUnitsForProperties, setUnitCondition, taskAssignmentsApi,
-  taskNoticesApi, usersApi,
+  loadTaskAssignments, loadTaskNotices, loadTaskTimeOverrides, loadUnits, loadUnitsForProperties, setUnitCondition,
+  taskAssignmentsApi, taskNoticesApi, taskTimeOverridesApi, usersApi,
 } from './api';
 import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './rooms';
 import {
@@ -37,7 +37,7 @@ import {
 import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, BreakEntry, CapacityEntry, Completion, DaySummary, DoubleupsState,
   Property, ReservationsState, Room, RoomFilter, StaffUser, TaskAssignmentsState, TaskNotice, TaskNoticeAcksState,
-  TaskNoticesState,
+  TaskNoticesState, TaskTimeOverridesState,
 } from './types';
 
 export type AuthScreen = 'checking' | 'login' | 'app';
@@ -89,6 +89,9 @@ interface AppState {
    * eigene, vom Apaleo-Reservierungskommentar getrennte Datenquelle (Punkt 3-8). */
   taskNotices: TaskNoticesState;
   taskNoticeAcks: TaskNoticeAcksState;
+  /** Manueller Admin-Override der Abreise-/Anreisezeit (Prioritaet 1), Key = Task-ID - eigene,
+   * vom Apaleo-Reservierungskommentar/gebuchten Service getrennte Datenquelle. */
+  taskTimeOverrides: TaskTimeOverridesState;
   tasksLoadError: string | null;
   taskMultiSelect: boolean;
   selectedTasks: Set<string>;
@@ -141,6 +144,7 @@ function initialState(): AppState {
     taskAssignments: {},
     taskNotices: {},
     taskNoticeAcks: {},
+    taskTimeOverrides: {},
     tasksLoadError: null,
     taskMultiSelect: false,
     selectedTasks: new Set(),
@@ -224,19 +228,23 @@ export function useHousekeepingApp() {
     const today = todayISO();
     const days = [0, 1, 2, 3].map((n) => addDaysISO(today, n));
     if (scopeCodes.length === 0) {
-      patch({ planningUnits: [], planningReservations: [], taskAssignments: {}, taskNotices: {}, taskNoticeAcks: {}, planningDays: days });
+      patch({
+        planningUnits: [], planningReservations: [], taskAssignments: {}, taskNotices: {}, taskNoticeAcks: {},
+        taskTimeOverrides: {}, planningDays: days,
+      });
       return;
     }
-    const [units, reservations, taskAssignments, noticesData] = await Promise.all([
+    const [units, reservations, taskAssignments, noticesData, taskTimeOverrides] = await Promise.all([
       loadUnitsForProperties(scopeCodes),
       loadReservationsRangeForProperties(scopeCodes, days[0], days[3]),
       loadTaskAssignments(),
       loadTaskNotices(),
+      loadTaskTimeOverrides(),
       loadBackend(),
     ]);
     patch({
       planningUnits: units, planningReservations: reservations, taskAssignments,
-      taskNotices: noticesData.notices, taskNoticeAcks: noticesData.acks, planningDays: days,
+      taskNotices: noticesData.notices, taskNoticeAcks: noticesData.acks, taskTimeOverrides, planningDays: days,
     });
   }, [loadBackend, patch]);
 
@@ -568,8 +576,11 @@ export function useHousekeepingApp() {
       propertyNames, units: state.planningUnits, reservations: state.planningReservations,
       doubleups: state.doubleups, days: state.planningDays, today,
     });
-    return resolveTasks(raw, state.taskAssignments, state.now);
-  }, [state.properties, state.planningUnits, state.planningReservations, state.doubleups, state.planningDays, state.taskAssignments, state.now]);
+    return resolveTasks(raw, state.taskAssignments, state.taskTimeOverrides, state.now);
+  }, [
+    state.properties, state.planningUnits, state.planningReservations, state.doubleups, state.planningDays,
+    state.taskAssignments, state.taskTimeOverrides, state.now,
+  ]);
 
   /** Aufgaben eines Tages, ungefiltert von "Meine Aufgaben" - fuer Tageszusammenfassung/
    * Kapazitaetsuebersicht, die immer den vollen Stand des Tages zeigen sollen. */
@@ -790,6 +801,24 @@ export function useHousekeepingApp() {
     });
   }, [patch, runAction]);
 
+  // --- Manueller Zeiten-Override (Prioritaet 1 vor gebuchtem Extra/Standard) - nur Admin darf
+  // schreiben (serverseitig erzwungen, siehe api/task-time-overrides.js), Standortverantwortliche
+  // und Housekeeper sehen den Stand nur (kein UI-Einstiegspunkt fuer sie, siehe TaskDetailSheet).
+  const saveTaskTimeOverride = useCallback(async (taskId: string, times: { departureTime?: string; arrivalTime?: string }) => {
+    await runAction(async () => {
+      const { override } = await taskTimeOverridesApi.set(taskId, times);
+      patch((s) => ({ taskTimeOverrides: { ...s.taskTimeOverrides, [taskId]: override } }));
+      showToast(t('saved'));
+    });
+  }, [patch, runAction, showToast, t]);
+
+  const removeTaskTimeOverride = useCallback(async (taskId: string) => {
+    await runAction(async () => {
+      await taskTimeOverridesApi.remove(taskId);
+      patch((s) => ({ taskTimeOverrides: { ...s.taskTimeOverrides, [taskId]: null } }));
+    });
+  }, [patch, runAction]);
+
   return {
     state, t, roomKey,
     rooms, DOUBLEUP_TYPES,
@@ -809,6 +838,9 @@ export function useHousekeepingApp() {
 
     // Wichtiger Hinweis
     noticeForTask, isNoticeAcknowledgedBy, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice,
+
+    // Manueller Zeiten-Override
+    saveTaskTimeOverride, removeTaskTimeOverride,
   };
 }
 

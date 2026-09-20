@@ -155,6 +155,28 @@ export function IconAlertCircle(props: IconProps) {
   );
 }
 
+/** Fuer Late-Check-out-/Early-Check-in-Kennzeichnung auf Task Card/Detail (dezent, monochrom,
+ * kein Wecker/Warnsymbol) - dieselbe Outline-Sprache wie IconAlertCircle. */
+export function IconClock(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
+    </svg>
+  );
+}
+
+/** Fuer die manuelle Zeiten-Bearbeitung (Admin-Override) - Stift/Bearbeiten-Symbol, dezent statt
+ * eines Warnsymbols, da eine bewusste Aenderung (keine Fehlermeldung) markiert wird. */
+export function IconEdit(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16v4Z" />
+      <path d="M13.5 6.5l4 4" />
+    </svg>
+  );
+}
+
 export const NAV_ICONS = {
   bed: IconBed,
   chart: IconChart,
