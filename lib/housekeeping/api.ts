@@ -48,8 +48,21 @@ async function apaleo<T = unknown>(path: string, method?: string, body?: unknown
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path, method: method || 'GET', body }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Apaleo-Fehler ${res.status}`);
+  const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+  if (!res.ok) {
+    // Apaleo-Fehlerantworten sind nicht einheitlich (mal {message}, mal ASP.NET-ProblemDetails
+    // {title, detail, errors}) - alle bekannten Formen werden hier durchgereicht, statt nur den
+    // generischen HTTP-Status zu zeigen, damit ein zukuenftiger Apaleo-Fehler direkt in der UI
+    // diagnostizierbar ist (dieser 422 mussten wir sonst erst live nachstellen, um die Ursache
+    // - ungueltiges Datumsformat bzw. from>=to - ueberhaupt zu sehen).
+    const detail = typeof data.detail === 'string' ? data.detail
+      : typeof data.message === 'string' ? data.message
+      : typeof data.title === 'string' ? data.title
+      : typeof data.error === 'string' ? data.error
+      : data.errors ? JSON.stringify(data.errors)
+      : null;
+    throw new Error(detail ? `Apaleo-Fehler ${res.status}: ${detail}` : `Apaleo-Fehler ${res.status}`);
+  }
   return data as T;
 }
 
@@ -171,6 +184,15 @@ export async function loadUnitsForProperties(propertyCodes: string[]): Promise<A
  * loadReservations() oben, statt eines fuer diesen Endpunkt nie verifizierten Namens/Formats.
  * dateFilter=Stay deckt An-/Abreisen und laufende Aufenthalte im [fromISO, toISO]-Fenster in
  * einem Request pro Property ab, statt separater Arrival-/Departure-Abfragen pro Tag.
+ *
+ * WICHTIG (live gegen den echten Account reproduziert, zweiter Root Cause des 422): `from`/`to`
+ * verlangen einen VOLLEN ISO-8601-Zeitpunkt - ein reines Datum ("2026-09-20" ohne Uhrzeit) wird
+ * von Apaleo mit 422 "Invalid value provided" abgelehnt. Ausserdem muss `from` echt VOR `to`
+ * liegen (ein gleicher Zeitpunkt fuer beide schlaegt mit 422 "condition was not met for From"
+ * fehl) - `to` wird deshalb bewusst auf Mitternacht des Tages NACH toISO gesetzt (exklusive
+ * Obergrenze), damit der komplette letzte Tag (inkl. spaeter An-/Abreisen an diesem Tag)
+ * zuverlaessig eingeschlossen ist, statt sich auf eine Inklusiv-/Exklusiv-Annahme fuer Mitternacht
+ * desselben Tages zu verlassen. Beides live mit echten Reservierungen bestaetigt.
  */
 export async function loadReservationsRangeForProperties(
   propertyCodes: string[],
@@ -178,9 +200,11 @@ export async function loadReservationsRangeForProperties(
   toISO: string,
 ): Promise<ApaleoReservation[]> {
   if (propertyCodes.length === 0) return [];
+  const fromInstant = encodeURIComponent(`${fromISO}T00:00:00Z`);
+  const toInstant = encodeURIComponent(`${addDaysISO(toISO, 1)}T00:00:00Z`);
   const perProperty = await Promise.all(propertyCodes.map(async (code) => {
     const reservations = await apaleoPaged<ApaleoReservation>(
-      `/booking/v1/reservations?propertyId=${encodeURIComponent(code)}&dateFilter=Stay&from=${fromISO}&to=${toISO}&status=InHouse,Confirmed,CheckedOut`,
+      `/booking/v1/reservations?propertyId=${encodeURIComponent(code)}&dateFilter=Stay&from=${fromInstant}&to=${toInstant}&status=InHouse,Confirmed,CheckedOut`,
       (data) => (data.reservations as ApaleoReservation[]) || (data.results as ApaleoReservation[]),
     );
     return reservations.map((r) => (r.property?.code ? r : { ...r, property: { ...r.property, code } }));
