@@ -99,7 +99,19 @@ import type {
 // erscheint. Rein additiv in derselben Zeile (kein neues Layout-Element) - Kartenhoehe fuer jeden
 // geprueften Zustand vor/nach der Aenderung identisch (Playwright-Vergleich). Detailansicht zeigt
 // zusaetzlich "Gebuchte Extras" je Reservierung als eigener, explizit gekennzeichneter Block.
-export const APP_VERSION = '2.11.0';
+// PATCH-Bump (2.11.0 -> 2.11.1): Feinschliff oberer Bereich (Header/TasksScreen) - reine
+// Typografie-/Icon-Anpassungen, keine Struktur-/Logikaenderung. "Housekeeping" im Header ca. 20%
+// kleiner (15px -> 12px, dieselbe bereits vorhandene Groesse wie die Sekundaerzeile darunter statt
+// einer neuen). Farbige Statuspunkte in der Kennzahlenzeile durch monochrome Outline-Icons aus dem
+// bestehenden Set ersetzt (IconChecklist/IconCircle/IconPlay/IconPause/IconCheck/IconLayers,
+// dieselbe currentColor-/Strichstaerke-1.6-Sprache wie ueberall sonst) - Zahlen bleiben das visuell
+// dominante Element. "Auswaehlen"-Button mit neuem IconCheckSquare (Checkbox-Symbol, bewusst nicht
+// IconCheck wiederverwendet, das andernorts "erledigt" bedeutet). Team-Zeile mit IconUsers-Praefix
+// und kompakterer Zusammenfassung (Vorname statt vollem Namen, sofern eindeutig; "N offen" statt
+// "Offen N") - die aufgeklappte Ansicht zeigt weiterhin immer den vollen Namen. Pause-Button mit
+// Play-/Pause-Icon je nach Zustand (nicht nur Farbe). Keine neue Icon-Library, keine Hoehen-/
+// Layoutaenderung an Buttons/Zeilen.
+export const APP_VERSION = '2.11.1';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

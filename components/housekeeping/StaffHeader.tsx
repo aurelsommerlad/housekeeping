@@ -1,7 +1,7 @@
 'use client';
 
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
-import { IconSearch, IconUser } from '@/components/ui/icons';
+import { IconPause, IconPlay, IconSearch, IconUser } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
 const LOCALES: Record<string, string> = { de: 'de-DE', en: 'en-GB', pl: 'pl-PL', ro: 'ro-RO' };
@@ -35,7 +35,11 @@ export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderPr
       <div className="flex items-center justify-between gap-2 py-2">
         <div className="min-w-0 leading-none">
           <p className="brand-wordmark text-[10px] font-semibold tracking-[0.18em] text-muted">UNIQUE PLACES</p>
-          <p className="mt-1 truncate text-[15px] font-medium text-ink">{t('app_name')}</p>
+          {/* Punkt 1: ca. 20% kleiner als zuvor (15px -> 12px, dieselbe bereits im Header
+           * verwendete Groesse wie die Sekundaerzeile darunter) - bleibt als App-/Bereichsname
+           * erkennbar (font-medium/text-ink), konkurriert aber nicht mehr mit dem operativen
+           * Inhalt darunter. Keine neue Schriftgroesse eingefuehrt. */}
+          <p className="mt-1 truncate text-[12px] font-medium text-ink">{t('app_name')}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {state.user?.role !== 'admin' ? (
@@ -44,10 +48,14 @@ export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderPr
               onClick={toggleBreak}
               aria-label={state.onBreak ? t('break_end') : t('break_start')}
               className={cn(
-                'inline-flex h-8 items-center rounded-full border px-3 text-[12px] font-medium transition-colors',
+                'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium transition-colors',
                 state.onBreak ? 'border-status-attention/30 bg-status-attention-bg text-status-attention' : 'border-line bg-warm-white text-muted',
               )}
             >
+              {/* Punkt 5: Zustand nie nur ueber Farbe - waehrend der Pause zeigt ein Play- statt
+               * Pause-Icon an, dass ein Klick die Pause beendet/die Arbeit fortsetzt (dieselbe
+               * Play/Pause-Sprache wie beim Reinigungs-Arbeitsstatus auf der Task Card). */}
+              {state.onBreak ? <IconPlay width={13} height={13} aria-hidden="true" /> : <IconPause width={13} height={13} aria-hidden="true" />}
               {state.onBreak ? t('on_break') : t('break_toggle_label')}
             </button>
           ) : null}

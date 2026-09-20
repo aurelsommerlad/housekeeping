@@ -6,14 +6,15 @@ import type { StaffUser } from '@/lib/housekeeping/types';
 import { allowedProperties } from '@/lib/housekeeping/rooms';
 import { getPropertyDisplayName } from '@/lib/housekeeping/api';
 import { isPropertyManager, managedPropertyCodes } from '@/lib/housekeeping/permissions';
-import { TASK_STATUS_CONFIG, TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
 import { TaskCard } from './TaskCard';
 import { TaskDetailSheet } from './TaskDetailSheet';
 import { MultiSelectBar } from './MultiSelectBar';
 import { BulkAssignSheet } from './BulkAssignSheet';
 import { BottomSheet } from './BottomSheet';
 import { Button } from '@/components/ui/Button';
-import { IconChevronDown } from '@/components/ui/icons';
+import {
+  IconChecklist, IconCheck, IconCheckSquare, IconChevronDown, IconCircle, IconLayers, IconPause, IconPlay, IconUsers,
+} from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
 const DAY_LABEL_KEYS = ['day_today', 'day_tomorrow'] as const;
@@ -29,14 +30,15 @@ function shortDayLabel(iso: string, locale: string): string {
 }
 
 /** Kompakte Kennzahl (Punkt 8) statt eines langen, mobil schlecht scanbaren Aufzaehlungssatzes -
- * der Punkt vor dem Label ist derselbe Statuston wie in TASK_STATUS_CONFIG/TASK_TYPE_CONFIG, also
- * optisch konsistent mit Karten/Detailansicht statt einer neuen Farbsprache. */
-function DayStatItem({ value, label, dotClass }: { value: number; label: string; dotClass?: string }) {
+ * dasselbe monochrome Outline-Icon-System (currentColor, Strichstaerke 1.6) wie ueberall sonst in
+ * der App statt farbiger Statuspunkte - die Zahl bleibt das optisch dominante Element, das Icon
+ * ist klein/sekundaer und traegt Bedeutung nie allein ueber Farbe. */
+function DayStatItem({ value, label, icon: Icon }: { value: number; label: string; icon?: typeof IconCircle }) {
   return (
     <div className="flex flex-col items-start gap-0.5">
       <span className="text-[17px] font-semibold tabular-nums text-ink">{value}</span>
       <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px] text-muted">
-        {dotClass ? <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', dotClass)} aria-hidden="true" /> : null}
+        {Icon ? <Icon width={12} height={12} className="shrink-0" aria-hidden="true" /> : null}
         {label}
       </span>
     </div>
@@ -75,6 +77,17 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const capacity = date && isManagerHere ? capacityFor(date) : [];
   const topCapacityEntry = capacity.find((e) => e.housekeeperId);
   const unassignedCapacityEntry = capacity.find((e) => e.housekeeperId === null);
+  // Punkt 4: in der eingeklappten Team-Zusammenfassung darf der Vorname verwendet werden, sofern
+  // er unter den aktuell in der Kapazitaetsliste sichtbaren Mitarbeitenden eindeutig bleibt - bei
+  // einer Namenskollision (zwei Vornamen gleich) faellt NUR der betroffene Eintrag auf den
+  // vollstaendigen Namen zurueck. Die aufgeklappte Ansicht zeigt weiterhin ausnahmslos den
+  // vollstaendigen Namen (unveraendert, siehe capacity.map() unten).
+  const firstName = (name: string) => name.split(' ')[0] || name;
+  const topDisplayName = topCapacityEntry
+    ? (capacity.filter((e) => e.housekeeperId).filter((e) => firstName(e.housekeeperName) === firstName(topCapacityEntry.housekeeperName)).length > 1
+      ? topCapacityEntry.housekeeperName
+      : firstName(topCapacityEntry.housekeeperName))
+    : '';
 
   const scopedHousekeepers: StaffUser[] = state.users.filter((u) => {
     if (u.role === 'admin') return false;
@@ -185,12 +198,12 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             ) : null}
           </p>
           <div className="flex flex-wrap items-start gap-x-5 gap-y-2" aria-hidden="true">
-            <DayStatItem value={summary.total} label={t('task_count_suffix')} />
-            {summary.open > 0 ? <DayStatItem value={summary.open} label={t('kpi_open')} dotClass={TASK_STATUS_CONFIG.open.dotClass} /> : null}
-            {summary.inProgress > 0 ? <DayStatItem value={summary.inProgress} label={t('kpi_in_progress')} dotClass={TASK_STATUS_CONFIG.in_progress.dotClass} /> : null}
-            {summary.paused > 0 ? <DayStatItem value={summary.paused} label={t('kpi_paused')} dotClass={TASK_STATUS_CONFIG.paused.dotClass} /> : null}
-            {summary.completed > 0 ? <DayStatItem value={summary.completed} label={t('kpi_completed')} dotClass={TASK_STATUS_CONFIG.completed.dotClass} /> : null}
-            {summary.turnover > 0 ? <DayStatItem value={summary.turnover} label={t('kpi_turnover')} dotClass={TASK_TYPE_CONFIG.turnover.dotClass} /> : null}
+            <DayStatItem value={summary.total} label={t('task_count_suffix')} icon={IconChecklist} />
+            {summary.open > 0 ? <DayStatItem value={summary.open} label={t('kpi_open')} icon={IconCircle} /> : null}
+            {summary.inProgress > 0 ? <DayStatItem value={summary.inProgress} label={t('kpi_in_progress')} icon={IconPlay} /> : null}
+            {summary.paused > 0 ? <DayStatItem value={summary.paused} label={t('kpi_paused')} icon={IconPause} /> : null}
+            {summary.completed > 0 ? <DayStatItem value={summary.completed} label={t('kpi_completed')} icon={IconCheck} /> : null}
+            {summary.turnover > 0 ? <DayStatItem value={summary.turnover} label={t('kpi_turnover')} icon={IconLayers} /> : null}
           </div>
         </div>
       ) : null}
@@ -200,6 +213,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       {isManagerHere ? (
         <div className="flex items-center gap-2 px-4 pt-3">
           <Button variant={state.taskMultiSelect ? 'primary' : 'secondary'} size="sm" onClick={toggleTaskMultiSelect}>
+            <IconCheckSquare width={14} height={14} aria-hidden="true" />
             {state.taskMultiSelect ? t('multiselect_on') : t('select_tasks_action')}
           </Button>
           <button
@@ -222,19 +236,22 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             onClick={() => setTeamOpen((v) => !v)}
             className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left"
           >
-            {teamOpen ? (
-              <span className="text-[13px] font-medium text-ink">{t('capacity_title')}</span>
-            ) : (
-              <span className="truncate text-[13px] text-ink">
-                <span className="font-medium">{t('capacity_title_short')}</span>
-                {topCapacityEntry ? (
-                  <span className="ml-2 text-muted">
-                    {topCapacityEntry.housekeeperName} {topCapacityEntry.count}
-                    {unassignedCapacityEntry ? ` · ${t('capacity_unassigned_short')} ${unassignedCapacityEntry.count}` : ''}
-                  </span>
-                ) : null}
-              </span>
-            )}
+            <span className="flex min-w-0 items-center gap-1.5">
+              <IconUsers width={13} height={13} className="shrink-0 text-muted" aria-hidden="true" />
+              {teamOpen ? (
+                <span className="text-[13px] font-medium text-ink">{t('capacity_title')}</span>
+              ) : (
+                <span className="truncate text-[13px] text-ink">
+                  <span className="font-medium">{t('capacity_title_short')}</span>
+                  {topCapacityEntry ? (
+                    <span className="ml-2 text-muted">
+                      {topDisplayName} {topCapacityEntry.count}
+                      {unassignedCapacityEntry ? ` · ${unassignedCapacityEntry.count} ${t('capacity_unassigned_short')}` : ''}
+                    </span>
+                  ) : null}
+                </span>
+              )}
+            </span>
             <IconChevronDown width={14} height={14} className={cn('shrink-0 text-muted transition-transform', teamOpen && 'rotate-180')} aria-hidden="true" />
           </button>
           {teamOpen ? (

@@ -119,6 +119,20 @@ export function IconPawPrint(props: IconProps) {
   );
 }
 
+/** Fuer den "Auswaehlen"-Button (Mehrfachauswahl-Einstieg in der Aufgabenplanung) - Checkbox-
+ * Rahmen + Haekchen, dieselbe Outline-Sprache (kein Fuellton) wie die uebrigen Icons. Bewusst ein
+ * eigenes Icon statt IconCheck wiederzuverwenden, das an anderer Stelle bereits "erledigt/
+ * bestaetigt" bedeutet (Arbeitsstatus, Hinweis-Bestaetigung) - unterschiedliche Bedeutung soll
+ * nicht dasselbe Symbol teilen. */
+export function IconCheckSquare(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="4" y="4" width="16" height="16" rx="3" />
+      <path d="m8.5 12.5 2.5 2.5 5-5" />
+    </svg>
+  );
+}
+
 export function IconPlus(props: IconProps) {
   return (
     <svg {...base} {...props}>
