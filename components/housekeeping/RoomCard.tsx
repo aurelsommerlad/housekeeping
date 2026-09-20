@@ -33,7 +33,7 @@ export function RoomCard({ room, lang, selected, selectable, onOpen }: RoomCardP
       type="button"
       onClick={onOpen}
       className={cn(
-        'relative flex flex-col gap-2 rounded-card border bg-warm-white p-4 text-left shadow-card transition-colors',
+        'relative flex flex-col gap-2 rounded-card-lg border bg-warm-white p-4 text-left transition-colors',
         selected ? 'border-ink ring-2 ring-ink/20' : 'border-line hover:border-sage/50',
       )}
     >

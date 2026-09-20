@@ -50,7 +50,7 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
 
   return (
     <BottomSheet open onClose={onClose}>
-      <h3 className="font-heading text-lg text-ink">{user ? name || username : t('new_user')}</h3>
+      <h3 className="font-heading text-lg italic text-ink">{user ? name || username : t('new_user')}</h3>
 
       <div className="mt-4 flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-[13px] font-medium text-muted">

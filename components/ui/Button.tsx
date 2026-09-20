@@ -9,10 +9,14 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: ButtonSize;
 }
 
+// Hover-/Disabled-Verhalten 1:1 aus dem echten Owner-Center-Quellcode uebernommen (dort
+// durchgaengig `rounded-full ... hover:opacity-90 disabled:opacity-50` fuer primaere Aktionen,
+// `border border-line text-ink-soft hover:border-ink hover:text-ink` fuer sekundaere) - siehe
+// z. B. src/components/admin/AddOwnerButton.tsx dort.
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: 'bg-ink text-warm-white hover:bg-forest active:bg-forest',
-  secondary: 'bg-warm-white text-ink border border-line hover:bg-surface',
-  ghost: 'bg-transparent text-muted hover:text-ink',
+  primary: 'bg-ink text-warm-white transition-opacity hover:opacity-90',
+  secondary: 'border border-line text-muted transition-colors hover:border-ink hover:text-ink',
+  ghost: 'bg-transparent text-muted transition-colors hover:text-ink',
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
@@ -29,8 +33,8 @@ export function Button({ variant = 'primary', size = 'md', className, ...props }
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-full font-medium transition-colors',
-        'disabled:opacity-40 disabled:pointer-events-none',
+        'inline-flex items-center justify-center gap-2 rounded-full font-medium',
+        'disabled:opacity-50 disabled:pointer-events-none',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage focus-visible:ring-offset-2 focus-visible:ring-offset-page',
         VARIANT_CLASSES[variant],
         SIZE_CLASSES[size],

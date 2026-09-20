@@ -37,7 +37,7 @@ export function StaffNavBar({ app }: { app: HousekeepingApp }) {
             aria-current={active ? 'page' : undefined}
             className={cn(
               'flex min-h-11 flex-col items-center gap-1 pt-2.5 pb-1.5 text-[10.5px] font-medium transition-colors',
-              active ? 'text-forest' : 'text-muted',
+              active ? 'text-ink' : 'text-muted',
             )}
           >
             <Icon width={20} height={20} />

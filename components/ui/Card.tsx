@@ -29,7 +29,7 @@ export function Card({ onClick, className, children, ...props }: CardProps) {
       onClick={onClick}
       onKeyDown={handleKeyDown}
       className={cn(
-        'rounded-card border border-line bg-warm-white p-5 shadow-card',
+        'rounded-card-lg border border-line bg-warm-white p-5 shadow-card-lg',
         interactive && 'cursor-pointer transition-colors hover:border-sage/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage focus-visible:ring-offset-2 focus-visible:ring-offset-page',
         className,
       )}

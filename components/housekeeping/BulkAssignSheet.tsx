@@ -19,7 +19,7 @@ export interface BulkAssignSheetProps {
 export function BulkAssignSheet({ open, lang, housekeepers, count, onPick, onClose }: BulkAssignSheetProps) {
   return (
     <BottomSheet open={open} onClose={onClose}>
-      <h3 className="font-heading text-lg text-ink">
+      <h3 className="font-heading text-lg italic text-ink">
         {translate(lang, 'assign_to')} · {translate(lang, 'selected_count', { n: count })}
       </h3>
       <div className="mt-3 flex flex-col gap-1 pb-2">

@@ -42,7 +42,7 @@ export function RoomDetailSheet({ app, room }: RoomDetailSheetProps) {
   return (
     <BottomSheet open={open} onClose={closeModal}>
       <div className="flex items-center justify-between gap-3">
-        <h3 className="font-heading text-xl text-ink">{t('room_detail')} {room.number}</h3>
+        <h3 className="font-heading text-xl italic text-ink">{t('room_detail')} {room.number}</h3>
         <WorkflowStatusPill status={workflowStatus(room)} lang={state.lang} />
       </div>
       {room.guestName ? <p className="mt-1 text-[13px] text-muted">{room.guestName}</p> : null}
