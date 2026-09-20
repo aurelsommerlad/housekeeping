@@ -7,7 +7,6 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { UserFormSheet } from './UserFormSheet';
-import { RulesScreen } from './RulesScreen';
 
 export interface TeamScreenProps {
   app: HousekeepingApp;
@@ -64,12 +63,6 @@ export function TeamScreen({ app }: TeamScreenProps) {
       ))}
 
       {formOpen ? <UserFormSheet app={app} user={editing} onClose={() => setFormOpen(false)} /> : null}
-
-      {/* Punkt 26: Regeln sind aus der Hauptnavigation in den Admin-/Team-Bereich gewandert -
-       * dieser Screen ist ohnehin nur fuer Admins ueber die Navigation erreichbar. */}
-      <div className="mt-4 border-t border-line pt-4">
-        <RulesScreen app={app} />
-      </div>
     </div>
   );
 }

@@ -1,27 +1,40 @@
 import { NAV_ICONS } from '@/components/ui/icons';
+import { allowedProperties } from '@/lib/housekeeping/rooms';
+import { managedPropertyCodes } from '@/lib/housekeeping/permissions';
 import type { HousekeepingApp, NavId } from '@/lib/housekeeping/useHousekeepingApp';
 import type { I18nKey } from '@/lib/housekeeping/i18n';
 import { cn } from '@/lib/cn';
 
-const ITEMS: { id: NavId; icon: keyof typeof NAV_ICONS; labelKey: I18nKey; adminOnly?: boolean }[] = [
+const ITEMS: { id: NavId; icon: keyof typeof NAV_ICONS; labelKey: I18nKey; requires?: 'manager' | 'admin' }[] = [
   { id: 'tasks', icon: 'checklist', labelKey: 'nav_tasks' },
   { id: 'rooms', icon: 'bed', labelKey: 'nav_apartments' },
-  { id: 'stats', icon: 'chart', labelKey: 'nav_stats', adminOnly: true },
-  { id: 'team', icon: 'users', labelKey: 'nav_team', adminOnly: true },
+  { id: 'stats', icon: 'chart', labelKey: 'nav_stats', requires: 'manager' },
+  { id: 'team', icon: 'users', labelKey: 'nav_team', requires: 'admin' },
 ];
 
 /**
- * Bottom-Navigation (Punkt 26): Aufgaben (Reinigungsplanung, primaer) / Apartments (bestehende
- * Zimmeruebersicht als sekundaere Ansicht, Punkt 25) / Statistik / Team - auf das fuer
- * Reinigungskraefte Notwendige reduziert, Admin-Funktionen (Statistik/Team) erscheinen
- * ausschliesslich fuer role==='admin'. "Regeln" ist in den Team-Screen gewandert (nur dort fuer
- * Admins sichtbar), "Extras" ist als eigener Task-Typ/Task-Feld in die Aufgaben-Ansicht
- * aufgegangen (Punkt 6) statt ein eigener Nav-Eintrag zu bleiben.
+ * Bottom-Navigation - EINE gemeinsame App fuer alle Rollen, Sichtbarkeit haengt ausschliesslich
+ * von Rolle/Property-Berechtigung ab (kein separates Admin-Frontend, siehe app/admin/page.tsx):
+ *  - normaler Housekeeper: Planung + Apartments
+ *  - Standortverantwortlich (managedProperties nicht leer): zusaetzlich Statistik (relevante
+ *    Standortstatistik - StatsScreen ist bereits auf state.activeProperty beschraenkt, das
+ *    wiederum ueber PropertyChips nur aus den eigenen erlaubten Properties waehlbar ist)
+ *  - admin: zusaetzlich Team
+ * "Regeln" ist bewusst KEIN gleichwertiger Hauptpunkt mehr (siehe SettingsSheet ueber den
+ * Profil-Button im Header), "Extras" ist als Task-Typ/-Feld in die Aufgaben-Ansicht aufgegangen.
+ * WICHTIG: diese Sichtbarkeit ist reine UI-Bequemlichkeit - jede tatsaechliche Aktion bleibt
+ * server-seitig ueber role/properties/managedProperties abgesichert (siehe api/*.js).
  */
 export function StaffNavBar({ app }: { app: HousekeepingApp }) {
   const { state, t, setActiveNav } = app;
   const isAdmin = state.user?.role === 'admin';
-  const items = ITEMS.filter((i) => !i.adminOnly || isAdmin);
+  const allowed = allowedProperties(state.user, state.properties.map((p) => p.code));
+  const isManagerAnywhere = isAdmin || managedPropertyCodes(state.user, allowed).length > 0;
+  const items = ITEMS.filter((i) => {
+    if (i.requires === 'admin') return isAdmin;
+    if (i.requires === 'manager') return isManagerAnywhere;
+    return true;
+  });
 
   return (
     <nav

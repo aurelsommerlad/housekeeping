@@ -3,18 +3,28 @@
 import { LANGUAGES } from '@/lib/housekeeping/i18n';
 import { APP_VERSION, getPropertyDisplayName } from '@/lib/housekeeping/api';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
+import { IconUser } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
 const LOCALES: Record<string, string> = { de: 'de-DE', en: 'en-GB', pl: 'pl-PL', ro: 'ro-RO' };
+
+export interface StaffHeaderProps {
+  app: HousekeepingApp;
+  onOpenSettings: () => void;
+}
 
 /**
  * Kompakter Header (Briefing Punkt 3): Marke bleibt klein, dafuer traegt der Header die fuer den
  * Arbeitstag relevanten Infos - aktuelles Haus, Datum, angemeldete Person, Sprache. Bewusst zwei
  * schmale Zeilen statt einer grossen, um auf dem Smartphone moeglichst viel Platz fuer den
  * eigentlichen Inhalt zu lassen.
+ *
+ * Der Profil-Button oeffnet das SettingsSheet (Profil/Regeln[nur Admin]/Sprache/Version/Abmelden)
+ * - ersetzt den bisherigen alleinstehenden Logout-Button, damit selten benoetigte Funktionen
+ * (allen voran "Regeln") nicht laenger als gleichwertige Hauptpunkte erscheinen.
  */
-export function StaffHeader({ app }: { app: HousekeepingApp }) {
-  const { state, t, setLang, doLogout, toggleBreak } = app;
+export function StaffHeader({ app, onOpenSettings }: StaffHeaderProps) {
+  const { state, t, setLang, toggleBreak } = app;
   const activeProperty = state.properties.find((p) => p.code === state.activeProperty);
   const dateLabel = new Intl.DateTimeFormat(LOCALES[state.lang] || 'de-DE', {
     weekday: 'short',
@@ -44,11 +54,11 @@ export function StaffHeader({ app }: { app: HousekeepingApp }) {
           ) : null}
           <button
             type="button"
-            aria-label={t('logout')}
-            onClick={doLogout}
+            aria-label={t('profile_title')}
+            onClick={onOpenSettings}
             className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-muted transition-colors hover:text-ink"
           >
-            ⎋
+            <IconUser width={17} height={17} />
           </button>
         </div>
       </div>

@@ -1,37 +1,38 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { AUTH_INPUT_CLASS, AUTH_LABEL_CLASS } from '@/components/ui/authFieldStyles';
 
-type Screen = 'loading' | 'error' | 'setup' | 'login' | 'authenticated';
-
-interface SessionUser {
-  id: string;
-  name?: string;
-  email?: string;
-  role: string;
-}
+type Screen = 'loading' | 'error' | 'setup' | 'already-done';
 
 /**
- * Adminbereich-Einstieg. Zustandsmaschine mit klar getrennten Faellen (siehe Bugreport):
- *  - 'loading'       waehrend der Setup-Status/Session serverseitig geprueft wird
+ * /admin ist AUSSCHLIESSLICH die sichere Ersteinrichtung des allerersten Admin-Kontos - kein
+ * separates Verwaltungs-Frontend fuer den laufenden Betrieb. Die eigentliche Administration
+ * (Team, Statistik, Regeln, Zuweisungen) findet in der EINEN gemeinsamen Housekeeping-App unter
+ * "/" statt, in die sich JEDER Benutzer (admin wie housekeeping) ueber denselben Login anmeldet -
+ * siehe app/page.tsx/StaffNavBar/lib/housekeeping/permissions.ts fuer die rollen-/property-
+ * abhaengige Sichtbarkeit dort. Es gibt deshalb bewusst KEINE eigene Admin-Login-Maske und KEIN
+ * "authenticated"-Dashboard mehr hier (frueher nur ein Platzhalter ohne echte Funktion) - sobald
+ * ein Admin existiert, verweist diese Seite direkt auf "/".
+ *
+ * Zustandsmaschine:
+ *  - 'loading'       waehrend der Setup-Status serverseitig geprueft wird
  *  - 'error'         GET /api/auth/setup-status ist fehlgeschlagen (Netzwerk/Server) - wird
- *                     NIEMALS stillschweigend als "Login zeigen" behandelt
+ *                     NIEMALS stillschweigend als "bereits eingerichtet" behandelt
  *  - 'setup'         kein Admin vorhanden (needsSetup === true) -> Registrierungsformular
- *  - 'login'         Admin vorhanden, keine gueltige Admin-Session -> Login
- *  - 'authenticated' gueltige Admin-Session vorhanden
+ *  - 'already-done'  ein Admin existiert bereits -> Hinweis + Link zum gemeinsamen Login unter "/"
  *
  * Die eigentliche Wahrheit ("existiert ein User mit role === 'admin'?") kommt ausschliesslich
- * von GET /api/auth/setup-status (serverseitig, siehe lib/server/auth.ts). Es gibt keinen
- * Client-Fallback, der bei einem Fehler dieser Abfrage einfach den Login anzeigt.
+ * von GET /api/auth/setup-status (serverseitig, siehe lib/server/auth.ts).
  */
 export default function AdminPage() {
+  const router = useRouter();
   const [screen, setScreen] = useState<Screen>('loading');
   const [errorMessage, setErrorMessage] = useState('');
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [user, setUser] = useState<SessionUser | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,28 +68,7 @@ export default function AdminPage() {
         return;
       }
 
-      if (statusData.needsSetup) {
-        if (!cancelled) setScreen('setup');
-        return;
-      }
-
-      // Ein Admin existiert bereits - pruefen, ob schon eine gueltige Admin-Session besteht.
-      // Ein Fehler hier faellt bewusst auf 'login' zurueck (nicht auf 'setup'!), denn die
-      // Existenz eines Admins wurde oben bereits serverseitig zweifelsfrei bestaetigt.
-      try {
-        const meRes = await fetch('/api/auth/me', { cache: 'no-store' });
-        const meData = meRes.ok ? await meRes.json().catch(() => null) : null;
-        if (!cancelled) {
-          if (meData?.authenticated && meData.user?.role === 'admin') {
-            setUser(meData.user);
-            setScreen('authenticated');
-          } else {
-            setScreen('login');
-          }
-        }
-      } catch {
-        if (!cancelled) setScreen('login');
-      }
+      if (!cancelled) setScreen(statusData.needsSetup ? 'setup' : 'already-done');
     }
 
     init();
@@ -125,56 +105,19 @@ export default function AdminPage() {
       if (!res.ok) {
         setFormError((data.error || 'Registrierung fehlgeschlagen.') + (data.detail ? ` (${data.detail})` : ''));
         // Falls in der Zwischenzeit doch schon ein Admin angelegt wurde (Race mit einem
-        // zweiten Tab/Geraet), zeige jetzt konsequent den Login statt das Formular offen zu
-        // lassen.
-        if (res.status === 409) setScreen('login');
+        // zweiten Tab/Geraet), zeige jetzt konsequent den "bereits eingerichtet"-Hinweis statt
+        // das Formular offen zu lassen.
+        if (res.status === 409) setScreen('already-done');
         return;
       }
-      setUser(data.user);
-      setScreen('authenticated');
+      // Das neue Admin-Konto hat bereits eine gueltige Session (siehe api/auth/setup/route.ts) -
+      // die eigentliche Administration findet ab jetzt in der gemeinsamen Housekeeping-App statt.
+      router.push('/');
     } catch {
       setFormError('Netzwerkfehler - bitte erneut versuchen.');
     } finally {
       setSubmitting(false);
     }
-  }
-
-  async function handleLoginSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setFormError('');
-    const form = new FormData(event.currentTarget);
-    const identifier = String(form.get('identifier') || '').trim();
-    const password = String(form.get('password') || '');
-
-    setSubmitting(true);
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier, password, scope: 'admin' }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setFormError((data.error || 'Anmeldung fehlgeschlagen.') + (data.detail ? ` (${data.detail})` : ''));
-        return;
-      }
-      setUser(data.user);
-      setScreen('authenticated');
-    } catch {
-      setFormError('Netzwerkfehler - bitte erneut versuchen.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function handleLogout() {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-    } catch {
-      // Ignorieren - im Zweifel einfach den Login-Screen zeigen.
-    }
-    setUser(null);
-    setScreen('login');
   }
 
   return (
@@ -221,35 +164,15 @@ export default function AdminPage() {
           </div>
         )}
 
-        {screen === 'login' && (
-          <div className="rounded-card-lg border border-line bg-warm-white p-6 shadow-card-lg sm:p-8">
-            <h1 className="font-heading text-xl italic text-ink">Anmelden</h1>
-            <p className="mt-1 text-sm text-muted">Mit dem Administratorkonto fuer den Housekeeping-Bereich.</p>
-            <form onSubmit={handleLoginSubmit} className="mt-6 flex flex-col gap-4">
-              <Field label="E-Mail" name="identifier" type="email" autoComplete="username" required />
-              <Field label="Passwort" name="password" type="password" autoComplete="current-password" required />
-              {formError && <p className="text-sm text-muted">{formError}</p>}
-              <button
-                type="submit"
-                disabled={submitting}
-                className="mt-1 rounded-full bg-ink px-4 py-2.5 text-sm font-medium text-warm-white transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                {submitting ? '…' : 'Anmelden'}
-              </button>
-            </form>
-          </div>
-        )}
-
-        {screen === 'authenticated' && (
+        {screen === 'already-done' && (
           <div className="rounded-card-lg border border-line bg-warm-white p-6 text-center shadow-card-lg sm:p-8">
-            <p className="text-sm text-ink">
-              Angemeldet als <span className="font-medium">{user?.name || user?.email}</span>
-            </p>
+            <h1 className="font-heading text-xl italic text-ink">Ersteinrichtung bereits abgeschlossen</h1>
             <p className="mt-2 text-[13px] text-muted">
-              Das Admin-Dashboard (Team, Statistik, Regeln, Zuweisungen) folgt in einem naechsten Schritt.
+              Es existiert bereits ein Administratorkonto. Die Anmeldung - fuer Admin- wie
+              Housekeeping-Konten - erfolgt einheitlich in der Housekeeping-App.
             </p>
-            <Button variant="secondary" size="sm" className="mt-5" onClick={handleLogout}>
-              Abmelden
+            <Button className="mt-5 w-full" onClick={() => router.push('/')}>
+              Zur Housekeeping-App
             </Button>
           </div>
         )}

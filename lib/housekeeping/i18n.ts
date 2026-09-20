@@ -78,6 +78,7 @@ export const I18N = {
     notice_ack_prompt: 'Gelesen und verstanden', notice_ack_done: 'Gelesen von {{name}} · {{time}}',
     notice_start_blocked: 'Bitte bestaetige zuerst den wichtigen Hinweis.',
     remove_confirm: 'Diesen Hinweis wirklich entfernen?',
+    profile_title: 'Profil',
   },
   en: {
     app_name: 'Housekeeping', login_title: 'Sign in', username: 'Username', password: 'Password',
@@ -143,6 +144,7 @@ export const I18N = {
     notice_ack_prompt: 'Read and understood', notice_ack_done: 'Read by {{name}} · {{time}}',
     notice_start_blocked: 'Please acknowledge the important notice first.',
     remove_confirm: 'Really remove this notice?',
+    profile_title: 'Profile',
   },
   pl: {
     app_name: 'Housekeeping', login_title: 'Zaloguj sie', username: 'Nazwa uzytkownika', password: 'Haslo',
@@ -208,6 +210,7 @@ export const I18N = {
     notice_ack_prompt: 'Przeczytane i zrozumiane', notice_ack_done: 'Przeczytane przez {{name}} · {{time}}',
     notice_start_blocked: 'Najpierw potwierdz wazna informacje.',
     remove_confirm: 'Na pewno usunac te informacje?',
+    profile_title: 'Profil',
   },
   ro: {
     app_name: 'Housekeeping', login_title: 'Autentificare', username: 'Utilizator', password: 'Parola',
@@ -273,6 +276,7 @@ export const I18N = {
     notice_ack_prompt: 'Citit si inteles', notice_ack_done: 'Citit de {{name}} · {{time}}',
     notice_start_blocked: 'Va rugam confirmati mai intai observatia importanta.',
     remove_confirm: 'Sigur doriti sa eliminati aceasta observatie?',
+    profile_title: 'Profil',
   },
 } as const;
 
