@@ -46,7 +46,15 @@ import type {
 // Detailansicht und der Reservierungssuche. Reine Darstellung (siehe TaskCard.tsx) - gegen einen
 // git-gestashten Vorher/Nachher-Vergleich verifiziert: die Kartenhoehe ist fuer jeden geprueften
 // Zustand exakt identisch geblieben, nie hoeher.
-export const APP_VERSION = '2.8.0';
+// PATCH-Bump (2.8.0 -> 2.8.1): TaskCard - Belegungsanzeige mit kleinen "Abreise"/"Anreise"-Labels
+// statt eines verbindenden Pfeils zwischen den beiden Check-out-/Check-in-Icons (die reine
+// Icon-Bedeutung war ohne Beschriftung nicht eindeutig genug). Reine Darstellung (siehe
+// OccupancyBlock/OccupancyLine in TaskCard.tsx) - Belegungs-Mapping/-Trennung Abreise vs. Anreise
+// unveraendert. Um die durch die zusaetzliche Labelzeile noetigen ~4px auszugleichen, wurde der
+// aeussere Zeilenabstand der Karte minimal reduziert (gap-2 -> gap-1.5) - gegen einen git-
+// gestashten Vorher/Nachher-Vergleich verifiziert: die Kartenhoehe ist fuer jeden geprueften
+// Zustand identisch oder niedriger geblieben, nie hoeher.
+export const APP_VERSION = '2.8.1';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

@@ -179,15 +179,33 @@ function formatOccupancy(lang: Lang, adults: number | null, childrenCount: numbe
   return parts.join(' · ');
 }
 
+/** Ein Belegungs-Feld mit sehr kleinem, dezentem Sekundaerlabel ("Abreise"/"Anreise") darueber -
+ * ersetzt das fruehere einzelne Check-out-/Check-in-Icon ohne Beschriftung (Punkt "Bedeutung...
+ * ohne Erklaerung nicht eindeutig genug"): das Label allein macht die Richtung eindeutig, das
+ * Icon bleibt zusaetzlich als visueller Anker erhalten. */
+function OccupancyBlock({ icon: Icon, label, text }: { icon: typeof IconExit; label: string; text: string }) {
+  return (
+    <div className="flex min-w-0 flex-col">
+      <span className="truncate text-[8px] font-medium uppercase leading-none tracking-wide text-muted">{label}</span>
+      <span className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-[12px] leading-none text-muted">
+        <Icon width={12} height={12} className="shrink-0" aria-hidden="true" />
+        <span className="truncate">{text}</span>
+      </span>
+    </div>
+  );
+}
+
 /**
  * Belegungszeile + Extras (Redesign Punkt 1-9: ersetzt die zuvor hier gezeigte Gastname+
  * Buchungsnummer-Zeile) - bei Turnover STRIKT getrennt Abreise-Belegung (links, aus
  * task.reservationInfo, der abreisenden Reservierung) und Anreise-Belegung (rechts, aus
- * task.nextReservationInfo, der naechsten Reservierung) mit je einem eindeutigen Check-out-/
- * Check-in-Icon (kein Flugzeug-Symbol) - niemals aus derselben Reservierung gemischt, siehe
- * tasks.ts fuer die bereits bestehende, hier nur gelesene Trennung. Bei reiner Abreise nur die
- * abreisende Seite; bei Zwischenreinigung (laufender Aufenthalt, weder An- noch Abreise heute)
- * neutral ohne Richtungssymbol. Extras-Icons bleiben rechts in derselben Zeile.
+ * task.nextReservationInfo, der naechsten Reservierung), je mit eigenem "Abreise"/"Anreise"-Label
+ * statt eines verbindenden Pfeils (die Richtung ist durch die Label bereits eindeutig, siehe
+ * OccupancyBlock) - niemals aus derselben Reservierung gemischt, siehe tasks.ts fuer die bereits
+ * bestehende, hier nur gelesene Trennung. Bei reiner Abreise nur die abreisende Seite (die zweite
+ * Spalte bleibt leer statt faelschlich eine "Anreise" ohne Daten zu behaupten); bei
+ * Zwischenreinigung (laufender Aufenthalt, weder An- noch Abreise heute) neutral ohne
+ * Richtungssymbol/Label. Extras-Icons bleiben rechts in derselben Zeile.
  */
 function OccupancyLine({ task, lang, doubleTypes }: { task: ResolvedTask; lang: Lang; doubleTypes: typeof DOUBLEUP_TYPES }) {
   const departureText = task.reservationInfo ? formatOccupancy(lang, task.reservationInfo.adults, task.reservationInfo.childrenCount) : null;
@@ -196,30 +214,12 @@ function OccupancyLine({ task, lang, doubleTypes }: { task: ResolvedTask; lang: 
     : null;
 
   let occupancy = null;
-  if (task.type === 'turnover' && (departureText || arrivalText)) {
+  if ((task.type === 'turnover' || task.type === 'departure') && (departureText || arrivalText)) {
     occupancy = (
-      <span className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[12px] text-muted">
-        {departureText ? (
-          <span className="flex shrink-0 items-center gap-1">
-            <IconExit width={13} height={13} className="shrink-0" aria-label={translate(lang, 'label_departure')} />
-            {departureText}
-          </span>
-        ) : null}
-        {departureText && arrivalText ? <span className="shrink-0">→</span> : null}
-        {arrivalText ? (
-          <span className="flex min-w-0 items-center gap-1 truncate">
-            <IconEnter width={13} height={13} className="shrink-0" aria-label={translate(lang, 'label_arrival')} />
-            <span className="truncate">{arrivalText}</span>
-          </span>
-        ) : null}
-      </span>
-    );
-  } else if (task.type === 'departure' && departureText) {
-    occupancy = (
-      <span className="flex min-w-0 items-center gap-1 truncate text-[12px] text-muted">
-        <IconExit width={13} height={13} className="shrink-0" aria-label={translate(lang, 'label_departure')} />
-        <span className="truncate">{departureText}</span>
-      </span>
+      <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-2">
+        {departureText ? <OccupancyBlock icon={IconExit} label={translate(lang, 'label_departure')} text={departureText} /> : <span />}
+        {arrivalText ? <OccupancyBlock icon={IconEnter} label={translate(lang, 'label_arrival')} text={arrivalText} /> : <span />}
+      </div>
     );
   } else if (task.type === 'stayover' && departureText) {
     occupancy = (
@@ -233,7 +233,7 @@ function OccupancyLine({ task, lang, doubleTypes }: { task: ResolvedTask; lang: 
   if (!occupancy && !doubleTypes.length) return null;
 
   return (
-    <div className="flex items-center justify-between gap-2">
+    <div className="flex items-end justify-between gap-2">
       {occupancy || <span />}
       {doubleTypes.length ? (
         <span className="flex shrink-0 items-center gap-1.5 text-muted">
@@ -266,7 +266,7 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
       type="button"
       onClick={onOpen}
       className={cn(
-        'relative flex flex-col gap-2 rounded-card-lg border p-4 text-left transition-colors',
+        'relative flex flex-col gap-1.5 rounded-card-lg border p-4 text-left transition-colors',
         // Punkt "Fertig": Karte deutlich zurueckgenommen, aber die Ursprungsfarbe des Aufgabentyps
         // bleibt als duenner linker Rand erkennbar (statt vollflaechig, statt komplett ausgegraut).
         isCompleted
