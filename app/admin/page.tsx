@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/Button';
+import { AUTH_INPUT_CLASS, AUTH_LABEL_CLASS } from '@/components/ui/authFieldStyles';
 
 type Screen = 'loading' | 'error' | 'setup' | 'login' | 'authenticated';
 
@@ -177,13 +178,11 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-page px-6 py-12">
+    <main className="flex min-h-dvh flex-col items-center justify-center bg-page px-6 py-12 pl-[max(env(safe-area-inset-left),1.5rem)] pr-[max(env(safe-area-inset-right),1.5rem)]">
       <div className="w-full max-w-sm">
-        <div className="mb-10 text-center leading-none">
-          <p className="brand-wordmark text-[11px] font-semibold tracking-[0.18em] text-ink">
-            UNIQUE PLACES
-          </p>
-          <p className="mt-1 text-[15px] font-medium tracking-[0.04em] text-muted">Housekeeping</p>
+        <div className="mb-8 text-center">
+          <p className="brand-wordmark font-sans text-sm font-semibold tracking-[0.05em] text-ink">UNIQUE PLACES</p>
+          <p className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-muted">Admin</p>
         </div>
 
         {screen === 'loading' && (
@@ -191,7 +190,7 @@ export default function AdminPage() {
         )}
 
         {screen === 'error' && (
-          <div className="rounded-card border border-status-attention/30 bg-status-attention-bg p-5 text-center">
+          <div className="rounded-card-lg border border-status-attention/30 bg-status-attention-bg p-6 text-center shadow-card-lg sm:p-8">
             <p className="text-sm font-medium text-status-attention">Status konnte nicht geladen werden</p>
             <p className="mt-2 text-[13px] text-ink/80">{errorMessage}</p>
             <Button className="mt-4" size="sm" onClick={() => window.location.reload()}>
@@ -201,33 +200,48 @@ export default function AdminPage() {
         )}
 
         {screen === 'setup' && (
-          <form onSubmit={handleSetupSubmit} className="flex flex-col gap-3">
-            <h1 className="mb-1 text-center text-[15px] font-medium text-ink">Admin-Konto einrichten</h1>
-            <Field label="Vorname" name="firstName" autoComplete="given-name" required />
-            <Field label="Nachname" name="lastName" autoComplete="family-name" required />
-            <Field label="E-Mail" name="email" type="email" autoComplete="email" required />
-            <Field label="Passwort" name="password" type="password" autoComplete="new-password" required />
-            <Field label="Passwort wiederholen" name="passwordConfirm" type="password" autoComplete="new-password" required />
-            {formError && <p className="text-[13px] text-status-attention">{formError}</p>}
-            <Button type="submit" disabled={submitting} className="mt-2">
-              {submitting ? 'Wird erstellt...' : 'Admin-Konto erstellen'}
-            </Button>
-          </form>
+          <div className="rounded-card-lg border border-line bg-warm-white p-6 shadow-card-lg sm:p-8">
+            <h1 className="font-heading text-xl italic text-ink">Admin-Konto einrichten</h1>
+            <p className="mt-1 text-sm text-muted">Erstes Administratorkonto fuer den Housekeeping-Bereich anlegen.</p>
+            <form onSubmit={handleSetupSubmit} className="mt-6 flex flex-col gap-4">
+              <Field label="Vorname" name="firstName" autoComplete="given-name" required />
+              <Field label="Nachname" name="lastName" autoComplete="family-name" required />
+              <Field label="E-Mail" name="email" type="email" autoComplete="email" required />
+              <Field label="Passwort" name="password" type="password" autoComplete="new-password" required />
+              <Field label="Passwort wiederholen" name="passwordConfirm" type="password" autoComplete="new-password" required />
+              {formError && <p className="text-sm text-muted">{formError}</p>}
+              <button
+                type="submit"
+                disabled={submitting}
+                className="mt-1 rounded-full bg-ink px-4 py-2.5 text-sm font-medium text-warm-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {submitting ? '…' : 'Admin-Konto erstellen'}
+              </button>
+            </form>
+          </div>
         )}
 
         {screen === 'login' && (
-          <form onSubmit={handleLoginSubmit} className="flex flex-col gap-3">
-            <Field label="E-Mail" name="identifier" type="email" autoComplete="username" required />
-            <Field label="Passwort" name="password" type="password" autoComplete="current-password" required />
-            {formError && <p className="text-[13px] text-status-attention">{formError}</p>}
-            <Button type="submit" disabled={submitting} className="mt-2">
-              {submitting ? 'Wird angemeldet...' : 'Anmelden'}
-            </Button>
-          </form>
+          <div className="rounded-card-lg border border-line bg-warm-white p-6 shadow-card-lg sm:p-8">
+            <h1 className="font-heading text-xl italic text-ink">Anmelden</h1>
+            <p className="mt-1 text-sm text-muted">Mit dem Administratorkonto fuer den Housekeeping-Bereich.</p>
+            <form onSubmit={handleLoginSubmit} className="mt-6 flex flex-col gap-4">
+              <Field label="E-Mail" name="identifier" type="email" autoComplete="username" required />
+              <Field label="Passwort" name="password" type="password" autoComplete="current-password" required />
+              {formError && <p className="text-sm text-muted">{formError}</p>}
+              <button
+                type="submit"
+                disabled={submitting}
+                className="mt-1 rounded-full bg-ink px-4 py-2.5 text-sm font-medium text-warm-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {submitting ? '…' : 'Anmelden'}
+              </button>
+            </form>
+          </div>
         )}
 
         {screen === 'authenticated' && (
-          <div className="text-center">
+          <div className="rounded-card-lg border border-line bg-warm-white p-6 text-center shadow-card-lg sm:p-8">
             <p className="text-sm text-ink">
               Angemeldet als <span className="font-medium">{user?.name || user?.email}</span>
             </p>
@@ -240,7 +254,7 @@ export default function AdminPage() {
           </div>
         )}
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -258,14 +272,14 @@ function Field({
   required?: boolean;
 }) {
   return (
-    <label className="flex flex-col gap-1 text-left">
-      <span className="text-[12px] text-muted">{label}</span>
+    <label className="flex flex-col gap-1.5">
+      <span className={AUTH_LABEL_CLASS}>{label}</span>
       <input
         name={name}
         type={type}
         autoComplete={autoComplete}
         required={required}
-        className="h-11 rounded-control border border-line bg-warm-white px-3.5 text-sm text-ink outline-none transition-colors focus:border-sage"
+        className={AUTH_INPUT_CLASS}
       />
     </label>
   );

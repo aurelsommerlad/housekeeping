@@ -5,10 +5,7 @@ import { LANGUAGES } from '@/lib/housekeeping/i18n';
 import { APP_VERSION } from '@/lib/housekeeping/api';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { cn } from '@/lib/cn';
-
-const INPUT_CLASS =
-  'w-full rounded-control border border-line bg-page px-3.5 py-2.5 text-sm text-ink outline-none transition-colors focus:border-ink';
-const LABEL_CLASS = 'text-[11px] uppercase tracking-[0.08em] text-muted';
+import { AUTH_INPUT_CLASS, AUTH_LABEL_CLASS } from '@/components/ui/authFieldStyles';
 
 /**
  * Login-Bildschirm des Housekeeping-Bereichs - Klassen 1:1 aus dem echten Owner-Center-Code
@@ -44,24 +41,24 @@ export function LoginScreen({ app }: { app: HousekeepingApp }) {
 
           <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
             <label className="flex flex-col gap-1.5">
-              <span className={LABEL_CLASS}>{t('username')}</span>
+              <span className={AUTH_LABEL_CLASS}>{t('username')}</span>
               <input
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 autoCapitalize="off"
                 autoComplete="username"
                 autoFocus
-                className={INPUT_CLASS}
+                className={AUTH_INPUT_CLASS}
               />
             </label>
             <label className="flex flex-col gap-1.5">
-              <span className={LABEL_CLASS}>{t('password')}</span>
+              <span className={AUTH_LABEL_CLASS}>{t('password')}</span>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
-                className={INPUT_CLASS}
+                className={AUTH_INPUT_CLASS}
               />
             </label>
 
