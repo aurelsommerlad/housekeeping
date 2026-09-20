@@ -179,17 +179,42 @@ function formatOccupancy(lang: Lang, adults: number | null, childrenCount: numbe
   return parts.join(' · ');
 }
 
+/** Gebuchte Apaleo-Extras (Hund/Babybett) DIESER EINEN Reservierung - niemals die der jeweils
+ * anderen Seite (siehe reservationSummary() in tasks.ts, das die Trennung schon an der Quelle
+ * garantiert). Reine Anzeige derselben monochromen Outline-Icons wie bei "Vorbereitung"
+ * (DoubleupIcon/DOUBLEUP_ICONS), hier nur mit einem eigenen, expliziten "... gebucht"-Label statt
+ * des generischen Vorbereitungs-Labels - macht in der Detailansicht/Tooltip den Unterschied
+ * zum manuell gesetzten Housekeeping-Flag klar. */
+function bookedExtraIcons(info: { hasDog: boolean; hasCrib: boolean } | null | undefined, lang: Lang): { id: string; label: string }[] {
+  if (!info) return [];
+  const extras: { id: string; label: string }[] = [];
+  if (info.hasDog) extras.push({ id: 'dog', label: translate(lang, 'booked_dog_label') });
+  if (info.hasCrib) extras.push({ id: 'crib', label: translate(lang, 'booked_crib_label') });
+  return extras;
+}
+
 /** Ein Belegungs-Feld mit sehr kleinem, dezentem Sekundaerlabel ("Abreise"/"Anreise") darueber -
  * ersetzt das fruehere einzelne Check-out-/Check-in-Icon ohne Beschriftung (Punkt "Bedeutung...
  * ohne Erklaerung nicht eindeutig genug"): das Label allein macht die Richtung eindeutig, das
- * Icon bleibt zusaetzlich als visueller Anker erhalten. */
-function OccupancyBlock({ icon: Icon, label, text }: { icon: typeof IconExit; label: string; text: string }) {
+ * Icon bleibt zusaetzlich als visueller Anker erhalten. `extras` (gebuchte Hund-/Babybett-
+ * Services DIESER Reservierung) stehen direkt hinter der Gaestezahl in derselben Zeile - keine
+ * neue Zeile, keine Aenderung der Kartenhoehe. */
+function OccupancyBlock({
+  icon: Icon, label, text, extras,
+}: { icon: typeof IconExit; label: string; text: string; extras: { id: string; label: string }[] }) {
   return (
     <div className="flex min-w-0 flex-col">
       <span className="truncate text-[8px] font-medium uppercase leading-none tracking-wide text-muted">{label}</span>
-      <span className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-[12px] leading-none text-muted">
+      <span className="mt-0.5 flex min-w-0 items-center gap-1 text-[12px] leading-none text-muted">
         <Icon width={12} height={12} className="shrink-0" aria-hidden="true" />
         <span className="truncate">{text}</span>
+        {extras.length ? (
+          <span className="flex shrink-0 items-center gap-1">
+            {extras.map((e) => (
+              <DoubleupIcon key={e.id} id={e.id} width={12} height={12} role="img" aria-label={e.label} />
+            ))}
+          </span>
+        ) : null}
       </span>
     </div>
   );
@@ -217,8 +242,12 @@ function OccupancyLine({ task, lang, doubleTypes }: { task: ResolvedTask; lang: 
   if ((task.type === 'turnover' || task.type === 'departure') && (departureText || arrivalText)) {
     occupancy = (
       <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-2">
-        {departureText ? <OccupancyBlock icon={IconExit} label={translate(lang, 'label_departure')} text={departureText} /> : <span />}
-        {arrivalText ? <OccupancyBlock icon={IconEnter} label={translate(lang, 'label_arrival')} text={arrivalText} /> : <span />}
+        {departureText ? (
+          <OccupancyBlock icon={IconExit} label={translate(lang, 'label_departure')} text={departureText} extras={bookedExtraIcons(task.reservationInfo, lang)} />
+        ) : <span />}
+        {arrivalText ? (
+          <OccupancyBlock icon={IconEnter} label={translate(lang, 'label_arrival')} text={arrivalText} extras={bookedExtraIcons(task.nextReservationInfo, lang)} />
+        ) : <span />}
       </div>
     );
   } else if (task.type === 'stayover' && departureText) {
@@ -256,8 +285,14 @@ function OccupancyLine({ task, lang, doubleTypes }: { task: ResolvedTask; lang: 
  */
 export function TaskCard({ task, lang, selected, selectable, noticeState = 'none', onOpen }: TaskCardProps) {
   const typeConfig = TASK_TYPE_CONFIG[task.type];
+  // Punkt "gebucht vs. manuell": ein Hund/Babybett, das bereits als gebuchtes Apaleo-Extra bei
+  // Abreise oder Anreise angezeigt wird (siehe OccupancyLine/bookedExtraIcons), erscheint hier in
+  // der manuellen Vorbereitungs-Icon-Gruppe NICHT ein zweites Mal - beide Datenquellen bleiben
+  // getrennt, aber dasselbe Symbol wird nie doppelt auf derselben Karte gezeigt.
+  const apaleoHasDog = !!(task.reservationInfo?.hasDog || task.nextReservationInfo?.hasDog);
+  const apaleoHasCrib = !!(task.reservationInfo?.hasCrib || task.nextReservationInfo?.hasCrib);
   const doubleTypes = task.doubleupTypes.length
-    ? DOUBLEUP_TYPES.filter((dt) => task.doubleupTypes.includes(dt.id))
+    ? DOUBLEUP_TYPES.filter((dt) => task.doubleupTypes.includes(dt.id) && !(dt.id === 'dog' && apaleoHasDog) && !(dt.id === 'crib' && apaleoHasCrib))
     : [];
   const isCompleted = task.status === 'completed';
 

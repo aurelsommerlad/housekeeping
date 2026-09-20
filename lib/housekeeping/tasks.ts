@@ -34,10 +34,12 @@ export const STANDARD_ARRIVAL_TIME = '16:00';
  */
 export const EXTRA_TIME = '13:00';
 
-/** Apaleo-Servicecode ('ECI'/'LCO') statt `id` (property-praefigiert, z. B. "LAEKE-LCO") oder
- * `name`/`description` (Freitext, siehe HUESLE-OTHER-Decoy in der Recherche) - property-
- * uebergreifend einheitlich und robust gegen Namensaenderungen. NIEMALS `comment` heranziehen. */
-function hasBookedService(r: ApaleoReservation | undefined, code: 'ECI' | 'LCO'): boolean {
+/** Apaleo-Servicecode ('ECI'/'LCO'/'HUND'/'BABY') statt `id` (property-praefigiert, z. B.
+ * "LAEKE-LCO") oder `name`/`description` (Freitext, siehe HUESLE-OTHER-Decoy in der Recherche) -
+ * property-uebergreifend einheitlich und robust gegen Namensaenderungen. NIEMALS `comment`
+ * heranziehen. 'HUND' (Hund-Gebuehr) und 'BABY' (Babybett) live gegen alle vier Properties
+ * (HUESLE/LAEKE/ALPILA/ALTUS) verifiziert - identischer Code ueberall. */
+function hasBookedService(r: ApaleoReservation | undefined, code: 'ECI' | 'LCO' | 'HUND' | 'BABY'): boolean {
   return !!r?.services?.some((s) => s.service?.code === code);
 }
 
@@ -66,7 +68,9 @@ function reservationComment(r: ApaleoReservation): string {
 
 /** Reservierungsinformationen (Punkt 1) ausschliesslich aus echten Apaleo-Feldern - `created` fuer
  * "gebucht am", `id` (nicht `bookingId`) als anzuzeigende Buchungsnummer (siehe
- * types.ts#TaskReservationSummary). */
+ * types.ts#TaskReservationSummary). `hasDog`/`hasCrib` beziehen sich ausschliesslich auf DIESE
+ * eine Reservierung `r` - bei Turnover wird diese Funktion separat fuer die abreisende und die
+ * ankommende Reservierung aufgerufen, die beiden Ergebnisse werden nie vermischt. */
 function reservationSummary(r: ApaleoReservation): TaskReservationSummary {
   return {
     reservationId: r.id,
@@ -78,6 +82,8 @@ function reservationSummary(r: ApaleoReservation): TaskReservationSummary {
     adults: typeof r.adults === 'number' ? r.adults : null,
     childrenCount: r.childrenAges?.length || 0,
     childAges: r.childrenAges || [],
+    hasDog: hasBookedService(r, 'HUND'),
+    hasCrib: hasBookedService(r, 'BABY'),
   };
 }
 

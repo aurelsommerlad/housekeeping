@@ -184,6 +184,13 @@ export interface TaskReservationSummary {
   /** Anzahl Kinder = Laenge von childAges - kein separates Apaleo-Feld dafuer. */
   childrenCount: number;
   childAges: number[];
+  /** Tatsaechlich in Apaleo gebuchte Hund-/Babybett-Zusatzleistung DIESER Reservierung
+   * (service.code === 'HUND'/'BABY', live gegen alle vier Properties verifiziert - siehe
+   * tasks.ts#hasBookedService). Bewusst getrennt von `Task.doubleupTypes` (der manuell in
+   * Housekeeping gesetzten Vorbereitung) - beide Datenquellen duerfen sich nie vermischen oder
+   * gegenseitig ueberschreiben (Punkt "gebucht vs. manuell"). */
+  hasDog: boolean;
+  hasCrib: boolean;
 }
 
 /** Suchergebnis der Admin-Reservierungssuche (Punkt 5-8) - direkt aus einer live Apaleo-Suche

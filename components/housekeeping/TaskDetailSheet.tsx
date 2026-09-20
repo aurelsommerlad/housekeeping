@@ -70,6 +70,29 @@ function CompactReservation({ info, heading, t }: { info: TaskReservationSummary
       {info.childrenCount > 0 ? (
         <p className="text-[11.5px] text-muted">{t('reservation_children_ages_line', { ages: info.childAges.join(', ') })}</p>
       ) : null}
+      {/* Gebuchte Apaleo-Extras (Hund/Babybett) DIESER Reservierung - fachlich getrennt von der
+       * manuell in Housekeeping gesetzten "Vorbereitung" weiter unten (siehe task_prep_title),
+       * deshalb ein eigenes, explizit als "gebucht" gekennzeichnetes Mini-Label statt derselben
+       * Chips wiederzuverwenden. */}
+      {info.hasDog || info.hasCrib ? (
+        <div className="flex flex-col gap-0.5">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted">{t('booked_extras_title')}</p>
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+            {info.hasDog ? (
+              <span className="inline-flex items-center gap-1 text-[12px] text-ink">
+                <DoubleupIcon id="dog" width={13} height={13} aria-hidden="true" />
+                {t('doubleup_dog')}
+              </span>
+            ) : null}
+            {info.hasCrib ? (
+              <span className="inline-flex items-center gap-1 text-[12px] text-ink">
+                <DoubleupIcon id="crib" width={13} height={13} aria-hidden="true" />
+                {t('doubleup_crib')}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <p className="text-[11.5px] text-muted">
         {t('reservation_booked_on')} {info.bookingDate ? formatFullDate(info.bookingDate) : '–'}
       </p>

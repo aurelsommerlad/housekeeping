@@ -85,7 +85,21 @@ import type {
 // auf "Alle" statt auf "Meine Aufgaben". Reine Darstellungs-/Default-Aenderung im oberen Bereich -
 // Task-Ermittlung, Zuweisung, Timer, Pausen, Status, NFC, Reservierungsdaten, Zeiten-Overrides,
 // Extras und das Berechtigungssystem selbst sind unveraendert.
-export const APP_VERSION = '2.10.0';
+// MINOR-Bump (2.10.0 -> 2.11.0): TaskCard-Belegungszeile um gebuchte Apaleo-Extras (Hund/
+// Babybett) erweitert - live gegen alle vier Properties (HUESLE/LAEKE/ALPILA/ALTUS) verifiziert:
+// service.code === 'HUND'/'BABY' ist ueberall identisch. Die Services waren bereits Teil der
+// bestehenden Task-Pipeline (loadReservationsRangeForProperties laedt ohnehin expand=services,
+// siehe hasBookedService() fuer ECI/LCO) - keine zusaetzlichen Apaleo-Requests noetig.
+// ABREISE zeigt ausschliesslich Extras der abreisenden Reservierung, ANREISE ausschliesslich die
+// der ankommenden Folgereservierung (types.ts#TaskReservationSummary.hasDog/hasCrib, je einmal
+// separat pro Reservierung gebildet, tasks.ts#reservationSummary) - niemals vermischt. Die
+// bestehende, manuell in Housekeeping gesetzte "Vorbereitung" (task.doubleupTypes) bleibt eine
+// eigene Datenquelle; TaskCard blendet dort einen Hund-/Babybett-Eintrag aus, wenn derselbe schon
+// als gebuchtes Apaleo-Extra angezeigt wird, damit nie dasselbe Icon doppelt auf einer Karte
+// erscheint. Rein additiv in derselben Zeile (kein neues Layout-Element) - Kartenhoehe fuer jeden
+// geprueften Zustand vor/nach der Aenderung identisch (Playwright-Vergleich). Detailansicht zeigt
+// zusaetzlich "Gebuchte Extras" je Reservierung als eigener, explizit gekennzeichneter Block.
+export const APP_VERSION = '2.11.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
