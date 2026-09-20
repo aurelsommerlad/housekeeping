@@ -122,11 +122,16 @@ export async function loadProperties(): Promise<Property[]> {
   return list.map((p) => ({ code: (p.id || p.code) as string, name: p.name || (p.id || p.code) as string }));
 }
 
+/**
+ * Bugfix: rief frueher direkt `/inventory/v1/units?...&pageSize=500` auf - Apaleo begrenzt
+ * pageSize dokumentiert UND tatsaechlich durchgesetzt auf maximal 200 (siehe apaleoPaged unten),
+ * ein Wert von 500 wird von Apaleo pauschal mit 422 "Invalid value provided" abgelehnt, unabhaengig
+ * von der tatsaechlichen Trefferzahl - dadurch blieb "Apartments" fuer JEDES Property leer. Nutzt
+ * jetzt dieselbe bereits korrekte, paginierte Implementierung wie loadUnitsForProperties() statt
+ * einer zweiten, abweichenden Abfrage.
+ */
 export async function loadUnits(propertyCode: string): Promise<ApaleoUnit[]> {
-  const data = await apaleo<{ units?: ApaleoUnit[]; results?: ApaleoUnit[] }>(
-    `/inventory/v1/units?propertyIds=${encodeURIComponent(propertyCode)}&pageSize=500`,
-  );
-  return data.units || data.results || [];
+  return loadUnitsForProperties([propertyCode]);
 }
 
 function todayISO(): string {
@@ -139,22 +144,31 @@ function addDaysISO(iso: string, n: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/**
+ * Bugfix (live gegen den echten Account reproduziert): rief frueher `from`/`to` als reines Datum
+ * ("2026-09-20" ohne Uhrzeit) auf - Apaleo lehnt das fuer BEIDE Felder mit 422 "Invalid value
+ * provided" ab, dateFilter verlangt einen vollen ISO-8601-Zeitpunkt (siehe bereits bekannter,
+ * identischer Fall bei loadReservationsRangeForProperties oben). Zusaetzlich `pageSize=500` wie
+ * beim ebenfalls gefixten loadUnits() - Apaleo erlaubt maximal 200. Beides zusammen liess
+ * "Apartments" fuer JEDES Property mit 422 fehlschlagen. Nutzt jetzt volle Tagesgrenzen (00:00 UTC
+ * bis 00:00 UTC des Folgetags, exklusive Obergrenze) und die bestehende paginierte apaleoPaged().
+ */
 export async function loadReservations(propertyCode: string): Promise<ReservationsState> {
   const today = todayISO();
   const tomorrow = addDaysISO(today, 1);
+  const dayAfterTomorrow = addDaysISO(tomorrow, 1);
   const p = encodeURIComponent(propertyCode);
+  const extract = (data: Record<string, unknown>) => (data.reservations as ApaleoReservation[]) || (data.results as ApaleoReservation[]);
+  const dayRange = (dayISO: string, nextDayISO: string) =>
+    `from=${encodeURIComponent(`${dayISO}T00:00:00Z`)}&to=${encodeURIComponent(`${nextDayISO}T00:00:00Z`)}`;
+
   const [inHouse, departToday, departTomorrow, arriveToday] = await Promise.all([
-    apaleo<{ reservations?: ApaleoReservation[]; results?: ApaleoReservation[] }>(`/booking/v1/reservations?propertyId=${p}&status=InHouse&pageSize=500`),
-    apaleo<{ reservations?: ApaleoReservation[]; results?: ApaleoReservation[] }>(`/booking/v1/reservations?propertyId=${p}&dateFilter=Departure&from=${today}&to=${today}&status=InHouse,CheckedOut&pageSize=500`),
-    apaleo<{ reservations?: ApaleoReservation[]; results?: ApaleoReservation[] }>(`/booking/v1/reservations?propertyId=${p}&dateFilter=Departure&from=${tomorrow}&to=${tomorrow}&status=InHouse,Confirmed&pageSize=500`),
-    apaleo<{ reservations?: ApaleoReservation[]; results?: ApaleoReservation[] }>(`/booking/v1/reservations?propertyId=${p}&dateFilter=Arrival&from=${today}&to=${today}&status=InHouse,Confirmed&pageSize=500`),
+    apaleoPaged<ApaleoReservation>(`/booking/v1/reservations?propertyId=${p}&status=InHouse`, extract),
+    apaleoPaged<ApaleoReservation>(`/booking/v1/reservations?propertyId=${p}&dateFilter=Departure&${dayRange(today, tomorrow)}&status=InHouse,CheckedOut`, extract),
+    apaleoPaged<ApaleoReservation>(`/booking/v1/reservations?propertyId=${p}&dateFilter=Departure&${dayRange(tomorrow, dayAfterTomorrow)}&status=InHouse,Confirmed`, extract),
+    apaleoPaged<ApaleoReservation>(`/booking/v1/reservations?propertyId=${p}&dateFilter=Arrival&${dayRange(today, tomorrow)}&status=InHouse,Confirmed`, extract),
   ]);
-  return {
-    inHouse: inHouse.reservations || inHouse.results || [],
-    departToday: departToday.reservations || departToday.results || [],
-    departTomorrow: departTomorrow.reservations || departTomorrow.results || [],
-    arriveToday: arriveToday.reservations || arriveToday.results || [],
-  };
+  return { inHouse, departToday, departTomorrow, arriveToday };
 }
 
 // Apaleo begrenzt pageSize dokumentiert auf maximal 200 (verifiziert live). Fuer die neue,

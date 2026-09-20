@@ -42,9 +42,9 @@ export interface ApaleoUnit {
   name?: string;
   condition?: string | { cleaningStatus?: string };
   unitGroup?: { name?: string };
-  /** Nur gesetzt, wenn ueber loadUnitsForProperties() (mehrere Properties gebuendelt) geladen -
-   * die bestehende einzelne loadUnits(propertyCode) braucht das nicht, dort ist die Property
-   * durch den Aufrufkontext ohnehin bekannt. */
+  /** Wird von loadUnits()/loadUnitsForProperties() (beide ueber dieselbe paginierte Abfrage mit
+   * `expand=property`) gesetzt - optional, weil aeltere Aufrufstellen/Tests das Feld nicht
+   * garantieren. */
   property?: { id?: string; code?: string; name?: string };
 }
 
