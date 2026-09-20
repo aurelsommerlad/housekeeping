@@ -33,6 +33,10 @@ interface AppState {
   user: StaffUser | null;
   loginError: string;
   loading: boolean;
+  /** Fehlermeldung, wenn das Laden von Zimmern/Reservierungen fuer die aktive Property
+   * fehlgeschlagen ist (z. B. Apaleo-Fehler) - bleibt sichtbar bis zu einem erfolgreichen
+   * "Erneut versuchen", statt nur als fluechtiger Toast zu verschwinden. */
+  roomsLoadError: string | null;
   properties: Property[];
   activeProperty: string | null;
   units: ApaleoUnit[];
@@ -70,6 +74,7 @@ function initialState(): AppState {
     user: null,
     loginError: '',
     loading: false,
+    roomsLoadError: null,
     properties: [],
     activeProperty: readActiveProperty(),
     units: [],
@@ -131,8 +136,26 @@ export function useHousekeepingApp() {
     const activeProperty = stateRef.current.activeProperty;
     if (!activeProperty) return;
     const [units, reservations] = await Promise.all([loadUnits(activeProperty), loadReservations(activeProperty), loadBackend()]);
-    patch({ units, reservations });
+    patch({ units, reservations, roomsLoadError: null });
   }, [loadBackend, patch]);
+
+  // Faengt Fehler beim Laden von Zimmern/Reservierungen (z. B. ein Apaleo-Fehler fuer die
+  // gewaehlte Property) als dauerhaft sichtbaren Fehlerzustand ab, statt sie unbehandelt aus
+  // selectProperty()/afterLogin() durchschlagen zu lassen - das hielt den Rooms-Screen zuvor
+  // unbegrenzt bei "Lade Daten..." fest, weil der `loading`-Reset danach nie erreicht wurde.
+  const loadRoomsData = useCallback(async () => {
+    try {
+      await refreshAll();
+    } catch (err) {
+      patch({ roomsLoadError: err instanceof Error ? err.message : String(err) });
+    }
+  }, [patch, refreshAll]);
+
+  const retryLoad = useCallback(async () => {
+    patch({ loading: true });
+    await loadRoomsData();
+    patch({ loading: false });
+  }, [loadRoomsData, patch]);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -169,13 +192,13 @@ export function useHousekeepingApp() {
       if (activeProperty) window.localStorage.setItem('hk_active_property', activeProperty);
       patch({ properties, activeProperty });
       stateRef.current = { ...stateRef.current, properties, activeProperty };
-      await refreshAll();
+      await loadRoomsData();
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err));
     }
     patch({ loading: false });
     startPolling();
-  }, [patch, refreshAll, showToast, startPolling]);
+  }, [loadRoomsData, patch, showToast, startPolling]);
 
   const tryRestoreSession = useCallback(async () => {
     patch({ authScreen: 'checking' });
@@ -219,16 +242,16 @@ export function useHousekeepingApp() {
   const doLogout = useCallback(async () => {
     await logoutRequest();
     if (pollRef.current) clearInterval(pollRef.current);
-    patch({ user: null, authScreen: 'login', units: [], detailRoomKey: null });
+    patch({ user: null, authScreen: 'login', units: [], detailRoomKey: null, roomsLoadError: null });
   }, [patch]);
 
   const selectProperty = useCallback(async (code: string) => {
     window.localStorage.setItem('hk_active_property', code);
-    patch({ activeProperty: code, loading: true });
+    patch({ activeProperty: code, loading: true, roomsLoadError: null });
     stateRef.current = { ...stateRef.current, activeProperty: code };
-    await refreshAll();
+    await loadRoomsData();
     patch({ loading: false });
-  }, [patch, refreshAll]);
+  }, [loadRoomsData, patch]);
 
   const setLang = useCallback((lang: Lang) => {
     window.localStorage.setItem('hk_lang', lang);
@@ -424,7 +447,7 @@ export function useHousekeepingApp() {
   return {
     state, t, roomKey,
     rooms, DOUBLEUP_TYPES,
-    setLang, doLogin, doLogout, selectProperty, setActiveNav, setFilter, toggleMyRooms,
+    setLang, doLogin, doLogout, selectProperty, retryLoad, setActiveNav, setFilter, toggleMyRooms,
     toggleMultiSelect, toggleRoomSelection, openRoom, closeModal, showToast,
     assignRoom, unassignRoom, bulkAssign, clearAllAssignments, startTimer, pauseTimer,
     finishClean, completeInspection, toggleDoubleType, finishDoubleup, toggleBreak,

@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/Button';
  * wie zuvor in app.js#visibleRooms.
  */
 export function RoomsScreen({ app }: { app: HousekeepingApp }) {
-  const { state, t, rooms, toggleMyRooms, toggleMultiSelect, setFilter, openRoom, bulkAssign, clearAllAssignments } = app;
+  const { state, t, rooms, toggleMyRooms, toggleMultiSelect, setFilter, openRoom, bulkAssign, clearAllAssignments, retryLoad } = app;
   const [bulkOpen, setBulkOpen] = useState(false);
   const isAdmin = state.user?.role === 'admin';
 
@@ -65,6 +65,13 @@ export function RoomsScreen({ app }: { app: HousekeepingApp }) {
 
       {state.loading && visible.length === 0 ? (
         <div className="px-4 py-10 text-center text-sm text-muted">{t('loading')}</div>
+      ) : state.roomsLoadError ? (
+        <div className="px-4 py-10 text-center">
+          <p className="text-sm text-status-attention">{state.roomsLoadError}</p>
+          <Button className="mt-4" size="sm" onClick={() => retryLoad()}>
+            {t('retry')}
+          </Button>
+        </div>
       ) : visible.length === 0 ? (
         <div className="px-4 py-10 text-center text-sm text-muted">{t('no_rooms')}</div>
       ) : (
