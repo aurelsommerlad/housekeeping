@@ -222,6 +222,16 @@ export function IconPlay(props: IconProps) {
   );
 }
 
+/** Fuer den dezenten Schliessen-Button im Task-Detail-Sheet (Redesign) - schlichtes X statt eines
+ * grossen "Schliessen"-Buttons als vermeintlich wichtigste Aktion der Ansicht. */
+export function IconClose(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
+  );
+}
+
 export const NAV_ICONS = {
   bed: IconBed,
   chart: IconChart,

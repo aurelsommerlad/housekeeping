@@ -23,7 +23,20 @@ import type {
 // TaskCard.tsx) - Task-Ableitung/Zuweisung/Timer/Zeiten-Logik unveraendert; die kompakte Karte
 // ist gegenueber 2.5.0 fuer jeden Aufgabenzustand gleich hoch oder niedriger (Playwright-
 // Hoehenvergleich vor/nach der Aenderung), nie hoeher.
-export const APP_VERSION = '2.6.0';
+// MINOR-Bump (2.6.0 -> 2.7.0): TaskDetailSheet-Redesign - dieselbe Informationshierarchie wie die
+// neue TaskCard statt einer langen, formularartigen Ansicht: kompakter Kopf (Typ-Badge, Zeitfenster
+// prominent mit Edit-Icon statt Textlink, LCO/ECI/Konflikt/Override kompakt mit Tooltip-Detail
+// statt ausgeschriebener Zusatzzeilen), eine schlichte Zuweisungszeile statt "Zugewiesen"-Badge,
+// Reservierungen bei Turnover zweispaltig (Desktop/Tablet) statt hoher Tabelle, Reservierungs-
+// kommentar ohne technisches "|||"-Trennzeichen (nur Darstellung, Apaleo-Originalwert unveraendert),
+// aufklappbarer Reinigungsverlauf, dezenter Schliessen-Button oben rechts statt grossem Button
+// unten, EIN einheitlicher Reinigungsstatus-/Primaeraktion-Block (Start/Pause/Fortsetzen/
+// Abschliessen) statt zweier fast identischer Kopien fuer Admin/Housekeeper - nutzt ausschliesslich
+// die bereits vorhandenen Timer-/Zuweisungs-Funktionen, jetzt auch fuer Admin/Standortverantwortliche
+// sichtbar (der Server erlaubte startTimer/stopTimer/release fuer sie bereits zuvor, siehe
+// api/task-assignments.js, nur die UI zeigte dafuer bislang keinen Button). Reine Darstellung -
+// Task-Ableitung, Zuweisung, Timer, Pausen, NFC, Notices und Zeiten-Overrides unveraendert.
+export const APP_VERSION = '2.7.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
