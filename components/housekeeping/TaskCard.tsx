@@ -94,7 +94,7 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
       ) : null}
 
       <div className="flex items-start justify-between gap-2 pr-6">
-        <span className="font-heading italic text-[17px] leading-none text-ink">
+        <span className="italic text-[17px] leading-none text-ink">
           {task.unitName} <span className="text-muted">· {task.propertyName}</span>
         </span>
         {noticeState === 'unread' ? (

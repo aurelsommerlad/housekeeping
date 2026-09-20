@@ -9,7 +9,7 @@ export interface StatsScreenProps {
 function StatTile({ value, label }: { value: string | number; label: string }) {
   return (
     <div className="flex-1 rounded-card-lg border border-line bg-warm-white px-3 py-4 text-center">
-      <p className="font-heading text-2xl italic text-ink">{value}</p>
+      <p className="text-2xl italic text-ink">{value}</p>
       <p className="mt-1 text-[11.5px] text-muted">{label}</p>
     </div>
   );

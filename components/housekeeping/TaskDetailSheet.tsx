@@ -367,7 +367,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                 >
                   {t('elapsed')}
                 </p>
-                <p className="mt-0.5 font-heading text-3xl tabular-nums text-ink">{formatDuration(task.elapsedSeconds)}</p>
+                <p className="mt-0.5 text-3xl tabular-nums text-ink">{formatDuration(task.elapsedSeconds)}</p>
               </div>
             ) : null}
 
@@ -410,7 +410,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                 >
                   {t('elapsed')}
                 </p>
-                <p className="mt-0.5 font-heading text-3xl tabular-nums text-ink">{formatDuration(task.elapsedSeconds)}</p>
+                <p className="mt-0.5 text-3xl tabular-nums text-ink">{formatDuration(task.elapsedSeconds)}</p>
               </div>
             ) : null}
 

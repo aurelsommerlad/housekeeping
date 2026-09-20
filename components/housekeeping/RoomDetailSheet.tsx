@@ -58,7 +58,7 @@ export function RoomDetailSheet({ app, room }: RoomDetailSheetProps) {
       {showTimer ? (
         <div className="mt-4 rounded-control border border-status-progress/30 bg-status-progress-bg px-4 py-3 text-center">
           <p className="text-[11.5px] font-medium uppercase tracking-wide text-status-progress">{t('elapsed')}</p>
-          <p className="mt-0.5 font-heading text-3xl tabular-nums text-ink">{formatDuration(room.elapsed)}</p>
+          <p className="mt-0.5 text-3xl tabular-nums text-ink">{formatDuration(room.elapsed)}</p>
         </div>
       ) : null}
 

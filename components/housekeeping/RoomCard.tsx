@@ -51,7 +51,7 @@ export function RoomCard({ room, lang, selected, selectable, onOpen }: RoomCardP
       ) : null}
 
       <div className="flex items-start justify-between gap-2 pr-6">
-        <span className="font-heading text-[19px] leading-none text-ink">{room.number}</span>
+        <span className="text-[19px] leading-none text-ink">{room.number}</span>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">

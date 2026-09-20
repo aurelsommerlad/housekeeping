@@ -11,7 +11,7 @@ import { AUTH_INPUT_CLASS, AUTH_LABEL_CLASS } from '@/components/ui/authFieldSty
  * Login-Bildschirm des Housekeeping-Bereichs - Klassen 1:1 aus dem echten Owner-Center-Code
  * uebernommen (src/app/login/page.tsx + LoginForm.tsx dort), nicht nur nach Screenshot
  * angenaehert: Wortmarke + Unterzeile ausserhalb der Karte, freistehende Karte (rounded-3xl,
- * shadow-soft-lg -> hier rounded-card-lg/shadow-card-lg), kursive Fraunces-Ueberschrift,
+ * shadow-soft-lg -> hier rounded-card-lg/shadow-card-lg), kursive Ueberschrift,
  * kleine getrackte Feld-Labels, Felder in rounded-xl (hier rounded-control) mit derselben
  * Flaeche wie die Seite, Button voll gerundet mit Opacity-Hover statt Farbwechsel.
  * Der im Referenz-Screenshot sichtbare hellblaue Feld-Hintergrund ist Browser-Autofill, kein

@@ -1,24 +1,16 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, Fraunces } from 'next/font/google';
+import { Inter } from 'next/font/google';
 import './globals.css';
 
 /**
- * UNIQUE-PLACES-Typografie - 1:1 aus dem tatsaechlichen Owner-Center-Quellcode uebernommen
- * (src/app/layout.tsx dort: Inter fuer Flies-/UI-Text, Fraunces fuer Ueberschriften/Display,
- * inkl. Kursivschnitt fuer z. B. den Login-Titel). Self-hosted via next/font, als CSS-Variablen
- * exponiert, die app/globals.css' `--font-heading` / `--font-sans`-Tokens fuettern.
+ * UNIQUE-PLACES-Typografie: Inter fuer den gesamten Flies-/UI-Text (inkl. der kursiven
+ * Ueberschriften wie dem Login-Titel - Inter ist eine Variable Font mit eigenem Kursivschnitt,
+ * daher genuegt die Tailwind-`italic`-Utility ohne separate Ueberschriftenschrift). Self-hosted
+ * via next/font, als CSS-Variable exponiert, die app/globals.css' `--font-sans`-Token fuettert.
  */
 const inter = Inter({
   variable: '--font-inter',
   subsets: ['latin'],
-  display: 'swap',
-});
-
-const fraunces = Fraunces({
-  variable: '--font-fraunces',
-  subsets: ['latin'],
-  weight: ['400', '500'],
-  style: ['normal', 'italic'],
   display: 'swap',
 });
 
@@ -47,7 +39,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="de" className={`${inter.variable} ${fraunces.variable}`}>
+    <html lang="de" className={inter.variable}>
       <body>{children}</body>
     </html>
   );
