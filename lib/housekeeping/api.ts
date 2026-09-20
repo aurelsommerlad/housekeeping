@@ -67,7 +67,25 @@ import type {
 // "Schliessen"-Button am Ende wurde entfernt (Header-X/Backdrop schliessen weiterhin). Vertikale
 // Abstaende zwischen den Abschnitten vereinheitlicht/reduziert. Reservierungsdaten, Zeiten,
 // Turnover-Logik und der bereits ueberarbeitete obere Teil der Detailansicht sind unveraendert.
-export const APP_VERSION = '2.9.0';
+// MINOR-Bump (2.9.0 -> 2.10.0): oberer Bereich der Aufgabenplanung (Header + TasksScreen)
+// kompakter, damit die erste Aufgabenkarte auf dem Smartphone moeglichst ohne Scrollen sichtbar
+// ist. Header zeigt "Housekeeping" (Appname) statt der einzelnen aktiven Property - der Standort
+// wird ausschliesslich ueber den Standortfilter dargestellt; Sprachauswahl aus dem Header entfernt
+// (lebt bereits im Profilmenue/SettingsSheet), Pause kompakt als "[Pause]"/"[In Pause]". In
+// TasksScreen: "Meine Aufgaben"/"Alle"/Standortfilter zu einer Chip-Zeile zusammengefuehrt (fuer
+// Admin/Standortverantwortliche ohne "Meine Aufgaben", passend zu ihrem Alle-Standardeinstieg);
+// Tagesnavigation zeigt fuer die hinteren beiden Tage konkrete Wochentag+Datum-Labels statt "+N
+// Tage"; der lange Status-Aufzaehlungssatz wurde durch eine kompakte Kennzahlenzeile ersetzt
+// (Werte mit 0 ausgeblendet, voller Satz bleibt fuer Screenreader erhalten); Mehrfachauswahl/
+// "Zuweisungen dieses Tages aufheben" leben jetzt hinter "Auswaehlen"/"Weitere Aktionen" statt
+// dauerhaft sichtbarer Buttons; Team-Auslastung ist per Default eingeklappt (kompakte
+// Ein-Zeilen-Zusammenfassung) und fuer normale Housekeeper weiterhin komplett ausgeblendet.
+// Zusaetzlich: der initiale "Meine Aufgaben ja/nein"-Default beruecksichtigt jetzt auch
+// Standortverantwortliche ohne Admin-Rolle (managedProperties nicht leer) - sie starten wie Admin
+// auf "Alle" statt auf "Meine Aufgaben". Reine Darstellungs-/Default-Aenderung im oberen Bereich -
+// Task-Ermittlung, Zuweisung, Timer, Pausen, Status, NFC, Reservierungsdaten, Zeiten-Overrides,
+// Extras und das Berechtigungssystem selbst sind unveraendert.
+export const APP_VERSION = '2.10.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

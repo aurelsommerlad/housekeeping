@@ -1,7 +1,5 @@
 'use client';
 
-import { LANGUAGES } from '@/lib/housekeeping/i18n';
-import { APP_VERSION, getPropertyDisplayName } from '@/lib/housekeeping/api';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { IconSearch, IconUser } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
@@ -15,22 +13,21 @@ export interface StaffHeaderProps {
 }
 
 /**
- * Kompakter Header (Briefing Punkt 3): Marke bleibt klein, dafuer traegt der Header die fuer den
- * Arbeitstag relevanten Infos - aktuelles Haus, Datum, angemeldete Person, Sprache. Bewusst zwei
- * schmale Zeilen statt einer grossen, um auf dem Smartphone moeglichst viel Platz fuer den
- * eigentlichen Inhalt zu lassen.
- *
- * Der Profil-Button oeffnet das SettingsSheet (Profil/Regeln[nur Admin]/Sprache/Version/Abmelden)
- * - ersetzt den bisherigen alleinstehenden Logout-Button, damit selten benoetigte Funktionen
- * (allen voran "Regeln") nicht laenger als gleichwertige Hauptpunkte erscheinen.
+ * Kompakter Header (Refactoring "oberer Bereich"): zeigt die App-Bezeichnung statt der einzelnen
+ * aktiven Property (die ergibt an dieser Stelle keinen Sinn mehr, sobald direkt darunter ein
+ * eigener Standortfilter folgt - siehe TasksScreen) - der Standort wird ausschliesslich ueber
+ * diesen Filter dargestellt. Sprachauswahl lebt jetzt ausschliesslich im Profilmenue
+ * (SettingsSheet, ueber den Profil-Button hier), nicht mehr dauerhaft im Header - reine
+ * Verlagerung, die Mehrsprachigkeit selbst ist unveraendert. Bewusst zwei schmale Zeilen statt
+ * einer grossen, um auf dem Smartphone moeglichst viel Platz fuer den eigentlichen Inhalt
+ * (Aufgabenliste) zu lassen - das ist das primaere Ziel dieses Refactorings.
  */
 export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderProps) {
-  const { state, t, setLang, toggleBreak } = app;
-  const activeProperty = state.properties.find((p) => p.code === state.activeProperty);
+  const { state, t, toggleBreak } = app;
   const dateLabel = new Intl.DateTimeFormat(LOCALES[state.lang] || 'de-DE', {
     weekday: 'short',
     day: '2-digit',
-    month: '2-digit',
+    month: 'long',
   }).format(new Date());
 
   return (
@@ -38,19 +35,20 @@ export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderPr
       <div className="flex items-center justify-between gap-2 py-2">
         <div className="min-w-0 leading-none">
           <p className="brand-wordmark text-[10px] font-semibold tracking-[0.18em] text-muted">UNIQUE PLACES</p>
-          <p className="mt-1 truncate text-[15px] font-medium text-ink">{activeProperty ? getPropertyDisplayName(activeProperty) : t('select_property')}</p>
+          <p className="mt-1 truncate text-[15px] font-medium text-ink">{t('app_name')}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {state.user?.role !== 'admin' ? (
             <button
               type="button"
               onClick={toggleBreak}
+              aria-label={state.onBreak ? t('break_end') : t('break_start')}
               className={cn(
                 'inline-flex h-8 items-center rounded-full border px-3 text-[12px] font-medium transition-colors',
                 state.onBreak ? 'border-status-attention/30 bg-status-attention-bg text-status-attention' : 'border-line bg-warm-white text-muted',
               )}
             >
-              {state.onBreak ? t('break_end') : t('break_start')}
+              {state.onBreak ? t('on_break') : t('break_toggle_label')}
             </button>
           ) : null}
           {state.user?.role === 'admin' ? (
@@ -73,26 +71,9 @@ export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderPr
           </button>
         </div>
       </div>
-      <div className="flex items-center justify-between gap-2 pb-2 text-[12px] text-muted">
-        <span className="truncate">
-          {state.user?.name} · {state.user?.role === 'admin' ? t('role_admin') : t('role_housekeeper')} · {dateLabel} · v{APP_VERSION}
-        </span>
-        <div className="flex shrink-0 gap-1">
-          {LANGUAGES.map((l) => (
-            <button
-              key={l}
-              type="button"
-              onClick={() => setLang(l)}
-              className={cn(
-                'rounded-full px-1.5 py-0.5 text-[10.5px] font-semibold uppercase transition-colors',
-                state.lang === l ? 'bg-ink text-warm-white' : 'text-muted hover:text-ink',
-              )}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
-      </div>
+      <p className="truncate pb-2 text-[12px] text-muted">
+        {state.user?.name} · {dateLabel}
+      </p>
     </header>
   );
 }

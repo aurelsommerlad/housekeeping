@@ -30,6 +30,7 @@ import {
   taskAssignmentsApi, taskNoticesApi, taskTimeOverridesApi, usersApi,
 } from './api';
 import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './rooms';
+import { managedPropertyCodes } from './permissions';
 import {
   buildTasks, capacityForDay, daySummary, requiresInspection, resolveTasks, sortTasksForDay,
   type ResolvedTask,
@@ -320,11 +321,13 @@ export function useHousekeepingApp() {
       let activeProperty = stateRef.current.activeProperty;
       if (!activeProperty || !allowed.includes(activeProperty)) activeProperty = allowed[0] || null;
       if (activeProperty) window.localStorage.setItem('hk_active_property', activeProperty);
-      // Punkt 3: Admin startet auf "Alle Standorte", Housekeeper (inkl. Standortverantwortliche,
-      // die bleiben gleichzeitig normale Reinigungskraft) auf "Meine Aufgaben".
+      // Punkt 3/6: Admin UND Standortverantwortliche (managedProperties nicht leer) starten auf
+      // "Alle" (Ueberblick ueber ihr Team/ihre Haeuser), eine normale Reinigungskraft ohne eigene
+      // Standortverantwortung auf "Meine Aufgaben".
       const isAdminUser = stateRef.current.user?.role === 'admin';
-      patch({ properties, activeProperty, myTasksOnly: !isAdminUser, propertyScope: 'all' });
-      stateRef.current = { ...stateRef.current, properties, activeProperty, myTasksOnly: !isAdminUser, propertyScope: 'all' };
+      const isManagerUser = isAdminUser || managedPropertyCodes(stateRef.current.user, allowed).length > 0;
+      patch({ properties, activeProperty, myTasksOnly: !isManagerUser, propertyScope: 'all' });
+      stateRef.current = { ...stateRef.current, properties, activeProperty, myTasksOnly: !isManagerUser, propertyScope: 'all' };
       await loadTasksData();
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err));
