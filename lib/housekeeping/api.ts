@@ -15,12 +15,10 @@ import type { ApaleoReservation, ApaleoUnit, AssignmentsState, DoubleupsState, C
 // 1:1 aus app.js uebernommen (dort als APP_VERSION direkt in Header/Login-Screen angezeigt).
 export const APP_VERSION = '2.0.0';
 
-// Apaleo-Hauscode -> Anzeigename. Beim Kunden-Rollout ersetzen.
-export const PROPERTY_NAMES: Record<string, string> = {
-  BER01: 'Berlin Mitte',
-  MUC02: 'Muenchen Zentrum',
-  HAM03: 'Hamburg Hafen',
-};
+// Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
+// Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
+// dazu fuehren, dass eine von Apaleo gelieferte Property verschwindet, siehe loadProperties().
+export const PROPERTY_NAMES: Record<string, string> = {};
 
 export interface DoubleupTypeDef {
   id: string;
@@ -71,8 +69,11 @@ export async function loadProperties(): Promise<Property[]> {
   const data = await apaleo<{ properties?: { id?: string; code?: string; name?: string }[]; results?: { id?: string; code?: string; name?: string }[] }>(
     '/inventory/v1/properties?pageSize=200',
   );
-  const list = (data.properties || data.results || []).filter((p) => PROPERTY_NAMES[(p.id || p.code) as string]);
-  return list.map((p) => ({ code: (p.id || p.code) as string, name: PROPERTY_NAMES[(p.id || p.code) as string] || p.name || '' }));
+  const list = data.properties || data.results || [];
+  return list.map((p) => {
+    const code = (p.id || p.code) as string;
+    return { code, name: PROPERTY_NAMES[code] || p.name || code };
+  });
 }
 
 export async function loadUnits(propertyCode: string): Promise<ApaleoUnit[]> {
