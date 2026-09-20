@@ -22,7 +22,7 @@ import type {
 // rein additiv (neue Task-Felder reservationInfo/nextReservationInfo, keine neuen Redis-Keys,
 // keine Aenderung bestehender Datenformate). Die kompakte Task Card behaelt ihre bisherige
 // Groesse (dieselbe Zeile wird nur inhaltlich angereichert, siehe TaskCard.tsx).
-export const APP_VERSION = '2.4.0';
+export const APP_VERSION = '2.5.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

@@ -46,7 +46,9 @@ function nfcUnitKey(propertyCode: string, unitId: string): string {
 }
 
 export type AuthScreen = 'checking' | 'login' | 'app';
-export type NavId = 'tasks' | 'rooms' | 'stats' | 'team';
+// 'settings' ist bewusst KEIN Bottom-Nav-Eintrag (siehe StaffNavBar#ITEMS) - nur ueber das
+// Profilmenue (SettingsSheet) erreichbar, analog zu 'team' aber ohne eigenen Tab.
+export type NavId = 'tasks' | 'rooms' | 'stats' | 'team' | 'settings';
 
 interface AppState {
   authScreen: AuthScreen;

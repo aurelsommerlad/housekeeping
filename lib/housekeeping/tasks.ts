@@ -19,16 +19,20 @@ import type {
   TaskReservationSummary, TaskStatus, TaskTimeOverride, TaskTimeOverridesState, TaskType,
 } from './types';
 
-/** Standardzeiten (Prioritaet 3, ohne gebuchtes Extra/Override) - siehe Briefing Punkt 1. */
-const STANDARD_DEPARTURE_TIME = '10:00';
-const STANDARD_ARRIVAL_TIME = '16:00';
+/** Standardzeiten (Prioritaet 3, ohne gebuchtes Extra/Override) - siehe Briefing Punkt 1.
+ * EXPORTIERT, damit die Einstellungen-Seite (StandardTimesScreen.tsx) exakt diese Werte rein
+ * informativ anzeigen kann, statt sie dort ein zweites Mal als Literal zu duplizieren - EINE
+ * Quelle der Wahrheit fuer diese Business Rule (siehe Briefing "Standardzeiten": bewusst noch
+ * keine dynamische Konfigurationsquelle daneben). */
+export const STANDARD_DEPARTURE_TIME = '10:00';
+export const STANDARD_ARRIVAL_TIME = '16:00';
 /** Late Check-out/Early Check-in verschieben die jeweilige Zeit auf 13:00 (Prioritaet 2) - die
  * Stunde selbst steht bei Apaleo NICHT strukturiert am gebuchten Service (live verifiziert: weder
  * am Service noch an der gebuchten Instanz existiert ein Zeitfeld, nur ein Datum), sondern ist
  * eine reine UNIQUE-PLACES-Geschaeftsregel (siehe Service-Beschreibungstext "bis maximal/fruehestens
  * ab 13:00 Uhr") - deshalb hier bewusst als benannte Konstante hinterlegt statt aus Apaleo geraten.
  */
-const EXTRA_TIME = '13:00';
+export const EXTRA_TIME = '13:00';
 
 /** Apaleo-Servicecode ('ECI'/'LCO') statt `id` (property-praefigiert, z. B. "LAEKE-LCO") oder
  * `name`/`description` (Freitext, siehe HUESLE-OTHER-Decoy in der Recherche) - property-

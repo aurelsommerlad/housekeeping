@@ -9,6 +9,7 @@ import { TasksScreen } from '@/components/housekeeping/TasksScreen';
 import { RoomsScreen } from '@/components/housekeeping/RoomsScreen';
 import { StatsScreen } from '@/components/housekeeping/StatsScreen';
 import { TeamScreen } from '@/components/housekeeping/TeamScreen';
+import { SettingsScreen } from '@/components/housekeeping/SettingsScreen';
 import { RoomDetailSheet } from '@/components/housekeeping/RoomDetailSheet';
 import { SettingsSheet } from '@/components/housekeeping/SettingsSheet';
 import { ReservationSearchSheet } from '@/components/housekeeping/ReservationSearchSheet';
@@ -71,6 +72,7 @@ export default function HousekeepingPage() {
         ) : null}
         {state.activeNav === 'stats' ? <StatsScreen app={app} /> : null}
         {state.activeNav === 'team' ? <TeamScreen app={app} /> : null}
+        {state.activeNav === 'settings' && state.user?.role === 'admin' ? <SettingsScreen app={app} /> : null}
       </main>
 
       <StaffNavBar app={app} />
