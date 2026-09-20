@@ -9,6 +9,15 @@
  * Ein `stateRef` haelt immer den aktuellen Stand, damit asynchrone Aktionen (wie zuvor ueber
  * das mutable `S`-Objekt) nach einem `await` den frischesten Stand lesen, statt auf einen
  * veralteten geschlossenen Wert hereinzufallen.
+ *
+ * NEU (Konzept-Erweiterung "Reinigungsplanung"): Die App denkt nicht mehr primaer Property ->
+ * Zimmer -> aktueller Zustand, sondern Datum -> Reinigungsauftraege -> Zuweisung -> Durchfuehrung
+ * (siehe lib/housekeeping/tasks.ts). Das ist eine ADDITIVE Erweiterung - die bisherige, komplett
+ * unveraendert erhaltene Rooms-/Assignments-/Timer-/Doubleup-Logik (state.units/reservations/
+ * assignments/rooms()) bleibt vollstaendig bestehen und treibt jetzt die sekundaere "Alle
+ * Apartments"-Ansicht (weiterhin fuer genau eine aktive Property). Die neue Planungsebene
+ * (state.planningUnits/planningReservations/taskAssignments/tasks()) ist ein eigener,
+ * standortuebergreifender Datenfluss daneben.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Lang } from './i18n';
@@ -16,16 +25,21 @@ import { translate } from './i18n';
 import { fetchMe, login as loginRequest, logout as logoutRequest } from './auth';
 import {
   DOUBLEUP_TYPES, POLL_INTERVAL, assignmentsApi, breaksApi, completionsApi, doubleupsApi,
-  loadBackendState, loadProperties, loadReservations, loadUnits, setUnitCondition, usersApi,
+  loadBackendState, loadProperties, loadReservations, loadReservationsRangeForProperties,
+  loadTaskAssignments, loadUnits, loadUnitsForProperties, setUnitCondition, taskAssignmentsApi, usersApi,
 } from './api';
-import { allowedProperties, buildRooms, roomKey } from './rooms';
+import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './rooms';
+import {
+  buildTasks, capacityForDay, daySummary, requiresInspection, resolveTasks, sortTasksForDay,
+  type ResolvedTask,
+} from './tasks';
 import type {
-  ApaleoUnit, AssignmentsState, BreakEntry, Completion, DoubleupsState, Property, ReservationsState,
-  Room, RoomFilter, StaffUser,
+  ApaleoReservation, ApaleoUnit, AssignmentsState, BreakEntry, CapacityEntry, Completion, DaySummary, DoubleupsState,
+  Property, ReservationsState, Room, RoomFilter, StaffUser, TaskAssignmentsState,
 } from './types';
 
 export type AuthScreen = 'checking' | 'login' | 'app';
-export type NavId = 'rooms' | 'doubleup' | 'stats' | 'rules' | 'team';
+export type NavId = 'tasks' | 'rooms' | 'stats' | 'team';
 
 interface AppState {
   authScreen: AuthScreen;
@@ -55,6 +69,24 @@ interface AppState {
   toast: string | null;
   now: number;
   activeNav: NavId;
+
+  // --- Reinigungsplanung (Heute+3, standortuebergreifend) ---
+  /** Die 4 betrachteten Kalendertage [heute, heute+1, heute+2, heute+3]. */
+  planningDays: string[];
+  /** Einer von planningDays - welcher Tag gerade in der Aufgaben-Ansicht sichtbar ist. */
+  selectedDay: string;
+  /** 'all' = Alle Standorte (innerhalb der eigenen Berechtigung), sonst ein Property-Code. */
+  propertyScope: string;
+  /** Default true fuer Housekeeper ("Meine Aufgaben"), false fuer Admin ("Alle Standorte") -
+   * siehe afterLogin(). */
+  myTasksOnly: boolean;
+  planningUnits: ApaleoUnit[];
+  planningReservations: ApaleoReservation[];
+  taskAssignments: TaskAssignmentsState;
+  tasksLoadError: string | null;
+  taskMultiSelect: boolean;
+  selectedTasks: Set<string>;
+  detailTaskId: string | null;
 }
 
 function readLang(): Lang {
@@ -92,7 +124,19 @@ function initialState(): AppState {
     onBreak: false,
     toast: null,
     now: Date.now(),
-    activeNav: 'rooms',
+    activeNav: 'tasks',
+
+    planningDays: [],
+    selectedDay: todayISO(),
+    propertyScope: 'all',
+    myTasksOnly: true,
+    planningUnits: [],
+    planningReservations: [],
+    taskAssignments: {},
+    tasksLoadError: null,
+    taskMultiSelect: false,
+    selectedTasks: new Set(),
+    detailTaskId: null,
   };
 }
 
@@ -157,25 +201,77 @@ export function useHousekeepingApp() {
     patch({ loading: false });
   }, [loadRoomsData, patch]);
 
+  // --- Reinigungsplanung: Datenfluss ---
+  // Laedt Units + Reservierungen fuer Heute+3 gebuendelt ueber ALLE im aktuellen Scope
+  // (propertyScope) erlaubten Properties (siehe api.ts#loadUnitsForProperties/
+  // loadReservationsRangeForProperties - je EIN Request statt einem pro Property/Tag/Unit,
+  // Punkt 30/31). tasks() leitet daraus bei jedem Render die eigentlichen Auftraege ab (siehe
+  // lib/housekeeping/tasks.ts), analog zu rooms()/buildRooms() oben.
+  const loadPlanningData = useCallback(async () => {
+    const user = stateRef.current.user;
+    const properties = stateRef.current.properties;
+    const propertyScope = stateRef.current.propertyScope;
+    const allowed = allowedProperties(user, properties.map((p) => p.code));
+    const scopeCodes = propertyScope === 'all' ? allowed : (allowed.includes(propertyScope) ? [propertyScope] : []);
+    const today = todayISO();
+    const days = [0, 1, 2, 3].map((n) => addDaysISO(today, n));
+    if (scopeCodes.length === 0) {
+      patch({ planningUnits: [], planningReservations: [], taskAssignments: {}, planningDays: days });
+      return;
+    }
+    const [units, reservations, taskAssignments] = await Promise.all([
+      loadUnitsForProperties(scopeCodes),
+      loadReservationsRangeForProperties(scopeCodes, days[0], days[3]),
+      loadTaskAssignments(),
+      loadBackend(),
+    ]);
+    patch({ planningUnits: units, planningReservations: reservations, taskAssignments, planningDays: days });
+  }, [loadBackend, patch]);
+
+  // Gleiches Muster wie loadRoomsData/roomsLoadError oben, fuer die jetzt primaere
+  // Aufgaben-Ansicht: ein fehlgeschlagener Request haengt nie unbegrenzt bei "Lade Daten...",
+  // sondern zeigt eine dauerhafte Fehlermeldung mit Retry.
+  const loadTasksData = useCallback(async () => {
+    try {
+      await loadPlanningData();
+      patch({ tasksLoadError: null });
+    } catch (err) {
+      patch({ tasksLoadError: err instanceof Error ? err.message : String(err) });
+    }
+  }, [loadPlanningData, patch]);
+
+  const retryTasksLoad = useCallback(async () => {
+    patch({ loading: true });
+    await loadTasksData();
+    patch({ loading: false });
+  }, [loadTasksData, patch]);
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startPolling = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(() => {
-      if (!stateRef.current.user || !stateRef.current.activeProperty || document.hidden) return;
-      refreshAll().catch(() => {});
+      if (!stateRef.current.user || document.hidden) return;
+      // Nur die gerade sichtbare Ansicht aktualisieren (Punkt 31: keine unnoetigen Requests).
+      if (stateRef.current.activeNav === 'tasks') {
+        loadTasksData();
+      } else if (stateRef.current.activeNav === 'rooms' && stateRef.current.activeProperty) {
+        refreshAll().catch(() => {});
+      }
     }, POLL_INTERVAL);
     if (!tickRef.current) {
-      // Wie zuvor in app.js: der Sekunden-Tick (fuer den laufenden Timer) rendert nur neu, wenn
-      // die Zimmerliste oder das Zimmer-Detail sichtbar ist - auf Team/Regeln/Statistik ist der
-      // Tick fuer die Anzeige irrelevant.
+      // Wie zuvor in app.js: der Sekunden-Tick (fuer laufende Timer) rendert nur neu, wenn eine
+      // Ansicht mit sichtbarem Timer aktiv ist - auf Team/Statistik ist der Tick irrelevant.
       tickRef.current = setInterval(() => {
-        if (stateRef.current.activeNav === 'rooms' || stateRef.current.detailRoomKey) {
+        if (
+          stateRef.current.activeNav === 'rooms' || stateRef.current.activeNav === 'tasks' ||
+          stateRef.current.detailRoomKey || stateRef.current.detailTaskId
+        ) {
           patch({ now: Date.now() });
         }
       }, 1000);
     }
-  }, [patch, refreshAll]);
+  }, [loadTasksData, patch, refreshAll]);
 
   useEffect(() => () => {
     if (pollRef.current) clearInterval(pollRef.current);
@@ -183,22 +279,25 @@ export function useHousekeepingApp() {
   }, []);
 
   const afterLogin = useCallback(async () => {
-    patch({ authScreen: 'app', activeNav: 'rooms', loading: true });
+    patch({ authScreen: 'app', activeNav: 'tasks', loading: true });
     try {
       const properties = await loadProperties();
       const allowed = allowedProperties(stateRef.current.user, properties.map((p) => p.code));
       let activeProperty = stateRef.current.activeProperty;
       if (!activeProperty || !allowed.includes(activeProperty)) activeProperty = allowed[0] || null;
       if (activeProperty) window.localStorage.setItem('hk_active_property', activeProperty);
-      patch({ properties, activeProperty });
-      stateRef.current = { ...stateRef.current, properties, activeProperty };
-      await loadRoomsData();
+      // Punkt 3: Admin startet auf "Alle Standorte", Housekeeper (inkl. Standortverantwortliche,
+      // die bleiben gleichzeitig normale Reinigungskraft) auf "Meine Aufgaben".
+      const isAdminUser = stateRef.current.user?.role === 'admin';
+      patch({ properties, activeProperty, myTasksOnly: !isAdminUser, propertyScope: 'all' });
+      stateRef.current = { ...stateRef.current, properties, activeProperty, myTasksOnly: !isAdminUser, propertyScope: 'all' };
+      await loadTasksData();
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err));
     }
     patch({ loading: false });
     startPolling();
-  }, [loadRoomsData, patch, showToast, startPolling]);
+  }, [loadTasksData, patch, showToast, startPolling]);
 
   const tryRestoreSession = useCallback(async () => {
     patch({ authScreen: 'checking' });
@@ -242,7 +341,10 @@ export function useHousekeepingApp() {
   const doLogout = useCallback(async () => {
     await logoutRequest();
     if (pollRef.current) clearInterval(pollRef.current);
-    patch({ user: null, authScreen: 'login', units: [], detailRoomKey: null, roomsLoadError: null });
+    patch({
+      user: null, authScreen: 'login', units: [], detailRoomKey: null, roomsLoadError: null,
+      planningUnits: [], planningReservations: [], taskAssignments: {}, tasksLoadError: null, detailTaskId: null,
+    });
   }, [patch]);
 
   const selectProperty = useCallback(async (code: string) => {
@@ -259,7 +361,7 @@ export function useHousekeepingApp() {
   }, [patch]);
 
   const setActiveNav = useCallback((id: NavId) => {
-    patch({ activeNav: id, multiSelect: false, selectedRooms: new Set() });
+    patch({ activeNav: id, multiSelect: false, selectedRooms: new Set(), taskMultiSelect: false, selectedTasks: new Set() });
   }, [patch]);
 
   const setFilter = useCallback((filter: RoomFilter) => patch({ filter }), [patch]);
@@ -444,6 +546,194 @@ export function useHousekeepingApp() {
     });
   }, [loadBackend, runAction]);
 
+  // --- Reinigungsplanung: abgeleitete Auswahl + Aktionen ---
+
+  // Liest bewusst `state` (nicht stateRef), siehe Begruendung bei rooms()/t() oben.
+  const resolvedTasksAll = useCallback((): ResolvedTask[] => {
+    const propertyNames = Object.fromEntries(state.properties.map((p) => [p.code, p.name]));
+    const today = state.planningDays[0] || todayISO();
+    const raw = buildTasks({
+      propertyNames, units: state.planningUnits, reservations: state.planningReservations,
+      doubleups: state.doubleups, days: state.planningDays, today,
+    });
+    return resolveTasks(raw, state.taskAssignments, state.now);
+  }, [state.properties, state.planningUnits, state.planningReservations, state.doubleups, state.planningDays, state.taskAssignments, state.now]);
+
+  /** Aufgaben eines Tages, ungefiltert von "Meine Aufgaben" - fuer Tageszusammenfassung/
+   * Kapazitaetsuebersicht, die immer den vollen Stand des Tages zeigen sollen. */
+  const tasksForDayAll = useCallback((date: string): ResolvedTask[] => {
+    return resolvedTasksAll().filter((task) => task.date === date);
+  }, [resolvedTasksAll]);
+
+  /** Sichtbare, priorisierte Aufgabenliste fuer die Aufgaben-Ansicht - respektiert
+   * "Meine Aufgaben" (Punkt 3/14). */
+  const tasksForDay = useCallback((date: string): ResolvedTask[] => {
+    const all = tasksForDayAll(date);
+    const scoped = state.myTasksOnly && state.user ? all.filter((task) => task.assignedUserId === state.user!.id) : all;
+    return sortTasksForDay(scoped);
+  }, [state.myTasksOnly, state.user, tasksForDayAll]);
+
+  const daySummaryFor = useCallback((date: string): DaySummary => daySummary(date, tasksForDayAll(date)), [tasksForDayAll]);
+  const capacityFor = useCallback((date: string): CapacityEntry[] => capacityForDay(date, tasksForDayAll(date)), [tasksForDayAll]);
+
+  /** Aktuelle Tagesbelastung je Housekeeper fuer EIN konkretes Property (Punkt 20) - anders als
+   * capacityFor() (ganzer Scope) auf genau das Property des gerade betrachteten Tasks
+   * eingegrenzt, damit die "Zuweisen an"-Ansicht die richtige Auslastung fuer dieses Haus zeigt. */
+  const workloadForPropertyDay = useCallback((propertyCode: string, date: string): Record<string, number> => {
+    const workload: Record<string, number> = {};
+    for (const task of tasksForDayAll(date)) {
+      if (task.propertyCode !== propertyCode || !task.assignedUserId) continue;
+      workload[task.assignedUserId] = (workload[task.assignedUserId] || 0) + 1;
+    }
+    return workload;
+  }, [tasksForDayAll]);
+
+  const selectDay = useCallback((date: string) => {
+    patch({ selectedDay: date, taskMultiSelect: false, selectedTasks: new Set() });
+  }, [patch]);
+
+  const selectPropertyScope = useCallback(async (scope: string) => {
+    patch({ propertyScope: scope, loading: true, taskMultiSelect: false, selectedTasks: new Set() });
+    stateRef.current = { ...stateRef.current, propertyScope: scope };
+    await loadTasksData();
+    patch({ loading: false });
+  }, [loadTasksData, patch]);
+
+  const toggleMyTasksOnly = useCallback(() => patch((s) => ({ myTasksOnly: !s.myTasksOnly })), [patch]);
+  const toggleTaskMultiSelect = useCallback(
+    () => patch((s) => ({ taskMultiSelect: !s.taskMultiSelect, selectedTasks: new Set<string>() })),
+    [patch],
+  );
+
+  const toggleTaskSelection = useCallback((id: string) => {
+    patch((s) => {
+      const next = new Set(s.selectedTasks);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return { selectedTasks: next };
+    });
+  }, [patch]);
+
+  const openTask = useCallback((id: string) => {
+    if (stateRef.current.taskMultiSelect) toggleTaskSelection(id);
+    else patch({ detailTaskId: id });
+  }, [patch, toggleTaskSelection]);
+
+  const closeTaskModal = useCallback(() => patch({ detailTaskId: null }), [patch]);
+
+  const claimTask = useCallback(async (id: string) => {
+    await runAction(async () => {
+      const { taskAssignments } = await taskAssignmentsApi.claim(id);
+      patch({ taskAssignments });
+    });
+  }, [patch, runAction]);
+
+  const releaseTask = useCallback(async (id: string) => {
+    await runAction(async () => {
+      const { taskAssignments } = await taskAssignmentsApi.release(id);
+      patch({ taskAssignments });
+    });
+  }, [patch, runAction]);
+
+  const assignTask = useCallback(async (id: string, hk: { id: string; name: string }) => {
+    await runAction(async () => {
+      const { taskAssignments } = await taskAssignmentsApi.assign(id, hk.id, hk.name);
+      patch({ taskAssignments });
+    });
+  }, [patch, runAction]);
+
+  const bulkAssignTasks = useCallback(async (ids: string[], hk: { id: string; name: string }) => {
+    await runAction(async () => {
+      const { taskAssignments } = await taskAssignmentsApi.bulkAssign(ids, hk.id, hk.name);
+      patch({ taskAssignments, taskMultiSelect: false, selectedTasks: new Set() });
+      showToast(t('saved'));
+    });
+  }, [patch, runAction, showToast, t]);
+
+  // Punkt 22: bezieht sich auf den aktuell gewaehlten Tag + Property-Scope, nicht mehr pauschal
+  // auf das ganze Property.
+  const clearDayAssignments = useCallback(async () => {
+    const date = stateRef.current.selectedDay;
+    const property = stateRef.current.propertyScope;
+    await runAction(async () => {
+      const { taskAssignments } = await taskAssignmentsApi.clearScope(date, property);
+      patch({ taskAssignments });
+    });
+  }, [patch, runAction]);
+
+  const startTaskTimer = useCallback(async (id: string) => {
+    await runAction(async () => {
+      const { taskAssignments } = await taskAssignmentsApi.startTimer(id);
+      patch({ taskAssignments });
+    });
+  }, [patch, runAction]);
+
+  const pauseTaskTimer = useCallback(async (id: string) => {
+    await runAction(async () => {
+      const { taskAssignments } = await taskAssignmentsApi.stopTimer(id);
+      patch({ taskAssignments });
+    });
+  }, [patch, runAction]);
+
+  const finishTask = useCallback(async (task: ResolvedTask) => {
+    patch({ loading: true });
+    try {
+      const user = stateRef.current.user;
+      // Punkt 23: unser Task-Status (unten) und der Apaleo Unit Condition Aufruf sind bewusst
+      // getrennt - dieselbe, unveraenderte Apaleo-Aktion wie zuvor bei finishClean().
+      await setUnitCondition(task.unitId, 'CleanToBeInspected');
+      await completionsApi.add({
+        property: task.propertyCode, room: task.unitName,
+        housekeeperId: task.assignedUserId || user?.id || '',
+        housekeeperName: task.assignedUserName || user?.name || '',
+        type: 'clean', durationSeconds: task.elapsedSeconds, finishedAt: Date.now(),
+      });
+      const { taskAssignments } = await taskAssignmentsApi.complete(task.id, requiresInspection(task.propertyCode));
+      patch({ taskAssignments, detailTaskId: null });
+      showToast(t('saved'));
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err));
+    }
+    patch({ loading: false });
+  }, [patch, showToast, t]);
+
+  const completeTaskInspection = useCallback(async (task: ResolvedTask) => {
+    patch({ loading: true });
+    try {
+      await setUnitCondition(task.unitId, 'Clean');
+      const { taskAssignments } = await taskAssignmentsApi.completeInspection(task.id);
+      patch({ taskAssignments, detailTaskId: null });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err));
+    }
+    patch({ loading: false });
+  }, [patch, showToast]);
+
+  const toggleTaskDoubleType = useCallback(async (task: ResolvedTask, typeId: string) => {
+    await runAction(async () => {
+      const key = roomKey(task.propertyCode, task.unitName);
+      const current = task.doubleupTypes.slice();
+      const idx = current.indexOf(typeId);
+      if (idx >= 0) current.splice(idx, 1); else current.push(typeId);
+      if (current.length === 0) await doubleupsApi.clear(key);
+      else await doubleupsApi.set(key, current);
+      await loadBackend();
+    });
+  }, [loadBackend, runAction]);
+
+  const finishTaskDoubleup = useCallback(async (task: ResolvedTask) => {
+    await runAction(async () => {
+      const user = stateRef.current.user;
+      const key = roomKey(task.propertyCode, task.unitName);
+      await doubleupsApi.clear(key);
+      await completionsApi.add({
+        property: task.propertyCode, room: task.unitName, housekeeperId: user?.id || '', housekeeperName: user?.name || '',
+        type: 'doubleup', durationSeconds: 0, finishedAt: Date.now(),
+      });
+      await loadBackend();
+      showToast(t('saved'));
+    });
+  }, [loadBackend, runAction, showToast, t]);
+
   return {
     state, t, roomKey,
     rooms, DOUBLEUP_TYPES,
@@ -452,7 +742,16 @@ export function useHousekeepingApp() {
     assignRoom, unassignRoom, bulkAssign, clearAllAssignments, startTimer, pauseTimer,
     finishClean, completeInspection, toggleDoubleType, finishDoubleup, toggleBreak,
     saveUser, deleteUser,
+
+    // Reinigungsplanung
+    tasksForDay, daySummaryFor, capacityFor, workloadForPropertyDay, retryTasksLoad,
+    selectDay, selectPropertyScope, toggleMyTasksOnly,
+    toggleTaskMultiSelect, toggleTaskSelection, openTask, closeTaskModal,
+    claimTask, releaseTask, assignTask, bulkAssignTasks, clearDayAssignments,
+    startTaskTimer, pauseTaskTimer, finishTask, completeTaskInspection,
+    toggleTaskDoubleType, finishTaskDoubleup,
   };
 }
 
 export type HousekeepingApp = ReturnType<typeof useHousekeepingApp>;
+export type { ResolvedTask };

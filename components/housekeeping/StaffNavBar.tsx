@@ -4,17 +4,19 @@ import type { I18nKey } from '@/lib/housekeeping/i18n';
 import { cn } from '@/lib/cn';
 
 const ITEMS: { id: NavId; icon: keyof typeof NAV_ICONS; labelKey: I18nKey; adminOnly?: boolean }[] = [
-  { id: 'rooms', icon: 'bed', labelKey: 'nav_rooms' },
-  { id: 'doubleup', icon: 'layers', labelKey: 'nav_doubleup' },
+  { id: 'tasks', icon: 'checklist', labelKey: 'nav_tasks' },
+  { id: 'rooms', icon: 'bed', labelKey: 'nav_apartments' },
   { id: 'stats', icon: 'chart', labelKey: 'nav_stats', adminOnly: true },
-  { id: 'rules', icon: 'book', labelKey: 'nav_rules', adminOnly: true },
   { id: 'team', icon: 'users', labelKey: 'nav_team', adminOnly: true },
 ];
 
 /**
- * Bottom-Navigation, auf das fuer Reinigungskraefte Notwendige reduziert (Briefing Punkt 14):
- * Admin-Funktionen (Statistik/Regeln/Team) erscheinen ausschliesslich fuer role==='admin' -
- * eine Housekeeping-Person sieht hier nur Zimmer + Extras.
+ * Bottom-Navigation (Punkt 26): Aufgaben (Reinigungsplanung, primaer) / Apartments (bestehende
+ * Zimmeruebersicht als sekundaere Ansicht, Punkt 25) / Statistik / Team - auf das fuer
+ * Reinigungskraefte Notwendige reduziert, Admin-Funktionen (Statistik/Team) erscheinen
+ * ausschliesslich fuer role==='admin'. "Regeln" ist in den Team-Screen gewandert (nur dort fuer
+ * Admins sichtbar), "Extras" ist als eigener Task-Typ/Task-Feld in die Aufgaben-Ansicht
+ * aufgegangen (Punkt 6) statt ein eigener Nav-Eintrag zu bleiben.
  */
 export function StaffNavBar({ app }: { app: HousekeepingApp }) {
   const { state, t, setActiveNav } = app;

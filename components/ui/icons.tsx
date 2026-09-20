@@ -75,6 +75,15 @@ export function IconUser(props: IconProps) {
   );
 }
 
+export function IconChecklist(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <path d="m4 6 1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2" />
+    </svg>
+  );
+}
+
 export function IconChevronDown(props: IconProps) {
   return (
     <svg {...base} {...props}>
@@ -88,5 +97,6 @@ export const NAV_ICONS = {
   chart: IconChart,
   layers: IconLayers,
   book: IconBook,
+  checklist: IconChecklist,
   users: IconUsers,
 };

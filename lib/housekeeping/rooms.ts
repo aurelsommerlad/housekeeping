@@ -41,6 +41,13 @@ export function roomKey(propertyCode: string, roomNumber: string): string {
   return `${propertyCode}_${roomNumber}`;
 }
 
+/** 1:1 aus buildRooms() extrahiert (reiner Refactor, keine Verhaltensaenderung) - jetzt auch von
+ * lib/housekeeping/tasks.ts wiederverwendet, damit beide denselben Apaleo-Unit-Condition-Zugriff
+ * teilen statt ihn zweimal separat nachzubilden. */
+export function unitCondition(u: ApaleoUnit): string {
+  return (typeof u.condition === 'object' ? u.condition?.cleaningStatus : u.condition) || 'Clean';
+}
+
 export function allowedProperties(user: StaffUser | null, propertyCodes: string[]): string[] {
   if (!user) return [];
   if (user.properties === 'alle' || user.properties === 'all') return propertyCodes;
@@ -75,7 +82,7 @@ export function buildRooms({ activeProperty, units, reservations, assignments, d
     .map((u): Room => {
       const number = u.name || u.id || u.unitGroup?.name || '?';
       const key = roomKey(activeProperty, number);
-      const condition = (typeof u.condition === 'object' ? u.condition?.cleaningStatus : u.condition) || 'Clean';
+      const condition = unitCondition(u);
       const currentRes = byUnit[u.id];
       const occupied = !!currentRes;
       const departsTodayFlag = departsToday.has(u.id);

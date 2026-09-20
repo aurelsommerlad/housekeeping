@@ -69,7 +69,15 @@ module.exports = async (req, res) => {
     } catch {
       data = { raw: text };
     }
-    res.status(upstream.status).json(data);
+    // Apaleo antwortet bei 0 Treffern (z. B. keine Abreisen an einem Tag/Property) mit
+    // HTTP 204 No Content und OHNE Body - verifiziert live gegen den echten Account. Ein 204
+    // darf laut HTTP-Spec NIE einen Body tragen; res.status(204).json({}) wuerde genau das tun
+    // und kann je nach Client/Proxy-Schicht zu einer fehlerhaften Response-Framing fuehren, bei
+    // der der Fetch im Browser haengen bleibt (das Promise loest sich weder auf noch lehnt es
+    // ab - ein try/catch beim Aufrufer kann das nicht abfangen). Deshalb wird ein leeres
+    // Apaleo-Ergebnis hier immer als valider 200er mit leerem Objekt durchgereicht.
+    const status = upstream.status === 204 ? 200 : upstream.status;
+    res.status(status).json(data);
   } catch (err) {
     console.error('[api/apaleo]', err);
     res.status(500).json({ error: err.message || 'Interner Fehler' });

@@ -5,10 +5,9 @@ import { useHousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { StaffHeader } from '@/components/housekeeping/StaffHeader';
 import { PropertyChips } from '@/components/housekeeping/PropertyChips';
 import { StaffNavBar } from '@/components/housekeeping/StaffNavBar';
+import { TasksScreen } from '@/components/housekeeping/TasksScreen';
 import { RoomsScreen } from '@/components/housekeeping/RoomsScreen';
-import { DoubleupScreen } from '@/components/housekeeping/DoubleupScreen';
 import { StatsScreen } from '@/components/housekeeping/StatsScreen';
-import { RulesScreen } from '@/components/housekeeping/RulesScreen';
 import { TeamScreen } from '@/components/housekeeping/TeamScreen';
 import { RoomDetailSheet } from '@/components/housekeeping/RoomDetailSheet';
 import { LoginScreen } from '@/components/housekeeping/LoginScreen';
@@ -18,6 +17,11 @@ import { Toast } from '@/components/housekeeping/Toast';
  * Der echte, funktionierende Housekeeping-Betrieb (ersetzt den fruehen Beispieldaten-Prototyp) -
  * dieselbe Business-Logik wie zuvor in app.js (Apaleo-Fetching, Zwangsreinigung, Zuweisung,
  * Timer, Redis-Calls ueber die bestehenden /api/*.js-Routen), nur die Darstellung ist neu.
+ *
+ * Primaerer Screen ist jetzt "Aufgaben" (TasksScreen, Reinigungsplanung Heute+3) statt der
+ * fruehen Zimmerliste (jetzt sekundaer als "Apartments" unter demselben NavId 'rooms'
+ * erreichbar, siehe StaffNavBar) - PropertyChips (Einzel-Property-Auswahl fuer die
+ * Apartments-Ansicht) wird deshalb nur noch dort gebraucht.
  */
 export default function HousekeepingPage() {
   const app = useHousekeepingApp();
@@ -50,20 +54,19 @@ export default function HousekeepingPage() {
   return (
     <div className="flex min-h-dvh flex-col bg-page">
       <StaffHeader app={app} />
-      <PropertyChips app={app} />
+      {state.activeNav === 'rooms' ? <PropertyChips app={app} /> : null}
 
       <main className="flex-1 overflow-y-auto pb-4">
-        {!state.activeProperty ? (
-          <div className="px-4 py-10 text-center text-sm text-muted">{app.t('select_property')}</div>
-        ) : (
-          <>
-            {state.activeNav === 'rooms' ? <RoomsScreen app={app} /> : null}
-            {state.activeNav === 'doubleup' ? <DoubleupScreen app={app} /> : null}
-            {state.activeNav === 'stats' ? <StatsScreen app={app} /> : null}
-            {state.activeNav === 'rules' ? <RulesScreen app={app} /> : null}
-            {state.activeNav === 'team' ? <TeamScreen app={app} /> : null}
-          </>
-        )}
+        {state.activeNav === 'tasks' ? <TasksScreen app={app} /> : null}
+        {state.activeNav === 'rooms' ? (
+          !state.activeProperty ? (
+            <div className="px-4 py-10 text-center text-sm text-muted">{app.t('select_property')}</div>
+          ) : (
+            <RoomsScreen app={app} />
+          )
+        ) : null}
+        {state.activeNav === 'stats' ? <StatsScreen app={app} /> : null}
+        {state.activeNav === 'team' ? <TeamScreen app={app} /> : null}
       </main>
 
       <StaffNavBar app={app} />

@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { UserFormSheet } from './UserFormSheet';
+import { RulesScreen } from './RulesScreen';
 
 export interface TeamScreenProps {
   app: HousekeepingApp;
@@ -48,6 +49,9 @@ export function TeamScreen({ app }: TeamScreenProps) {
             <span>@{u.username}</span>
             <span>{u.properties === 'alle' || u.properties === 'all' ? t('all_properties') : (Array.isArray(u.properties) ? u.properties.join(', ') : '')}</span>
           </div>
+          {u.managedProperties && u.managedProperties.length > 0 ? (
+            <p className="mt-1 text-[12.5px] text-status-attention">{t('managed_properties')}: {u.managedProperties.join(', ')}</p>
+          ) : null}
           <div className="mt-3 flex gap-2">
             <Button variant="secondary" size="sm" onClick={() => openEdit(u)}>
               {t('save')}
@@ -60,6 +64,12 @@ export function TeamScreen({ app }: TeamScreenProps) {
       ))}
 
       {formOpen ? <UserFormSheet app={app} user={editing} onClose={() => setFormOpen(false)} /> : null}
+
+      {/* Punkt 26: Regeln sind aus der Hauptnavigation in den Admin-/Team-Bereich gewandert -
+       * dieser Screen ist ohnehin nur fuer Admins ueber die Navigation erreichbar. */}
+      <div className="mt-4 border-t border-line pt-4">
+        <RulesScreen app={app} />
+      </div>
     </div>
   );
 }

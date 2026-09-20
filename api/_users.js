@@ -11,6 +11,18 @@ const crypto = require('crypto');
 const { parseJSON, migrateLegacyKey } = require('./_redis');
 const { hashPassword, verifyPassword } = require('./_auth');
 
+// Punkt 13/17: managedProperties MUSS immer eine Teilmenge von properties sein - wird Zugriff
+// entfernt, faellt die Standortverantwortung fuer dieses Property automatisch mit weg. Diese
+// Funktion ist die alleinige, serverseitig IMMER durchgesetzte Quelle der Wahrheit dafuer
+// (Entsprechung zu lib/housekeeping/permissions.ts#sanitizeManagedProperties auf Client-Seite -
+// beide muessen bei Aenderungen synchron gehalten werden).
+function sanitizeManagedProperties(properties, managedProperties) {
+  if (!Array.isArray(managedProperties) || managedProperties.length === 0) return [];
+  if (properties === 'alle' || properties === 'all') return Array.from(new Set(managedProperties));
+  const allowed = new Set(Array.isArray(properties) ? properties : []);
+  return Array.from(new Set(managedProperties.filter((p) => allowed.has(p))));
+}
+
 const HASH_KEY = 'housekeeping:users';
 const LEGACY_HASH_KEY = 'hk:users';
 
@@ -57,6 +69,10 @@ async function getUserRawById(redis, userId) {
 async function verifyLogin(redis, identifier, password) {
   const user = await getUserRawByIdentifier(redis, identifier);
   if (!user) return null;
+  // Punkt 17: deaktivierte Benutzer koennen sich nicht mehr anmelden. `active` fehlt bei allen
+  // vor dieser Erweiterung angelegten Konten (undefined) - nur eine EXPLIZITE `false` sperrt,
+  // damit bestehende Benutzer nicht rueckwirkend ausgesperrt werden.
+  if (user.active === false) return null;
 
   if (user.passwordHash) {
     const ok = await verifyPassword(password, user.passwordHash);
@@ -122,6 +138,7 @@ async function upsertUser(redis, input) {
     role: normalizeRole(input.role || existing.role),
   };
   delete merged.password;
+  merged.managedProperties = sanitizeManagedProperties(merged.properties, merged.managedProperties);
 
   if (input.password) {
     merged.passwordHash = await hashPassword(input.password);
@@ -152,4 +169,5 @@ module.exports = {
   createUser,
   upsertUser,
   deleteUserByUsername,
+  sanitizeManagedProperties,
 };
