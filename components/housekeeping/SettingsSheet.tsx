@@ -27,7 +27,7 @@ export function SettingsSheet({ app, open, onClose }: SettingsSheetProps) {
 
   return (
     <BottomSheet open={open} onClose={onClose}>
-      <h3 className="font-heading text-lg italic text-ink">{t('profile_title')}</h3>
+      <h3 className="italic text-lg text-[#17160f]">{t('profile_title')}</h3>
 
       <div className="mt-3 flex flex-col gap-0.5">
         <p className="font-medium text-ink">{state.user?.name}</p>

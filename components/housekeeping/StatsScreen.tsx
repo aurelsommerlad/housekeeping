@@ -35,7 +35,7 @@ export function StatsScreen({ app }: StatsScreenProps) {
   return (
     <div className="flex flex-col gap-6 px-4 py-4">
       <div>
-        <h2 className="mb-2.5 font-heading text-lg italic text-ink">{t('stats_today')}</h2>
+        <h2 className="mb-2.5 italic text-lg text-[#17160f]">{t('stats_today')}</h2>
         <div className="flex gap-2.5">
           <StatTile value={today.count} label={t('cleaned_rooms')} />
           <StatTile value={today.avg ? formatDuration(today.avg) : '–'} label={t('avg_time')} />
@@ -44,7 +44,7 @@ export function StatsScreen({ app }: StatsScreenProps) {
       </div>
 
       <div>
-        <h2 className="mb-2.5 font-heading text-lg italic text-ink">{t('stats_month')} / {t('stats_year')}</h2>
+        <h2 className="mb-2.5 italic text-lg text-[#17160f]">{t('stats_month')} / {t('stats_year')}</h2>
         <div className="flex gap-2.5">
           <StatTile value={month.count} label={t('stats_month')} />
           <StatTile value={year.count} label={t('stats_year')} />
@@ -53,7 +53,7 @@ export function StatsScreen({ app }: StatsScreenProps) {
       </div>
 
       <div>
-        <h2 className="mb-2.5 font-heading text-lg italic text-ink">{t('by_housekeeper')}</h2>
+        <h2 className="mb-2.5 italic text-lg text-[#17160f]">{t('by_housekeeper')}</h2>
         <Card>
           {Object.keys(byHk).length === 0 ? (
             <span className="text-[13px] text-muted">{t('no_data')}</span>
@@ -74,7 +74,7 @@ export function StatsScreen({ app }: StatsScreenProps) {
       </div>
 
       <div>
-        <h2 className="mb-2.5 font-heading text-lg italic text-ink">{t('recent_completions')}</h2>
+        <h2 className="mb-2.5 italic text-lg text-[#17160f]">{t('recent_completions')}</h2>
         <Card>
           {recent.length === 0 ? (
             <span className="text-[13px] text-muted">{t('no_data')}</span>

@@ -19,7 +19,7 @@ export function RulesScreen({ app }: RulesScreenProps) {
   const { t } = app;
   return (
     <div className="flex flex-col gap-3 px-4 py-4">
-      <h2 className="font-heading text-lg italic text-ink">{t('rules_title')}</h2>
+      <h2 className="italic text-lg text-[#17160f]">{t('rules_title')}</h2>
       {RULES.map((rule) => (
         <Card key={rule.titleKey}>
           <p className="font-medium text-ink">{t(rule.titleKey)}</p>

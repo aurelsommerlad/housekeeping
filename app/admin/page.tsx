@@ -144,7 +144,7 @@ export default function AdminPage() {
 
         {screen === 'setup' && (
           <div className="rounded-card-lg border border-line bg-warm-white p-6 shadow-card-lg sm:p-8">
-            <h1 className="font-heading text-xl italic text-ink">Admin-Konto einrichten</h1>
+            <h1 className="italic text-xl text-[#17160f]">Admin-Konto einrichten</h1>
             <p className="mt-1 text-sm text-muted">Erstes Administratorkonto fuer den Housekeeping-Bereich anlegen.</p>
             <form onSubmit={handleSetupSubmit} className="mt-6 flex flex-col gap-4">
               <Field label="Vorname" name="firstName" autoComplete="given-name" required />
@@ -166,7 +166,7 @@ export default function AdminPage() {
 
         {screen === 'already-done' && (
           <div className="rounded-card-lg border border-line bg-warm-white p-6 text-center shadow-card-lg sm:p-8">
-            <h1 className="font-heading text-xl italic text-ink">Ersteinrichtung bereits abgeschlossen</h1>
+            <h1 className="italic text-xl text-[#17160f]">Ersteinrichtung bereits abgeschlossen</h1>
             <p className="mt-2 text-[13px] text-muted">
               Es existiert bereits ein Administratorkonto. Die Anmeldung - fuer Admin- wie
               Housekeeping-Konten - erfolgt einheitlich in der Housekeeping-App.

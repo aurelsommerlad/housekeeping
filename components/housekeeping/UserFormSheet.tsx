@@ -90,7 +90,7 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
 
   return (
     <BottomSheet open onClose={onClose}>
-      <h3 className="font-heading text-lg italic text-ink">{user ? [firstName, lastName].filter(Boolean).join(' ') || username : t('new_user')}</h3>
+      <h3 className="italic text-lg text-[#17160f]">{user ? [firstName, lastName].filter(Boolean).join(' ') || username : t('new_user')}</h3>
 
       <div className="mt-4 flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-[13px] font-medium text-muted">

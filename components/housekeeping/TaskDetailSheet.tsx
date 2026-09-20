@@ -125,7 +125,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
 
   return (
     <BottomSheet open={open} onClose={closeTaskModal}>
-      <h3 className="font-heading text-xl italic text-ink">
+      <h3 className="italic text-xl text-[#17160f]">
         {task.unitName} <span className="text-muted">· {task.propertyName}</span>
       </h3>
 

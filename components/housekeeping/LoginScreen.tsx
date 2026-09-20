@@ -36,7 +36,7 @@ export function LoginScreen({ app }: { app: HousekeepingApp }) {
         </div>
 
         <div className="rounded-card-lg border border-line bg-warm-white p-6 shadow-card-lg sm:p-8">
-          <h1 className="font-heading text-xl italic text-ink">{t('login_title')}</h1>
+          <h1 className="italic text-xl text-[#17160f]">{t('login_title')}</h1>
           <p className="mt-1 text-sm text-muted">{t('login_subtitle')}</p>
 
           <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">

@@ -136,7 +136,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
 
       {isManagerHere && capacity.length > 0 ? (
         <div className="mx-4 mt-3 rounded-card-lg border border-line bg-warm-white p-4">
-          <h2 className="font-heading text-sm italic text-ink">{t('capacity_title')}</h2>
+          <h2 className="italic text-sm text-[#17160f]">{t('capacity_title')}</h2>
           <div className="mt-2 flex flex-col gap-1.5">
             {capacity.map((entry) => (
               <div key={entry.housekeeperId || 'unassigned'} className="flex items-center justify-between text-[13px]">

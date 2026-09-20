@@ -33,7 +33,7 @@ export function TeamScreen({ app }: TeamScreenProps) {
 
   return (
     <div className="flex flex-col gap-3 px-4 py-4">
-      <h2 className="font-heading text-lg italic text-ink">{t('team_title')}</h2>
+      <h2 className="italic text-lg text-[#17160f]">{t('team_title')}</h2>
       <Button variant="primary" className="w-full" onClick={openNew}>
         + {t('new_user')}
       </Button>

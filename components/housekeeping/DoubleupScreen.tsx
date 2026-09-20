@@ -19,7 +19,7 @@ export function DoubleupScreen({ app }: DoubleupScreenProps) {
 
   return (
     <div className="flex flex-col gap-3 px-4 py-4">
-      <h2 className="font-heading text-lg italic text-ink">{t('doubleup_needed')}</h2>
+      <h2 className="italic text-lg text-[#17160f]">{t('doubleup_needed')}</h2>
       {list.map((r) => (
         <Card key={r.key}>
           <div className="flex items-center justify-between gap-3">
