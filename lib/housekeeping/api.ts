@@ -141,26 +141,36 @@ async function apaleoPaged<TItem>(
 }
 
 /**
- * Units mehrerer Properties in einer gebuendelten Abfrage (Punkt 30/31: nicht pro Property/Unit
- * einzeln). `expand=property` laesst Apaleo die Property direkt an jeder Unit mitliefern
- * (dokumentierter, gueltiger Expand-Wert), damit units.property.code fuer die Gruppierung
- * verfuegbar ist, ohne eine zusaetzliche Anfrage pro Property.
+ * Units mehrerer Properties (Punkt 30/31). Live gegen den echten Account nachverifiziert: ein
+ * EINZIGER Request mit mehreren kommagetrennten Property-Codes an /inventory/v1/units (wie
+ * urspruenglich hier versucht) wird von Apaleo mit 422 abgelehnt - dieser Endpunkt akzeptiert
+ * pro Anfrage nur GENAU EIN Property (exakt das bereits seit Monaten produktiv bewaehrte Muster
+ * aus loadUnits() oben: propertyIds=<eine ID>). Deshalb hier bewusst EIN Request PRO Property,
+ * parallel statt gebuendelt - langsamer als ein einzelner Request, aber die einzige tatsaechlich
+ * verifizierte, funktionierende Form. `property` wird selbst gesetzt (keine Abhaengigkeit von
+ * einem ungeprueften expand=property fuer den Mehrfach-Fall), da der Code je Anfrage ohnehin
+ * schon weiss, zu welcher Property die zurueckgegebenen Units gehoeren.
  */
 export async function loadUnitsForProperties(propertyCodes: string[]): Promise<ApaleoUnit[]> {
   if (propertyCodes.length === 0) return [];
-  const ids = propertyCodes.map(encodeURIComponent).join(',');
-  return apaleoPaged<ApaleoUnit>(
-    `/inventory/v1/units?propertyIds=${ids}&expand=property`,
-    (data) => (data.units as ApaleoUnit[]) || (data.results as ApaleoUnit[]),
-  );
+  const perProperty = await Promise.all(propertyCodes.map(async (code) => {
+    const units = await apaleoPaged<ApaleoUnit>(
+      `/inventory/v1/units?propertyIds=${encodeURIComponent(code)}`,
+      (data) => (data.units as ApaleoUnit[]) || (data.results as ApaleoUnit[]),
+    );
+    return units.map((u) => (u.property?.code ? u : { ...u, property: { ...u.property, code } }));
+  }));
+  return perProperty.flat();
 }
 
 /**
- * Reservierungen mehrerer Properties fuer einen Datumsbereich in einer gebuendelten Abfrage
- * (dateFilter=Stay: Aufenthalt ueberschneidet sich mit [fromISO, toISO], deckt An-/Abreisen und
- * laufende Aufenthalte im Fenster in einem Request ab, statt separater Arrival-/Departure-
- * Abfragen pro Tag/Property). Jede Reservierung traegt bereits `property.code` (siehe reales
- * Apaleo-Response-Schema), keine weitere Anreicherung noetig.
+ * Reservierungen mehrerer Properties fuer einen Datumsbereich (Punkt 30/31). Aus demselben
+ * Grund wie bei loadUnitsForProperties() ebenfalls EIN Request PRO Property statt eines
+ * gebuendelten Mehrfach-Property-Requests - hier zusaetzlich mit dem bereits bewaehrten,
+ * SINGULAREN Parameternamen `propertyId` (nicht `propertyIds`) aus der unveraenderten
+ * loadReservations() oben, statt eines fuer diesen Endpunkt nie verifizierten Namens/Formats.
+ * dateFilter=Stay deckt An-/Abreisen und laufende Aufenthalte im [fromISO, toISO]-Fenster in
+ * einem Request pro Property ab, statt separater Arrival-/Departure-Abfragen pro Tag.
  */
 export async function loadReservationsRangeForProperties(
   propertyCodes: string[],
@@ -168,11 +178,14 @@ export async function loadReservationsRangeForProperties(
   toISO: string,
 ): Promise<ApaleoReservation[]> {
   if (propertyCodes.length === 0) return [];
-  const ids = propertyCodes.map(encodeURIComponent).join(',');
-  return apaleoPaged<ApaleoReservation>(
-    `/booking/v1/reservations?propertyIds=${ids}&dateFilter=Stay&from=${fromISO}&to=${toISO}&status=InHouse,Confirmed,CheckedOut`,
-    (data) => (data.reservations as ApaleoReservation[]) || (data.results as ApaleoReservation[]),
-  );
+  const perProperty = await Promise.all(propertyCodes.map(async (code) => {
+    const reservations = await apaleoPaged<ApaleoReservation>(
+      `/booking/v1/reservations?propertyId=${encodeURIComponent(code)}&dateFilter=Stay&from=${fromISO}&to=${toISO}&status=InHouse,Confirmed,CheckedOut`,
+      (data) => (data.reservations as ApaleoReservation[]) || (data.results as ApaleoReservation[]),
+    );
+    return reservations.map((r) => (r.property?.code ? r : { ...r, property: { ...r.property, code } }));
+  }));
+  return perProperty.flat();
 }
 
 export interface BackendState {
