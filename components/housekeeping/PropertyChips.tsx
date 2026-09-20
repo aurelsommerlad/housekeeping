@@ -1,4 +1,5 @@
 import { allowedProperties } from '@/lib/housekeeping/rooms';
+import { getPropertyDisplayName } from '@/lib/housekeeping/api';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { cn } from '@/lib/cn';
 
@@ -26,7 +27,7 @@ export function PropertyChips({ app }: { app: HousekeepingApp }) {
             state.activeProperty === p.code ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
           )}
         >
-          {p.name}
+          {getPropertyDisplayName(p)}
         </button>
       ))}
     </div>

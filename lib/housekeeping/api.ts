@@ -23,8 +23,31 @@ export const APP_VERSION = '2.1.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
-// dazu fuehren, dass eine von Apaleo gelieferte Property verschwindet, siehe loadProperties().
+// dazu fuehren, dass eine von Apaleo gelieferte Property verschwindet, siehe getPropertyDisplayName().
 export const PROPERTY_NAMES: Record<string, string> = {};
+
+// Alle vier aktuellen UNIQUE-PLACES-Standorte heissen bei Apaleo "<Markenname> by UNIQUE PLACES".
+const BRAND_NAME_SUFFIX = ' by UNIQUE PLACES';
+
+/**
+ * EINZIGE zentrale Stelle fuer Anzeigenamen von Properties - wird ueberall in der UI aufgerufen
+ * (StaffHeader, PropertyChips, TasksScreen-Standortauswahl, Task.propertyName fuer Task-Karten),
+ * statt an mehreren Stellen Strings zu kuerzen/ersetzen. Kuerzt NUR fuer die Darstellung - der
+ * Apaleo-Code (property.code) bleibt ueberall sonst (Redis, Task-IDs, Berechtigungen) unveraendert
+ * die alleinige Quelle der Wahrheit.
+ *
+ * Der gemeinsame Marken-Suffix wird generisch abgeschnitten, statt die kurzen Standortnamen (mit
+ * ihren Sonderzeichen Ʌ/Æ/Ø/Ū) hier erneut von Hand nachzubauen - das waere fehleranfaellig (leicht
+ * verwechselbare Unicode-Zeichen) und deckt zukuenftige Standorte mit demselben Namensschema
+ * automatisch mit ab. PROPERTY_NAMES bleibt als expliziter Override moeglich (z. B. falls ein
+ * kuenftiger Standort NICHT nach diesem Schema benannt ist). Ein Property ohne diesen Suffix
+ * (unbekannt/anders benannt) behaelt seinen vollen, von Apaleo gelieferten Namen als Fallback -
+ * es verschwindet also nie.
+ */
+export function getPropertyDisplayName(property: { code: string; name?: string }): string {
+  const raw = PROPERTY_NAMES[property.code] || property.name || property.code;
+  return raw.endsWith(BRAND_NAME_SUFFIX) ? raw.slice(0, -BRAND_NAME_SUFFIX.length) : raw;
+}
 
 export interface DoubleupTypeDef {
   id: string;
@@ -89,10 +112,10 @@ export async function loadProperties(): Promise<Property[]> {
     '/inventory/v1/properties?pageSize=200',
   );
   const list = data.properties || data.results || [];
-  return list.map((p) => {
-    const code = (p.id || p.code) as string;
-    return { code, name: PROPERTY_NAMES[code] || p.name || code };
-  });
+  // `name` bleibt hier bewusst der volle, unveraenderte Apaleo-Name (nicht gekuerzt) - die
+  // Kuerzung fuer die Darstellung passiert einheitlich ueber getPropertyDisplayName() an den
+  // tatsaechlichen Anzeigestellen, nicht schon beim Laden.
+  return list.map((p) => ({ code: (p.id || p.code) as string, name: p.name || (p.id || p.code) as string }));
 }
 
 export async function loadUnits(propertyCode: string): Promise<ApaleoUnit[]> {
@@ -154,24 +177,31 @@ async function apaleoPaged<TItem>(
 }
 
 /**
- * Units mehrerer Properties (Punkt 30/31). Live gegen den echten Account nachverifiziert: ein
- * EINZIGER Request mit mehreren kommagetrennten Property-Codes an /inventory/v1/units (wie
- * urspruenglich hier versucht) wird von Apaleo mit 422 abgelehnt - dieser Endpunkt akzeptiert
- * pro Anfrage nur GENAU EIN Property (exakt das bereits seit Monaten produktiv bewaehrte Muster
- * aus loadUnits() oben: propertyIds=<eine ID>). Deshalb hier bewusst EIN Request PRO Property,
- * parallel statt gebuendelt - langsamer als ein einzelner Request, aber die einzige tatsaechlich
- * verifizierte, funktionierende Form. `property` wird selbst gesetzt (keine Abhaengigkeit von
- * einem ungeprueften expand=property fuer den Mehrfach-Fall), da der Code je Anfrage ohnehin
- * schon weiss, zu welcher Property die zurueckgegebenen Units gehoeren.
+ * Units mehrerer Properties (Punkt 30/31). EIN Request PRO Property statt eines gebuendelten
+ * Mehrfach-Property-Requests (siehe /inventory/v1/units-Kommentar zur 422-Historie unten).
+ *
+ * WICHTIG (Property-Zuordnungsfehler, nachtraeglich gefunden): der Property-QUERY-PARAMETER
+ * (`propertyIds=<code>`) darf NIE als Beweis fuer die tatsaechliche Property-Zugehoerigkeit
+ * einer zurueckgegebenen Unit dienen - selbst wenn der Filter serverseitig korrekt greift, ist
+ * das eine Annahme ueber Apaleo-Verhalten, keine aus den Daten selbst gepruefte Tatsache. Die
+ * vorherige Fassung stempelte bei fehlendem `property.code` blind den GERADE ITERIERTEN Code auf
+ * jede zurueckgegebene Unit - griff der Filter aus irgendeinem Grund nicht (z. B. ignorierter/
+ * falscher Parametername), wurden dadurch Units aus FREMDEN Properties fälschlich der gerade
+ * abgefragten Property zugeschrieben (beobachtet: dieselbe Unit erschien unter mehreren
+ * Standorten). `expand=property` laesst Apaleo die ECHTE Property jeder Unit explizit mitliefern
+ * (dokumentierter, bereits an anderer Stelle dieser App genutzter Expand-Wert) - nur Units, deren
+ * SO GELIEFERTE eigene Property mit dem angefragten Code uebereinstimmt, werden uebernommen; alles
+ * andere wird verworfen statt geraten. So ist die Zuordnung unabhaengig davon korrekt, ob der
+ * Query-Filter selbst zuverlaessig ist.
  */
 export async function loadUnitsForProperties(propertyCodes: string[]): Promise<ApaleoUnit[]> {
   if (propertyCodes.length === 0) return [];
   const perProperty = await Promise.all(propertyCodes.map(async (code) => {
     const units = await apaleoPaged<ApaleoUnit>(
-      `/inventory/v1/units?propertyIds=${encodeURIComponent(code)}`,
+      `/inventory/v1/units?propertyIds=${encodeURIComponent(code)}&expand=property`,
       (data) => (data.units as ApaleoUnit[]) || (data.results as ApaleoUnit[]),
     );
-    return units.map((u) => (u.property?.code ? u : { ...u, property: { ...u.property, code } }));
+    return units.filter((u) => (u.property?.code || u.property?.id) === code);
   }));
   return perProperty.flat();
 }
@@ -193,6 +223,12 @@ export async function loadUnitsForProperties(propertyCodes: string[]): Promise<A
  * Obergrenze), damit der komplette letzte Tag (inkl. spaeter An-/Abreisen an diesem Tag)
  * zuverlaessig eingeschlossen ist, statt sich auf eine Inklusiv-/Exklusiv-Annahme fuer Mitternacht
  * desselben Tages zu verlassen. Beides live mit echten Reservierungen bestaetigt.
+ *
+ * Wie bei loadUnitsForProperties(): der `propertyId`-Queryparameter wird NICHT als Beweis fuer
+ * die tatsaechliche Property-Zugehoerigkeit einer Reservierung vertraut. Reservierungen liefern
+ * ihre eigene `property` bereits ohne jedes `expand` mit (live bestaetigt), daher hier ausschliesslich
+ * anhand DIESES vom Server selbst gelieferten Felds gefiltert - keine blinde Uebernahme des
+ * angefragten Codes mehr fuer Datensaetze ohne (oder mit abweichender) eigener Property-Angabe.
  */
 export async function loadReservationsRangeForProperties(
   propertyCodes: string[],
@@ -207,7 +243,7 @@ export async function loadReservationsRangeForProperties(
       `/booking/v1/reservations?propertyId=${encodeURIComponent(code)}&dateFilter=Stay&from=${fromInstant}&to=${toInstant}&status=InHouse,Confirmed,CheckedOut`,
       (data) => (data.reservations as ApaleoReservation[]) || (data.results as ApaleoReservation[]),
     );
-    return reservations.map((r) => (r.property?.code ? r : { ...r, property: { ...r.property, code } }));
+    return reservations.filter((r) => (r.property?.code || r.property?.id) === code);
   }));
   return perProperty.flat();
 }

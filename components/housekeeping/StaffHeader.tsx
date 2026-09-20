@@ -1,7 +1,7 @@
 'use client';
 
 import { LANGUAGES } from '@/lib/housekeeping/i18n';
-import { APP_VERSION } from '@/lib/housekeeping/api';
+import { APP_VERSION, getPropertyDisplayName } from '@/lib/housekeeping/api';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { cn } from '@/lib/cn';
 
@@ -27,7 +27,7 @@ export function StaffHeader({ app }: { app: HousekeepingApp }) {
       <div className="flex items-center justify-between gap-2 py-2">
         <div className="min-w-0 leading-none">
           <p className="brand-wordmark text-[10px] font-semibold tracking-[0.18em] text-muted">UNIQUE PLACES</p>
-          <p className="mt-1 truncate text-[15px] font-medium text-ink">{activeProperty?.name || t('select_property')}</p>
+          <p className="mt-1 truncate text-[15px] font-medium text-ink">{activeProperty ? getPropertyDisplayName(activeProperty) : t('select_property')}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {state.user?.role !== 'admin' ? (

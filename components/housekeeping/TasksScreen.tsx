@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import type { StaffUser } from '@/lib/housekeeping/types';
 import { allowedProperties } from '@/lib/housekeeping/rooms';
+import { getPropertyDisplayName } from '@/lib/housekeeping/api';
 import { isPropertyManager, managedPropertyCodes } from '@/lib/housekeeping/permissions';
 import { TaskCard } from './TaskCard';
 import { TaskDetailSheet } from './TaskDetailSheet';
@@ -73,7 +74,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                 state.propertyScope === p.code ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
               )}
             >
-              {p.name}
+              {getPropertyDisplayName(p)}
             </button>
           ))}
         </div>

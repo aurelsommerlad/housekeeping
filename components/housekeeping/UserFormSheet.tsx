@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { LANGUAGES } from '@/lib/housekeeping/i18n';
 import type { Lang } from '@/lib/housekeeping/i18n';
+import { getPropertyDisplayName } from '@/lib/housekeeping/api';
 import { sanitizeManagedProperties } from '@/lib/housekeeping/permissions';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import type { StaffUser } from '@/lib/housekeeping/types';
@@ -207,7 +208,7 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
               const isManaged = managedProperties.includes(p.code);
               return (
                 <div key={p.code} className="flex items-center gap-2 px-3 py-2 text-[13px]">
-                  <span className="flex-1 truncate text-ink">{p.name}</span>
+                  <span className="flex-1 truncate text-ink">{getPropertyDisplayName(p)}</span>
                   <span className="flex w-16 justify-end">
                     <button
                       type="button"

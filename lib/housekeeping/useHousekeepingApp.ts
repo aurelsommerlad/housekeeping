@@ -24,7 +24,7 @@ import type { Lang } from './i18n';
 import { translate } from './i18n';
 import { fetchMe, login as loginRequest, logout as logoutRequest } from './auth';
 import {
-  DOUBLEUP_TYPES, POLL_INTERVAL, assignmentsApi, breaksApi, completionsApi, doubleupsApi,
+  DOUBLEUP_TYPES, POLL_INTERVAL, assignmentsApi, breaksApi, completionsApi, doubleupsApi, getPropertyDisplayName,
   loadBackendState, loadProperties, loadReservations, loadReservationsRangeForProperties,
   loadTaskAssignments, loadUnits, loadUnitsForProperties, setUnitCondition, taskAssignmentsApi, usersApi,
 } from './api';
@@ -550,7 +550,7 @@ export function useHousekeepingApp() {
 
   // Liest bewusst `state` (nicht stateRef), siehe Begruendung bei rooms()/t() oben.
   const resolvedTasksAll = useCallback((): ResolvedTask[] => {
-    const propertyNames = Object.fromEntries(state.properties.map((p) => [p.code, p.name]));
+    const propertyNames = Object.fromEntries(state.properties.map((p) => [p.code, getPropertyDisplayName(p)]));
     const today = state.planningDays[0] || todayISO();
     const raw = buildTasks({
       propertyNames, units: state.planningUnits, reservations: state.planningReservations,
