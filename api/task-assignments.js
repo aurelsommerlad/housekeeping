@@ -106,7 +106,7 @@ module.exports = async (req, res) => {
       };
       const claimed = await claimTask(redis, taskId, record);
       if (!claimed) {
-        res.status(409).json({ error: 'Diese Aufgabe wurde gerade von einem anderen Teammitglied uebernommen.' });
+        res.status(409).json({ error: 'Diese Aufgabe wurde gerade von einem anderen Teammitglied übernommen.' });
         return;
       }
     } else if (action === 'release') {
@@ -117,7 +117,7 @@ module.exports = async (req, res) => {
       const propertyCode = propertyCodeFromTaskId(taskId);
       const isOwn = existing && existing.housekeeperId === user.id;
       const allowed = user.role === 'admin' || isPropertyManager(user, propertyCode) || isOwn;
-      if (!allowed) { res.status(403).json({ error: 'Diese Aufgabe gehoert einer anderen Person.' }); return; }
+      if (!allowed) { res.status(403).json({ error: 'Diese Aufgabe gehört einer anderen Person.' }); return; }
       // Punkt 14: eigene Aufgabe nur freigeben, solange die Reinigung noch nicht begonnen wurde.
       if (isOwn && user.role !== 'admin' && existing && existing.status !== 'assigned') {
         res.status(409).json({ error: 'Die Reinigung wurde bereits begonnen und kann nicht mehr freigegeben werden.' });
@@ -129,7 +129,7 @@ module.exports = async (req, res) => {
       if (!taskId || !housekeeperId) { res.status(400).json({ error: 'taskId und housekeeperId sind erforderlich.' }); return; }
       const propertyCode = propertyCodeFromTaskId(taskId);
       if (!isPropertyManager(user, propertyCode)) {
-        res.status(403).json({ error: 'Nur fuer Standortverantwortliche dieses Property.' });
+        res.status(403).json({ error: 'Nur für Standortverantwortliche dieses Property.' });
         return;
       }
       await redis.hSet(HASH_KEY, taskId, JSON.stringify({
@@ -144,7 +144,7 @@ module.exports = async (req, res) => {
       }
       const notAllowed = taskIds.find((id) => !isPropertyManager(user, propertyCodeFromTaskId(id)));
       if (notAllowed) {
-        res.status(403).json({ error: 'Nur fuer Standortverantwortliche der betroffenen Properties.' });
+        res.status(403).json({ error: 'Nur für Standortverantwortliche der betroffenen Properties.' });
         return;
       }
       const multi = redis.multi();
@@ -176,7 +176,7 @@ module.exports = async (req, res) => {
       // Berechtigungs-/Verhaltensunterschied - ein unbekannter/fehlender Wert zaehlt als 'manual'.
       const source = startSource === 'nfc' ? 'nfc' : 'manual';
       if (!(await canTouchOwnAssignment(redis, user, taskId))) {
-        res.status(403).json({ error: 'Diese Aufgabe gehoert einer anderen Person.' });
+        res.status(403).json({ error: 'Diese Aufgabe gehört einer anderen Person.' });
         return;
       }
       const propertyCode = propertyCodeFromTaskId(taskId);
@@ -190,7 +190,7 @@ module.exports = async (req, res) => {
       // wichtigen Hinweis in seiner aktuellen Version noch nicht bestaetigt hat. Kein Hinweis
       // vorhanden -> isAcknowledged() liefert true, also keine Aenderung am bisherigen Verhalten.
       if (!(await isAcknowledged(redis, taskId, existing.housekeeperId || user.id))) {
-        res.status(409).json({ error: 'Bitte bestaetige zuerst den wichtigen Hinweis.' });
+        res.status(409).json({ error: 'Bitte bestätige zuerst den wichtigen Hinweis.' });
         return;
       }
       // Punkt "Reinigungsverlauf": ein bereits einmal begonnener Task (elapsedSeconds > 0, z. B.
@@ -204,7 +204,7 @@ module.exports = async (req, res) => {
       const { taskId } = req.body;
       if (!taskId) { res.status(400).json({ error: 'taskId ist erforderlich.' }); return; }
       if (!(await canTouchOwnAssignment(redis, user, taskId))) {
-        res.status(403).json({ error: 'Diese Aufgabe gehoert einer anderen Person.' });
+        res.status(403).json({ error: 'Diese Aufgabe gehört einer anderen Person.' });
         return;
       }
       const existingRaw = await redis.hGet(HASH_KEY, taskId);
@@ -225,7 +225,7 @@ module.exports = async (req, res) => {
       const { taskId, requiresInspection: needsInspection } = req.body;
       if (!taskId) { res.status(400).json({ error: 'taskId ist erforderlich.' }); return; }
       if (!(await canTouchOwnAssignment(redis, user, taskId))) {
-        res.status(403).json({ error: 'Diese Aufgabe gehoert einer anderen Person.' });
+        res.status(403).json({ error: 'Diese Aufgabe gehört einer anderen Person.' });
         return;
       }
       const existingRaw = await redis.hGet(HASH_KEY, taskId);
@@ -245,7 +245,7 @@ module.exports = async (req, res) => {
       if (!taskId) { res.status(400).json({ error: 'taskId ist erforderlich.' }); return; }
       const propertyCode = propertyCodeFromTaskId(taskId);
       if (!isPropertyManager(user, propertyCode)) {
-        res.status(403).json({ error: 'Nur fuer Standortverantwortliche dieses Property.' });
+        res.status(403).json({ error: 'Nur für Standortverantwortliche dieses Property.' });
         return;
       }
       const existingRaw = await redis.hGet(HASH_KEY, taskId);

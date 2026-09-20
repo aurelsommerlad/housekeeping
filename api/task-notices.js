@@ -62,7 +62,7 @@ module.exports = async (req, res) => {
       }
       const propertyCode = propertyCodeFromTaskId(taskId);
       if (!isPropertyManager(user, propertyCode)) {
-        res.status(403).json({ error: 'Nur fuer Admin oder Standortverantwortliche dieses Property.' });
+        res.status(403).json({ error: 'Nur für Admin oder Standortverantwortliche dieses Property.' });
         return;
       }
       const existing = await getNotice(redis, taskId);
@@ -89,7 +89,7 @@ module.exports = async (req, res) => {
       if (!taskId) { res.status(400).json({ error: 'taskId ist erforderlich.' }); return; }
       const propertyCode = propertyCodeFromTaskId(taskId);
       if (!isPropertyManager(user, propertyCode)) {
-        res.status(403).json({ error: 'Nur fuer Admin oder Standortverantwortliche dieses Property.' });
+        res.status(403).json({ error: 'Nur für Admin oder Standortverantwortliche dieses Property.' });
         return;
       }
       await redis.hDel(NOTICES_HASH_KEY, taskId);

@@ -50,15 +50,15 @@ module.exports = async (req, res) => {
       const { taskId, departureTime, arrivalTime } = req.body;
       if (!taskId) { res.status(400).json({ error: 'taskId ist erforderlich.' }); return; }
       if (user.role !== 'admin') {
-        res.status(403).json({ error: 'Nur Admin kann Zeiten manuell aendern.' });
+        res.status(403).json({ error: 'Nur Admin kann Zeiten manuell ändern.' });
         return;
       }
       if (departureTime !== undefined && !TIME_RE.test(departureTime)) {
-        res.status(400).json({ error: 'Ungueltige Abreisezeit (erwartet HH:MM).' });
+        res.status(400).json({ error: 'Ungültige Abreisezeit (erwartet HH:MM).' });
         return;
       }
       if (arrivalTime !== undefined && !TIME_RE.test(arrivalTime)) {
-        res.status(400).json({ error: 'Ungueltige Anreisezeit (erwartet HH:MM).' });
+        res.status(400).json({ error: 'Ungültige Anreisezeit (erwartet HH:MM).' });
         return;
       }
       if (departureTime === undefined && arrivalTime === undefined) {
@@ -82,7 +82,7 @@ module.exports = async (req, res) => {
       const { taskId } = req.body;
       if (!taskId) { res.status(400).json({ error: 'taskId ist erforderlich.' }); return; }
       if (user.role !== 'admin') {
-        res.status(403).json({ error: 'Nur Admin kann einen Override zuruecksetzen.' });
+        res.status(403).json({ error: 'Nur Admin kann einen Override zurücksetzen.' });
         return;
       }
       await redis.hDel(HASH_KEY, taskId);

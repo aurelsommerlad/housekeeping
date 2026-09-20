@@ -37,7 +37,7 @@ module.exports = async (req, res) => {
 
     if (action === 'set') {
       if (session.role !== 'admin') {
-        res.status(403).json({ error: 'Nur fuer Administratoren.' });
+        res.status(403).json({ error: 'Nur für Administratoren.' });
         return;
       }
       const { key, types, note } = req.body;

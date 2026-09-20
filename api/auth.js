@@ -39,11 +39,11 @@ module.exports = async (req, res) => {
     if (action === 'register-admin') {
       const { firstName, lastName, email, password, passwordConfirm } = req.body;
       if (!firstName || !lastName || !email || !password) {
-        res.status(400).json({ error: 'Bitte alle Felder ausfuellen.' });
+        res.status(400).json({ error: 'Bitte alle Felder ausfüllen.' });
         return;
       }
       if (!isValidEmail(email)) {
-        res.status(400).json({ error: 'Ungueltige E-Mail-Adresse.' });
+        res.status(400).json({ error: 'Ungültige E-Mail-Adresse.' });
         return;
       }
       if (String(password).length < 8) {
@@ -51,7 +51,7 @@ module.exports = async (req, res) => {
         return;
       }
       if (password !== passwordConfirm) {
-        res.status(400).json({ error: 'Die Passwoerter stimmen nicht ueberein.' });
+        res.status(400).json({ error: 'Die Passwörter stimmen nicht überein.' });
         return;
       }
 

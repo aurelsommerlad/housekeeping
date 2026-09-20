@@ -1,7 +1,7 @@
 {
   "name": "UNIQUE PLACES Housekeeping",
   "short_name": "Housekeeping",
-  "description": "UNIQUE PLACES Housekeeping - taegliche operative Zimmeruebersicht.",
+  "description": "UNIQUE PLACES Housekeeping - tägliche operative Zimmerübersicht.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

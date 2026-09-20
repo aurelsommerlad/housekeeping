@@ -45,7 +45,7 @@ module.exports = async (req, res) => {
       const target = all.find((u) => u.username === String(username).trim().toLowerCase());
       const adminCount = all.filter((u) => u.role === 'admin').length;
       if (target && target.role === 'admin' && adminCount <= 1) {
-        res.status(400).json({ error: 'Der letzte verbleibende Administrator kann nicht geloescht werden.' });
+        res.status(400).json({ error: 'Der letzte verbleibende Administrator kann nicht gelöscht werden.' });
         return;
       }
       await deleteUserByUsername(redis, username);

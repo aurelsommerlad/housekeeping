@@ -111,7 +111,16 @@ import type {
 // "Offen N") - die aufgeklappte Ansicht zeigt weiterhin immer den vollen Namen. Pause-Button mit
 // Play-/Pause-Icon je nach Zustand (nicht nur Farbe). Keine neue Icon-Library, keine Hoehen-/
 // Layoutaenderung an Buttons/Zeilen.
-export const APP_VERSION = '2.11.1';
+// PATCH-Bump (2.11.1 -> 2.11.2): (1) Nur noch "Live"-Properties werden geladen (siehe
+// loadProperties() oben, `status=Live`) - echte Apaleo-Test-Properties (z. B. "Test run", status
+// "Test") erscheinen dadurch nicht mehr in der operativen Reinigungsplanung; archivierte
+// Properties liefert Apaleo ohnehin standardmaessig nicht zurueck. (2) Alle sichtbaren
+// deutschsprachigen UI-Texte (i18n.ts#de sowie die Fehlermeldungen der api/*.js-Routen und die
+// PWA-Manifest-Beschreibung) auf korrekte deutsche Umlaute/Eszett umgestellt (ae->ä, oe->ö, ue->ü,
+// ss->ß wo orthografisch korrekt) - die Dateien sind UTF-8, eine ASCII-Umschreibung war nie
+// erforderlich. Reine Text-/Datenfilter-Korrektur, keine Aenderung an Business-Logik, IDs,
+// Variablennamen oder technischen Konstanten.
+export const APP_VERSION = '2.11.2';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -200,9 +209,15 @@ async function backendPost<T = unknown>(name: string, payload: unknown): Promise
   return data as T;
 }
 
+/** Nur "Live"-Properties fuer die operative Reinigungsplanung (Punkt 8 der Feinschliff-Anfrage) -
+ * live gegen den echten Apaleo-Account geprueft: `status=Live` filtert echte Test-Properties
+ * (z. B. "Test run", status "Test") heraus, die sonst 1:1 wie ein normales Haus in der Planung
+ * erschienen (keine bisherige Sichtbarkeitslogik dafuer). Archivierte Properties liefert Apaleo
+ * ohnehin nur mit explizitem `includeArchived=true` zurueck, also ohne separaten Parameter hier
+ * schon ausgeschlossen. */
 export async function loadProperties(): Promise<Property[]> {
   const data = await apaleo<{ properties?: { id?: string; code?: string; name?: string }[]; results?: { id?: string; code?: string; name?: string }[] }>(
-    '/inventory/v1/properties?pageSize=200',
+    '/inventory/v1/properties?pageSize=200&status=Live',
   );
   const list = data.properties || data.results || [];
   // `name` bleibt hier bewusst der volle, unveraenderte Apaleo-Name (nicht gekuerzt) - die

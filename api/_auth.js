@@ -127,7 +127,7 @@ async function requireAdmin(req, res) {
     return null;
   }
   if (session.role !== 'admin') {
-    res.status(403).json({ error: 'Nur fuer Administratoren.' });
+    res.status(403).json({ error: 'Nur für Administratoren.' });
     return null;
   }
   return session;

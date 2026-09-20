@@ -52,7 +52,7 @@ module.exports = async (req, res) => {
     const { action } = req.body || {};
 
     if (ADMIN_ONLY_ACTIONS.has(action) && session.role !== 'admin') {
-      res.status(403).json({ error: 'Nur fuer Administratoren.' });
+      res.status(403).json({ error: 'Nur für Administratoren.' });
       return;
     }
 

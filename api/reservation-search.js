@@ -26,7 +26,7 @@ module.exports = async (req, res) => {
     // Immer frisch laden statt der im Session-Cookie gecachten role - siehe api/_permissions.js.
     const user = await getUserRawById(redis, session.userId);
     if (!user) { res.status(401).json({ error: 'Nicht angemeldet.' }); return; }
-    if (user.role !== 'admin') { res.status(403).json({ error: 'Nur fuer Administratoren.' }); return; }
+    if (user.role !== 'admin') { res.status(403).json({ error: 'Nur für Administratoren.' }); return; }
 
     const { query } = req.body || {};
     const q = typeof query === 'string' ? query.trim() : '';

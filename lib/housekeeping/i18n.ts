@@ -3,6 +3,12 @@
  * bestehende Uebersetzung darf beim Redesign verloren gehen), ergaenzt um neue Schluessel fuer
  * die redesignten Bildschirme (Workflow-Status-Feinheiten, Mehrfachauswahl-Leiste,
  * Aufenthalts-/Turnover-Zeile in der Room Card/Detailansicht).
+ *
+ * Sprachregel (gilt fuer alle Werte hier UND fuer jede andere Stelle im Code, an der
+ * deutschsprachiger UI-Text sichtbar wird, z. B. Fehlermeldungen in api/*.js oder das PWA-
+ * Manifest): korrekte deutsche Umlaute/Eszett verwenden (ä/ö/ü/Ä/Ö/Ü/ß), NIEMALS ae/oe/ue/ss als
+ * ASCII-Ersatz - alle Dateien sind UTF-8, eine Umschreibung war nie technisch noetig. Betrifft
+ * ausschliesslich sichtbaren UI-Text (Werte), nicht Schluesselnamen/Code-Kommentare/Identifier.
  */
 export type Lang = 'de' | 'en' | 'pl' | 'ro';
 
@@ -16,56 +22,56 @@ export const I18N = {
     logout: 'Abmelden', my_rooms: 'Meine Zimmer', all_rooms: 'Alle Zimmer',
     filter_all: 'Alle', filter_forced: 'Zwangsreinigung', filter_dirty: 'Dirty', filter_inspect: 'Inspektion',
     filter_clean: 'Clean', filter_doubleup: 'Extras',
-    st_forced: 'Zwangsreinigung', st_dirty: 'Dirty', st_running: 'Laeuft', st_clean: 'Clean',
+    st_forced: 'Zwangsreinigung', st_dirty: 'Dirty', st_running: 'Läuft', st_clean: 'Clean',
     st_inspect: 'Inspektion', st_locked: 'Gesperrt',
-    multiselect: 'Mehrfachauswahl', multiselect_on: 'Auswahl beenden', assign_selected: 'Ausgewaehlte zuweisen',
+    multiselect: 'Mehrfachauswahl', multiselect_on: 'Auswahl beenden', assign_selected: 'Ausgewählte zuweisen',
     clear_all: 'Alle Zuweisungen aufheben', clear_all_confirm: 'Wirklich alle Zuweisungen dieses Hauses aufheben?',
-    confirm: 'Bestaetigen', cancel: 'Abbrechen', close: 'Schliessen', edit: 'Bearbeiten', remove: 'Entfernen',
+    confirm: 'Bestätigen', cancel: 'Abbrechen', close: 'Schließen', edit: 'Bearbeiten', remove: 'Entfernen',
     room_detail: 'Zimmer', condition: 'Zustand', guest_comment: 'Reservierungskommentar',
     assign_to: 'Zuweisen an', unassigned: 'Nicht zugewiesen', workload: 'Zimmer', doubleup_needed: 'Zusatzausstattung',
     doubleup_crib: 'Babybett', doubleup_sofabed: 'Schlafsofa', doubleup_dog: 'Hund', doubleup_extra: 'Extras',
     booked_dog_label: 'Hund gebucht', booked_crib_label: 'Babybett gebucht', booked_extras_title: 'Gebuchte Extras',
     note: 'Notiz', save: 'Speichern', start_clean: 'Reinigung starten', pause_clean: 'Reinigung pausieren',
-    resume_clean: 'Reinigung fortsetzen', finish_clean: 'Reinigung abschliessen', complete_inspection: 'Inspektion abschliessen',
-    finish_doubleup: 'Zusatzausstattung erledigt', running_since: 'Laeuft seit', elapsed: 'Verstrichen',
+    resume_clean: 'Reinigung fortsetzen', finish_clean: 'Reinigung abschließen', complete_inspection: 'Inspektion abschließen',
+    finish_doubleup: 'Zusatzausstattung erledigt', running_since: 'Läuft seit', elapsed: 'Verstrichen',
     stats_today: 'Heute', stats_month: 'Monat', stats_year: 'Jahr', cleaned_rooms: 'Zimmer gereinigt',
     avg_time: 'Ø Zeit', fastest: 'Schnellste', by_housekeeper: 'Leistung pro Housekeeper',
-    recent_completions: 'Letzte Abschluesse', no_data: 'Keine Daten vorhanden.',
+    recent_completions: 'Letzte Abschlüsse', no_data: 'Keine Daten vorhanden.',
     rules_title: 'Aktive Regeln', rule_forced_t: 'Zwangsreinigung', rule_forced_d:
-      'Ein belegtes, als "Dirty" markiertes Zimmer wird alle {{n}} Naechte seit Anreise zur Zwangsreinigung markiert - ausser der Gast reist heute oder morgen ab.',
+      'Ein belegtes, als "Dirty" markiertes Zimmer wird alle {{n}} Nächte seit Anreise zur Zwangsreinigung markiert - außer der Gast reist heute oder morgen ab.',
     rule_dirty_t: 'Automatisch Dirty nach Check-out', rule_dirty_d:
       'Sobald ein Gast auscheckt, setzt Apaleo den Zimmerzustand automatisch auf "Dirty".',
     rule_inspect_t: 'Inspektions-Workflow', rule_inspect_d:
-      'Nach Abschluss der Reinigung wechselt das Zimmer zu "Inspektion". Ein Admin prueft und setzt final auf "Clean".',
+      'Nach Abschluss der Reinigung wechselt das Zimmer zu "Inspektion". Ein Admin prüft und setzt final auf "Clean".',
     rule_turnover_t: 'Same-Day-Turnover', rule_turnover_d:
       'Reist am selben Tag ein neuer Gast an, wird bei der Reinigung der Kommentar der Folgereservierung angezeigt statt des abreisenden Gasts.',
     team_title: 'Team', new_user: 'Neuer Benutzer', role: 'Rolle', role_admin: 'Admin', role_housekeeper: 'Housekeeping',
-    properties: 'Haeuser', all_properties: 'Alle', name: 'Name', delete: 'Loeschen', delete_confirm: 'Benutzer wirklich loeschen?',
+    properties: 'Häuser', all_properties: 'Alle', name: 'Name', delete: 'Löschen', delete_confirm: 'Benutzer wirklich löschen?',
     breaks_title: 'Pause', break_start: 'Pause starten', break_end: 'Pause beenden', on_break: 'In Pause',
-    select_property: 'Bitte Haus auswaehlen.', loading: 'Lade Daten...', no_rooms: 'Keine Zimmer gefunden.',
+    select_property: 'Bitte Haus auswählen.', loading: 'Lade Daten...', no_rooms: 'Keine Zimmer gefunden.',
     saved: 'Gespeichert.', toggle_double: 'Zusatzausstattung markieren',
     checking: 'Wird geladen...',
-    retry: 'Erneut versuchen', err_auth_status: 'Der Anmeldestatus konnte nicht geladen werden. Bitte pruefe deine Verbindung und versuche es erneut.',
+    retry: 'Erneut versuchen', err_auth_status: 'Der Anmeldestatus konnte nicht geladen werden. Bitte prüfe deine Verbindung und versuche es erneut.',
     email: 'E-Mail',
     // Neu fuer das Redesign - Workflow-Status (Housekeeper-Perspektive, siehe Briefing).
     wf_open: 'Offen', wf_assigned: 'Zugewiesen', wf_paused: 'Pause', wf_done: 'Fertig',
     // Neu fuer das Redesign - Aufenthalts-/Turnover-Zeile.
     stay_info: 'Aufenthalt', turnover_departure: 'Abreise heute', turnover_arrival: 'Anreise heute',
     turnover_same_day: 'Abreise & Anreise heute', turnover_stayover: 'Bleiber', turnover_priority: 'Turnover',
-    nights_one: '{{n}} Nacht', nights_many: '{{n}} Naechte',
+    nights_one: '{{n}} Nacht', nights_many: '{{n}} Nächte',
     // Neu fuer das Redesign - Mehrfachauswahl-Leiste.
-    selected_count: '{{n}} ausgewaehlt',
-    assigned_to_label: 'Zustaendig',
-    change_assignment: 'Zuweisung aendern',
+    selected_count: '{{n}} ausgewählt',
+    assigned_to_label: 'Zuständig',
+    change_assignment: 'Zuweisung ändern',
     // Neu fuer das Redesign - Login-Karte im Owner-Center-Stil.
-    login_subtitle: 'Mit deinen Zugangsdaten fuer den Housekeeping-Bereich.',
+    login_subtitle: 'Mit deinen Zugangsdaten für den Housekeeping-Bereich.',
     // Neu fuer die Reinigungsplanung (Heute+3, Standortverantwortliche).
     nav_tasks: 'Aufgaben', nav_apartments: 'Apartments',
     day_today: 'Heute', day_tomorrow: 'Morgen',
     scope_all: 'Alle', my_tasks_only: 'Meine Aufgaben',
     type_turnover: 'Turnover', type_departure: 'Abreise', type_stayover: 'Zwischenreinigung', type_extra: 'Aufgabe',
-    label_departure: 'Abreise', label_arrival: 'Anreise', guests_count: '{{n}} Gaeste',
-    next_arrival_label: 'Naechste Anreise', no_next_arrival: 'Keine weitere Anreise bekannt',
+    label_departure: 'Abreise', label_arrival: 'Anreise', guests_count: '{{n}} Gäste',
+    next_arrival_label: 'Nächste Anreise', no_next_arrival: 'Keine weitere Anreise bekannt',
     claim_task: 'Mir zuweisen', release_task: 'Freigeben',
     clear_day: 'Zuweisungen dieses Tages aufheben', clear_day_confirm: 'Wirklich alle Zuweisungen dieses Tages (und Standorts) aufheben?',
     capacity_title: 'Team-Auslastung', capacity_title_short: 'Team', capacity_unassigned_short: 'offen',
@@ -73,25 +79,25 @@ export const I18N = {
     tasks_count: '{{n}} Reinigungen', summary_assigned: '{{n}} zugewiesen', summary_open: '{{n}} offen',
     summary_completed: '{{n}} fertig', summary_turnover: '{{n}} Turnover',
     kpi_open: 'offen', kpi_in_progress: 'in Reinigung', kpi_paused: 'pausiert', kpi_completed: 'fertig',
-    kpi_turnover: 'Turnover', select_tasks_action: 'Auswaehlen', more_actions: 'Weitere Aktionen',
+    kpi_turnover: 'Turnover', select_tasks_action: 'Auswählen', more_actions: 'Weitere Aktionen',
     break_toggle_label: 'Pause',
     active_label: 'Aktiv', inactive_label: 'Inaktiv', first_name: 'Vorname', last_name: 'Nachname',
     language_label: 'Sprache', access_label: 'Zugriff', managed_properties: 'Standortverantwortlich',
     release_confirm_started: 'Die Reinigung wurde bereits begonnen und kann nicht mehr freigegeben werden.',
-    important_notice_title: 'Wichtiger Hinweis', important_notice_add: 'Wichtigen Hinweis hinzufuegen',
+    important_notice_title: 'Wichtiger Hinweis', important_notice_add: 'Wichtigen Hinweis hinzufügen',
     important_notice_placeholder: 'z. B. Bitte unbedingt den Fleck auf dem Sofa kontrollieren...',
     notice_ack_prompt: 'Gelesen und verstanden', notice_ack_done: 'Gelesen von {{name}} · {{time}}',
-    notice_start_blocked: 'Bitte bestaetige zuerst den wichtigen Hinweis.',
+    notice_start_blocked: 'Bitte bestätige zuerst den wichtigen Hinweis.',
     remove_confirm: 'Diesen Hinweis wirklich entfernen?',
     profile_title: 'Profil',
     // Neu: An-/Abreisezeiten (Standard/Late Check-out/Early Check-in/manueller Override).
     late_checkout_badge: 'Late Check-out · {{time}}', early_checkin_badge: 'Early Check-in · {{time}}',
     time_conflict_badge: 'Zeitkonflikt', time_conflict_detail: 'Late Check-out {{t1}} · Early Check-in {{t2}}',
-    late_checkout_detail: 'Late Check-out gebucht · regulaer bis {{time}} Uhr',
-    early_checkin_detail: 'Early Check-in gebucht · regulaer ab {{time}} Uhr',
-    time_changed_badge: 'Geaenderte Zeit', time_changed_detail: 'Manuell geaendert von {{name}} · {{date}}, {{time}}',
-    edit_times: 'Zeiten bearbeiten', reset_times: 'Auf Standard/gebuchte Zeit zuruecksetzen',
-    reset_times_confirm: 'Zeiten wirklich zuruecksetzen?',
+    late_checkout_detail: 'Late Check-out gebucht · regulär bis {{time}} Uhr',
+    early_checkin_detail: 'Early Check-in gebucht · regulär ab {{time}} Uhr',
+    time_changed_badge: 'Geänderte Zeit', time_changed_detail: 'Manuell geändert von {{name}} · {{date}}, {{time}}',
+    edit_times: 'Zeiten bearbeiten', reset_times: 'Auf Standard/gebuchte Zeit zurücksetzen',
+    reset_times_confirm: 'Zeiten wirklich zurücksetzen?',
     late_checkout_label: 'Late Check-out', early_checkin_label: 'Early Check-in',
     // Neu: Echtzeit-Reinigungsstatus (Pausiert als eigener Status, Reinigungsverlauf).
     task_paused_label: 'Pausiert', task_running_label: 'In Reinigung', since_label: 'seit {{time}}', started_at_label: 'Gestartet {{time}}',

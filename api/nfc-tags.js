@@ -29,7 +29,7 @@ module.exports = async (req, res) => {
     // Immer frisch laden statt der im Session-Cookie gecachten role - siehe api/_permissions.js.
     const user = await getUserRawById(redis, session.userId);
     if (!user) { res.status(401).json({ error: 'Nicht angemeldet.' }); return; }
-    if (user.role !== 'admin') { res.status(403).json({ error: 'Nur fuer Administratoren.' }); return; }
+    if (user.role !== 'admin') { res.status(403).json({ error: 'Nur für Administratoren.' }); return; }
 
     if (req.method === 'GET') {
       res.status(200).json({ statuses: await listUnitStatuses(redis) });
@@ -44,7 +44,7 @@ module.exports = async (req, res) => {
     if (action === 'create') {
       const existing = await getActiveTagForUnit(redis, propertyCode, unitId);
       if (existing) {
-        res.status(409).json({ error: 'Fuer dieses Apartment ist bereits ein aktiver NFC-Tag eingerichtet. Nutze stattdessen "Tag ersetzen".' });
+        res.status(409).json({ error: 'Für dieses Apartment ist bereits ein aktiver NFC-Tag eingerichtet. Nutze stattdessen "Tag ersetzen".' });
         return;
       }
       const { token, record } = await createTag(redis, {
@@ -59,7 +59,7 @@ module.exports = async (req, res) => {
 
     if (action === 'reveal') {
       const existing = await getActiveTagForUnit(redis, propertyCode, unitId);
-      if (!existing) { res.status(404).json({ error: 'Kein aktiver NFC-Tag fuer dieses Apartment.' }); return; }
+      if (!existing) { res.status(404).json({ error: 'Kein aktiver NFC-Tag für dieses Apartment.' }); return; }
       const token = decryptToken(existing);
       res.status(200).json({ url: tagUrl(req, token) });
       return;
@@ -67,7 +67,7 @@ module.exports = async (req, res) => {
 
     if (action === 'deactivate') {
       const existing = await getActiveTagForUnit(redis, propertyCode, unitId);
-      if (!existing) { res.status(404).json({ error: 'Kein aktiver NFC-Tag fuer dieses Apartment.' }); return; }
+      if (!existing) { res.status(404).json({ error: 'Kein aktiver NFC-Tag für dieses Apartment.' }); return; }
       await deactivateTag(redis, existing.tokenHash);
       res.status(200).json({ ok: true });
       return;
