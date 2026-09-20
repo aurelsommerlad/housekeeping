@@ -1,9 +1,8 @@
 import type { Lang } from '@/lib/housekeeping/i18n';
 import { translate } from '@/lib/housekeeping/i18n';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
-import { DoubleupIcon, IconAlertCircle, IconCheck, IconClock, IconEdit } from '@/components/ui/icons';
-import { TASK_STATUS_CONFIG, TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
-import { formatDuration } from '@/lib/housekeeping/rooms';
+import { DoubleupIcon, IconAlertCircle, IconCheck, IconClock, IconEdit, IconPause, IconPlay, IconUser } from '@/components/ui/icons';
+import { TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
 import type { ResolvedTask } from '@/lib/housekeeping/useHousekeepingApp';
 import { TonePill } from './TonePill';
 import { TimeFlag } from './TimeFlag';
@@ -52,26 +51,174 @@ function lastHistoryAt(task: ResolvedTask, action: 'started' | 'resumed' | 'paus
 }
 
 /**
- * Reinigungsauftrags-Karte (Punkt 10) - dasselbe reduzierte, auf einen Blick erfassbare Muster
- * wie die bestehende RoomCard (gleicher radius-card-lg/Kartenrahmen, gleiche Selektions-Logik
- * fuer Bulk Assign), aber datums-/auftragszentriert statt zimmerzentriert: Typ-Badge zuerst
- * (Turnover hoechste Prioritaet, Punkt 9), dann An-/Abreisezeiten, Gaesteanzahl, Extras,
- * zuletzt die Zuweisung.
+ * Arbeitsstatus/Zuweisung rechts im Kopfbereich (Punkt 2/3 des Redesigns) - ersetzt das
+ * fruehere separate "Zugewiesen"-Badge UND die zusaetzliche Namenszeile am Kartenende: laeuft
+ * oder pausiert eine Reinigung, ist DAS der wichtigere Zustand (Icon + Status + Zeit + Name in
+ * einer Zeile statt zwei gestapelten, damit sich die Kartenhoehe nicht aendert); fertige Aufgaben
+ * zeigen "Fertig · HH:MM" statt einer nochmaligen Zuweisungsangabe (Punkt 10). Sonst schlicht die
+ * Zuweisung selbst - der Name allein zeigt bereits eindeutig, dass zugewiesen ist.
+ */
+function WorkStatus({ task, lang }: { task: ResolvedTask; lang: Lang }) {
+  const name = task.assignedUserName || translate(lang, 'unassigned');
+
+  if (task.status === 'completed') {
+    return (
+      <span className="flex min-w-0 items-center gap-1 truncate text-[12px] text-muted">
+        <IconCheck width={13} height={13} className="shrink-0" aria-hidden="true" />
+        <span className="truncate">
+          {translate(lang, 'wf_done')}
+          {task.completedAt ? ` · ${formatClock(task.completedAt)}` : ''}
+        </span>
+      </span>
+    );
+  }
+
+  if (task.status === 'in_progress') {
+    const since = lastHistoryAt(task, 'started') ?? task.cleaningStartedAt;
+    return (
+      <span className="flex min-w-0 items-center gap-1 truncate text-[12px] text-status-progress">
+        <IconPlay width={13} height={13} className="shrink-0" aria-hidden="true" />
+        <span className="truncate">
+          {translate(lang, 'task_running_label')}{since ? ` · ${formatClock(since)}` : ''} · {name}
+        </span>
+      </span>
+    );
+  }
+
+  if (task.status === 'paused') {
+    const since = lastHistoryAt(task, 'paused');
+    return (
+      <span className="flex min-w-0 items-center gap-1 truncate text-[12px] text-status-blocked">
+        <IconPause width={13} height={13} className="shrink-0" aria-hidden="true" />
+        <span className="truncate">
+          {translate(lang, 'task_paused_label')}{since ? ` · ${formatClock(since)}` : ''} · {name}
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span className={cn('flex min-w-0 items-center gap-1 truncate text-[12px]', task.assignedUserName ? 'font-medium text-ink' : 'text-muted')}>
+      <IconUser width={13} height={13} className="shrink-0" aria-hidden="true" />
+      <span className="truncate">{name}</span>
+    </span>
+  );
+}
+
+/**
+ * Zeitzeile (Punkt 4/5 des Redesigns) - EINE Zeile statt zuvor zwei getrennter Bloecke (Zeit +
+ * separat LCO/ECI/Konflikt/Override): Uhr-Icon + prominente Kernzeit, danach dieselben,
+ * unveraenderten TimeFlag-Badges direkt daneben statt darunter. Reine Darstellung, Ableitung/
+ * Prioritaet der Werte selbst (effectiveDepartureTime/-ArrivalTime, timeConflict, ...) bleibt
+ * exakt lib/housekeeping/tasks.ts vorbehalten.
+ */
+function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
+  const flags = task.timeConflict ? (
+    <TimeFlag icon={IconAlertCircle} tone="attention">{translate(lang, 'time_conflict_badge')}</TimeFlag>
+  ) : (
+    <>
+      {task.hasLateCheckout ? <TimeFlag icon={IconClock}>{translate(lang, 'late_checkout_badge', { time: task.bookedDepartureTime })}</TimeFlag> : null}
+      {task.hasEarlyCheckin ? <TimeFlag icon={IconClock}>{translate(lang, 'early_checkin_badge', { time: task.bookedArrivalTime || '' })}</TimeFlag> : null}
+    </>
+  );
+  const overrideFlag = task.departureOverridden || task.arrivalOverridden ? (
+    <TimeFlag icon={IconEdit}>{translate(lang, 'time_changed_badge')}</TimeFlag>
+  ) : null;
+
+  if (task.type === 'turnover') {
+    return (
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-line/70 pt-2">
+        <span className="flex items-center gap-1.5 text-[15px] font-semibold tabular-nums text-ink">
+          <IconClock width={15} height={15} className="shrink-0 text-muted" aria-hidden="true" />
+          {task.effectiveDepartureTime} → {task.effectiveArrivalTime}
+        </span>
+        {flags}
+        {overrideFlag}
+      </div>
+    );
+  }
+
+  if (task.type === 'departure') {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-x-2.5 gap-y-1 border-t border-line/70 pt-2">
+        <span className="flex items-center gap-2.5">
+          <span className="flex items-center gap-1.5 text-[15px] font-semibold tabular-nums text-ink">
+            <IconClock width={15} height={15} className="shrink-0 text-muted" aria-hidden="true" />
+            {task.effectiveDepartureTime}
+          </span>
+          {flags}
+          {overrideFlag}
+        </span>
+        {task.followingArrivalDate ? (
+          <span className="text-right text-[11px] leading-tight text-muted">
+            {translate(lang, 'next_arrival_label')}<br />{formatDayMonth(task.followingArrivalDate)}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (task.type === 'stayover' && task.nights) {
+    return (
+      <p className="border-t border-line/70 pt-2 text-[12.5px] text-muted">
+        {translate(lang, task.nights === 1 ? 'nights_one' : 'nights_many', { n: task.nights })}
+      </p>
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Gast/Buchung + Extras (Punkt 6/7 des Redesigns) - EINE sekundaere Fusszeile statt zuvor bis zu
+ * drei getrennten (Reservierung/Gaestezahl, Doubleup-Icons, Zuweisung). Extras-Icons rechts in
+ * derselben Zeile statt einer eigenen Zeile.
+ */
+function GuestLine({ task, lang, doubleTypes }: { task: ResolvedTask; lang: Lang; doubleTypes: typeof DOUBLEUP_TYPES }) {
+  // Punkt "Wichtige Korrektur" (unveraendert): Turnover zeigt die ANKOMMENDE, alle anderen Typen
+  // die eigene Reservierung - siehe tasks.ts.
+  const cardReservation = task.type === 'turnover' ? task.nextReservationInfo : task.reservationInfo;
+  const guestText = cardReservation
+    ? `${cardReservation.guestName || translate(lang, 'unassigned')} · ${cardReservation.reservationId}`
+    : typeof task.guestCount === 'number'
+      ? translate(lang, 'guests_count', { n: task.guestCount })
+      : null;
+
+  if (!guestText && !doubleTypes.length) return null;
+
+  return (
+    <div className="flex items-center justify-between gap-2">
+      {guestText ? (
+        <span className="flex min-w-0 items-center gap-1.5 truncate text-[12px] text-muted">
+          <IconUser width={13} height={13} className="shrink-0" aria-hidden="true" />
+          <span className="truncate">{guestText}</span>
+        </span>
+      ) : <span />}
+      {doubleTypes.length ? (
+        <span className="flex shrink-0 items-center gap-1.5 text-muted">
+          {doubleTypes.map((dt) => {
+            const label = translate(lang, dt.label);
+            return <DoubleupIcon key={dt.id} id={dt.id} width={15} height={15} role="img" aria-label={label} />;
+          })}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Reinigungsauftrags-Karte (Redesign: klare Informationshierarchie statt vieler gleichwertiger
+ * Badges/Zeilen) - Ebene 1 Apartment+Standort, Ebene 2 Aufgabentyp+Arbeitsstatus, Ebene 3
+ * Zeitfenster, Ebene 4 Gast/Buchung+Extras. Dieselbe kompakte Kartengroesse wie zuvor (siehe
+ * Playwright-Hoehenvergleich vor/nach der Aenderung) - reine Darstellung, keine Aenderung an
+ * Task-Ableitung/Zuweisung/Timer/Pausen/NFC/Notices/Zeiten-Overrides.
  */
 export function TaskCard({ task, lang, selected, selectable, noticeState = 'none', onOpen }: TaskCardProps) {
   const typeConfig = TASK_TYPE_CONFIG[task.type];
-  const statusConfig = TASK_STATUS_CONFIG[task.status];
   const doubleTypes = task.doubleupTypes.length
     ? DOUBLEUP_TYPES.filter((dt) => task.doubleupTypes.includes(dt.id))
     : [];
   const isCompleted = task.status === 'completed';
-  const startedAt = lastHistoryAt(task, 'started') ?? task.cleaningStartedAt;
-  const pausedAt = lastHistoryAt(task, 'paused');
-  // Punkt "Wichtige Korrektur": dieselbe, bereits vorhandene sekundaere Zeile (frueher reine
-  // Gaestezahl) zeigt jetzt kompakt Gastname+Buchungsnummer - EXAKT dieselbe Zeile/Klasse, damit
-  // sich Kartenhoehe/-abmessungen nicht aendern. Dieselbe Konvention wie bisher bei guestCount/
-  // comment (Turnover -> ankommende Reservierung, sonst die dieses Tasks) - siehe tasks.ts Punkt 8.
-  const cardReservation = task.type === 'turnover' ? task.nextReservationInfo : task.reservationInfo;
 
   return (
     <button
@@ -99,8 +246,8 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
       ) : null}
 
       <div className="flex items-start justify-between gap-2 pr-6">
-        <span className="italic text-[17px] leading-none text-ink">
-          {task.unitName} <span className="text-muted">· {task.propertyName}</span>
+        <span className="italic text-[17px] font-medium leading-none text-ink">
+          {task.unitName} <span className="text-[13px] font-normal not-italic text-muted">· {task.propertyName}</span>
         </span>
         {noticeState === 'unread' ? (
           <IconAlertCircle width={16} height={16} className="mt-0.5 shrink-0 text-muted" aria-hidden="true" />
@@ -109,86 +256,14 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex items-center justify-between gap-2">
         <TonePill config={typeConfig} lang={lang} size="sm" />
-        {task.status !== 'open' ? <TonePill config={statusConfig} lang={lang} size="sm" /> : null}
-        {task.status === 'in_progress' ? (
-          <span className="text-[12px] font-medium tabular-nums text-status-progress">{formatDuration(task.elapsedSeconds)}</span>
-        ) : null}
-        {task.status === 'in_progress' && task.assignedUserName ? (
-          <span className="text-[12px] text-muted">
-            {translate(lang, 'assignee_since', { name: task.assignedUserName, time: startedAt ? formatClock(startedAt) : '' })}
-          </span>
-        ) : null}
-        {task.status === 'paused' && task.assignedUserName ? (
-          <span className="text-[12px] text-muted">
-            {translate(lang, 'assignee_since', { name: task.assignedUserName, time: pausedAt ? formatClock(pausedAt) : '' })}
-          </span>
-        ) : null}
-        {isCompleted && task.assignedUserName ? (
-          <span className="text-[12px] text-muted">
-            {translate(lang, 'assignee_at', { name: task.assignedUserName, time: task.completedAt ? formatClock(task.completedAt) : '' })}
-          </span>
-        ) : null}
+        <WorkStatus task={task} lang={lang} />
       </div>
 
-      {task.type === 'turnover' ? (
-        <p className="text-[12.5px] text-muted">
-          {translate(lang, 'label_departure')} {task.effectiveDepartureTime} → {translate(lang, 'label_arrival')} {task.effectiveArrivalTime}
-        </p>
-      ) : task.type === 'departure' ? (
-        <p className="text-[12.5px] text-muted">
-          {translate(lang, 'label_departure')} {task.effectiveDepartureTime}
-          {task.followingArrivalDate ? (
-            <> · {translate(lang, 'next_arrival_label')}: {formatDayMonth(task.followingArrivalDate)}</>
-          ) : null}
-        </p>
-      ) : task.type === 'stayover' ? (
-        <p className="text-[12.5px] text-muted">{task.nights ? translate(lang, task.nights === 1 ? 'nights_one' : 'nights_many', { n: task.nights }) : null}</p>
-      ) : null}
+      <TimeLine task={task} lang={lang} />
 
-      {/* Late Check-out/Early Check-in/Zeitkonflikt/manueller Override (Punkt 1-4/9/14) - dezent,
-       * monochrom, nie farblich "laut" ausser dem echten Zeitkonflikt (status-attention, dieselbe
-       * sehr zurueckhaltende Warmtoene wie der "Wichtiger Hinweis"-Block). Bei einem Konflikt
-       * werden die einzelnen LCO/ECI-Kennzeichnungen durch die kombinierte Meldung ersetzt statt
-       * redundant zusaetzlich gezeigt. */}
-      {task.timeConflict || task.hasLateCheckout || task.hasEarlyCheckin || task.departureOverridden || task.arrivalOverridden ? (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          {task.timeConflict ? (
-            <TimeFlag icon={IconAlertCircle} tone="attention">{translate(lang, 'time_conflict_badge')}</TimeFlag>
-          ) : (
-            <>
-              {task.hasLateCheckout ? <TimeFlag icon={IconClock}>{translate(lang, 'late_checkout_badge', { time: task.bookedDepartureTime })}</TimeFlag> : null}
-              {task.hasEarlyCheckin ? <TimeFlag icon={IconClock}>{translate(lang, 'early_checkin_badge', { time: task.bookedArrivalTime || '' })}</TimeFlag> : null}
-            </>
-          )}
-          {task.departureOverridden || task.arrivalOverridden ? (
-            <TimeFlag icon={IconEdit}>{translate(lang, 'time_changed_badge')}</TimeFlag>
-          ) : null}
-        </div>
-      ) : null}
-
-      {cardReservation ? (
-        <p className="truncate text-[12.5px] text-muted">
-          {cardReservation.guestName || translate(lang, 'unassigned')} · {cardReservation.reservationId}
-        </p>
-      ) : typeof task.guestCount === 'number' ? (
-        <p className="text-[12.5px] text-muted">{translate(lang, 'guests_count', { n: task.guestCount })}</p>
-      ) : null}
-
-      {doubleTypes.length ? (
-        <p className="flex items-center gap-1.5 text-muted" aria-hidden="true">
-          {doubleTypes.map((dt) => (
-            <DoubleupIcon key={dt.id} id={dt.id} width={16} height={16} />
-          ))}
-        </p>
-      ) : null}
-
-      <div className="flex flex-wrap items-center justify-between gap-1.5">
-        <span className="truncate text-[12.5px] font-medium text-ink">
-          {task.assignedUserName || translate(lang, 'unassigned')}
-        </span>
-      </div>
+      <GuestLine task={task} lang={lang} doubleTypes={doubleTypes} />
     </button>
   );
 }

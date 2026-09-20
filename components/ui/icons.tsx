@@ -201,6 +201,27 @@ export function IconSearch(props: IconProps) {
   );
 }
 
+/** Fuer den Arbeitsstatus "Pausiert" auf der kompakten Aufgabenkarte (Task-Card-Redesign) - zwei
+ * schlichte Balken, dieselbe Outline-Sprache wie die uebrigen Icons, ersetzt dort das reine
+ * Unicode-Glyph aus TASK_STATUS_CONFIG (das bleibt fuer TonePill/TaskDetailSheet unveraendert). */
+export function IconPause(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M9 6v12M15 6v12" />
+    </svg>
+  );
+}
+
+/** Fuer den Arbeitsstatus "In Reinigung" auf der kompakten Aufgabenkarte - schlichtes,
+ * ungefuelltes Play-Dreieck, dieselbe Outline-Sprache wie die uebrigen Icons. */
+export function IconPlay(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M8 6.5v11l9-5.5-9-5.5Z" />
+    </svg>
+  );
+}
+
 export const NAV_ICONS = {
   bed: IconBed,
   chart: IconChart,

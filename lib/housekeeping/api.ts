@@ -16,13 +16,14 @@ import type {
   TaskNoticesState, TaskStartSource, TaskTimeOverride, TaskTimeOverridesState,
 } from './types';
 
-// MINOR-Bump (2.3.0 -> 2.4.0): Reservierungsinformationen an Tasks (Buchungsnummer/Gast/
-// Gaestezahl/Kinderalter/gebucht am, strikt getrennt Abreise vs. naechste Anreise bei Turnover)
-// + Admin-Reservierungssuche live gegen Apaleo (textSearch, ueber alle Properties/Zeitraeume) -
-// rein additiv (neue Task-Felder reservationInfo/nextReservationInfo, keine neuen Redis-Keys,
-// keine Aenderung bestehender Datenformate). Die kompakte Task Card behaelt ihre bisherige
-// Groesse (dieselbe Zeile wird nur inhaltlich angereichert, siehe TaskCard.tsx).
-export const APP_VERSION = '2.5.0';
+// MINOR-Bump (2.5.0 -> 2.6.0): TaskCard-Redesign - klare Informationshierarchie (Apartment+Standort,
+// Typ+Arbeitsstatus, Zeitfenster, Gast/Buchung+Extras) statt vieler gleichwertiger Badges/Zeilen,
+// "Zugewiesen"-Badge und die doppelte Namensanzeige entfernt, Arbeitsstatus (Laeuft/Pausiert)
+// ersetzt bei aktiver Reinigung die normale Zuweisungsanzeige. Reine Darstellung/Layout (siehe
+// TaskCard.tsx) - Task-Ableitung/Zuweisung/Timer/Zeiten-Logik unveraendert; die kompakte Karte
+// ist gegenueber 2.5.0 fuer jeden Aufgabenzustand gleich hoch oder niedriger (Playwright-
+// Hoehenvergleich vor/nach der Aenderung), nie hoeher.
+export const APP_VERSION = '2.6.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
