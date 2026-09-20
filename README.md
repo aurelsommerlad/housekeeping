@@ -104,10 +104,20 @@ wurden durch dieses Update nicht angefasst.
 | `APALEO_CLIENT_ID` | Apaleo API Client (Client-Credentials-Grant) |
 | `APALEO_CLIENT_SECRET` | Apaleo API Client Secret |
 | `REDIS_URL` | Verbindungs-URL der Redis-Datenbank (i. d. R. automatisch gesetzt) |
+| `NFC_TOKEN_SECRET` | Schluessel zur Verschluesselung der NFC-Tag-Tokens (siehe unten) |
 
 Fuer Login/Session/Passwort-Hashing sind **keine neuen Environment Variables** noetig: Sessions
 sind zufaellige, in Redis gespeicherte Tokens (kein JWT-Secret erforderlich) und bcrypt braucht
 keinen externen Schluessel.
+
+`NFC_TOKEN_SECRET` wird nur fuer die NFC-Tag-Verwaltung (Admin-Einstellungen -> NFC-Tags)
+gebraucht: Redis speichert pro Tag ausschliesslich einen SHA-256-Hash des Tokens (fuer die
+Aufloesung beim Scan) sowie das Token selbst AES-256-GCM-verschluesselt mit diesem Secret -
+niemals im Klartext. Ohne gesetztes `NFC_TOKEN_SECRET` schlagen nur die NFC-Aktionen (Tag
+einrichten/anzeigen/ersetzen) mit einem klaren Fehler fehl, der Rest der App ist unberuehrt.
+Ein beliebiger langer Zufallswert genuegt (z. B. `openssl rand -hex 32`) - wird der Wert spaeter
+geaendert, werden bereits verschluesselt gespeicherte Tokens unlesbar (die betroffenen Tags
+muessten neu eingerichtet werden), daher einmal setzen und stabil halten.
 
 Der Apaleo API Client benoetigt Lese-/Schreibrechte (Scopes) fuer Inventory, Booking und
 Operations.

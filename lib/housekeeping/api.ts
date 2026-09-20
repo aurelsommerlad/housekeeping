@@ -11,16 +11,16 @@
  * lib/housekeeping/auth.ts.
  */
 import type {
-  ApaleoReservation, ApaleoUnit, AssignmentsState, DoubleupsState, Completion, BreakEntry, Property, ReservationsState, StaffUser,
-  TaskAssignmentsState, TaskNotice, TaskNoticeAck, TaskNoticeAcksState, TaskNoticesState, TaskTimeOverride, TaskTimeOverridesState,
+  ApaleoReservation, ApaleoUnit, AssignmentsState, DoubleupsState, Completion, BreakEntry, NfcTagStatusesState, Property,
+  ReservationsState, StaffUser, TaskAssignmentsState, TaskNotice, TaskNoticeAck, TaskNoticeAcksState, TaskNoticesState,
+  TaskStartSource, TaskTimeOverride, TaskTimeOverridesState,
 } from './types';
 
-// MINOR-Bump (2.1.0 -> 2.2.0): An-/Abreisezeiten-Logik (Late Check-out/Early Check-in aus Apaleo-
-// Services, manueller Admin-Override) + Echtzeit-Reinigungsstatus (Pausiert, Reinigungsverlauf,
-// zurueckgenommene "Fertig"-Karten) - beides rein additiv (neuer Redis-Hash
-// housekeeping:task_time_overrides, neues optionales history-Feld auf TaskAssignment, neuer
-// TaskStatus-Wert 'paused'), keine bestehenden Keys/Datenformate geaendert oder geloescht.
-export const APP_VERSION = '2.2.0';
+// MINOR-Bump (2.2.0 -> 2.3.0): NFC-Tag-Verwaltung (Admin-Einstellungen -> NFC-Tags) + NFC-Scan-
+// Einstieg (/nfc/[token]) - rein additiv (neue Redis-Hashes housekeeping:nfc_tags/
+// housekeeping:nfc_units, neues optionales source-Feld auf TaskHistoryEntry), baut vollstaendig
+// auf der bestehenden Task-/Timer-/Berechtigungslogik auf statt einer parallelen Implementierung.
+export const APP_VERSION = '2.3.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -317,7 +317,8 @@ export const taskAssignmentsApi = {
     backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'bulkAssign', taskIds, housekeeperId, housekeeperName }),
   clearScope: (date: string, property: string) =>
     backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'clearScope', date, property }),
-  startTimer: (taskId: string) => backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'startTimer', taskId }),
+  startTimer: (taskId: string, startSource?: TaskStartSource) =>
+    backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'startTimer', taskId, startSource }),
   stopTimer: (taskId: string) => backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'stopTimer', taskId }),
   complete: (taskId: string, requiresInspectionFlag: boolean) =>
     backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'complete', taskId, requiresInspection: requiresInspectionFlag }),
@@ -361,6 +362,59 @@ export const taskTimeOverridesApi = {
     backendPost<{ override: TaskTimeOverride }>('task-time-overrides', { action: 'set', taskId, ...times }),
   remove: (taskId: string) => backendPost<{ ok: true }>('task-time-overrides', { action: 'remove', taskId }),
 };
+
+export async function loadNfcTagStatuses(): Promise<NfcTagStatusesState> {
+  const data = await backendGet<{ statuses?: NfcTagStatusesState }>('nfc-tags');
+  return data.statuses || {};
+}
+
+/** NFC-Tag-Verwaltung (Punkt "NFC-Verwaltung") - ausschliesslich fuer Admin, serverseitig
+ * durchgesetzt (siehe api/nfc-tags.js). Liefert bei create/replace/reveal die volle, fertig
+ * zusammengesetzte URL (Origin wird serverseitig aus dem Request ermittelt, siehe
+ * api/nfc-tags.js#originFromReq - funktioniert dadurch unveraendert in jeder Umgebung: lokal,
+ * Preview-Deployments, Produktivdomain). */
+export const nfcApi = {
+  create: (propertyCode: string, unitId: string, unitName: string) =>
+    backendPost<{ url: string; status: { active: true; createdAt: number; createdByName: string } }>(
+      'nfc-tags', { action: 'create', propertyCode, unitId, unitName },
+    ),
+  reveal: (propertyCode: string, unitId: string) =>
+    backendPost<{ url: string }>('nfc-tags', { action: 'reveal', propertyCode, unitId }),
+  deactivate: (propertyCode: string, unitId: string) =>
+    backendPost<{ ok: true }>('nfc-tags', { action: 'deactivate', propertyCode, unitId }),
+  replace: (propertyCode: string, unitId: string, unitName: string) =>
+    backendPost<{ url: string; status: { active: true; createdAt: number; createdByName: string } }>(
+      'nfc-tags', { action: 'replace', propertyCode, unitId, unitName },
+    ),
+};
+
+export interface NfcResolveResult {
+  propertyCode: string;
+  unitId: string;
+  unitName: string;
+}
+
+/** NFC-Scan-Aufloesung (Punkt "NFC-Scan") - ruft die native Next.js-Route auf (nicht den
+ * legacy /api/apaleo-Proxy), siehe app/api/nfc/[token]/route.ts. Wirft bei 401/403/404 einen
+ * Error mit einem stabilen `code`-Feld, damit die aufrufende Seite gezielt zwischen "nicht
+ * eingeloggt", "kein Zugriff" und "ungueltiger/deaktivierter Tag" unterscheiden kann. */
+export class NfcResolveError extends Error {
+  code: 'unauthenticated' | 'forbidden' | 'invalid';
+  constructor(code: 'unauthenticated' | 'forbidden' | 'invalid') {
+    super(code);
+    this.code = code;
+  }
+}
+
+export async function resolveNfcToken(token: string): Promise<NfcResolveResult> {
+  const res = await fetch(`/api/nfc/${encodeURIComponent(token)}`, { cache: 'no-store' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const code = data.error === 'unauthenticated' || data.error === 'forbidden' ? data.error : 'invalid';
+    throw new NfcResolveError(code);
+  }
+  return res.json();
+}
 
 export const breaksApi = {
   start: (housekeeperId: string, housekeeperName: string) => backendPost('breaks', { action: 'start', housekeeperId, housekeeperName }),

@@ -224,11 +224,17 @@ export type TaskStatus = 'open' | 'assigned' | 'in_progress' | 'paused' | 'inspe
  * kann. */
 export type TaskHistoryAction = 'started' | 'paused' | 'resumed' | 'completed';
 
+/** Nur bei 'started'/'resumed' gesetzt (Punkt "Startquelle speichern") - woher DIESER konkrete
+ * Start ausgeloest wurde. Rein informativ fuer die Verlaufsanzeige, aendert nichts an Timer-/
+ * Statuslogik. */
+export type TaskStartSource = 'nfc' | 'manual';
+
 export interface TaskHistoryEntry {
   action: TaskHistoryAction;
   at: number;
   byUserId: string;
   byUserName: string;
+  source?: TaskStartSource;
 }
 
 /**
@@ -338,3 +344,19 @@ export interface CapacityEntry {
 /** Feingranulare Workflow-Status aus Housekeeper-Sicht (rein abgeleitete Anzeigeschicht -
  * aendert nichts an room.condition/forced/running, siehe lib/housekeeping/rooms.ts). */
 export type WorkflowStatus = 'locked' | 'forced' | 'inspect' | 'done' | 'running' | 'paused' | 'assigned' | 'open';
+
+/**
+ * NFC-Tag-Status EINES Apartments (Punkt "NFC-Verwaltung") - Admin-only, Key = "propertyCode|
+ * unitId" (siehe api/_nfc.js#unitKey). Enthaelt bewusst NIE das Token selbst (weder Klartext
+ * noch verschluesselt) - das wird nur bei "einrichten"/"ersetzen"/"URL kopieren"/"testen" ueber
+ * eine eigene Aktion angefragt (siehe nfcApi.create/reveal in api.ts), nie in dieser Liste
+ * mitgeliefert.
+ */
+export interface NfcTagStatus {
+  active: boolean;
+  createdAt: number;
+  createdByName: string;
+}
+
+/** Key = "propertyCode|unitId". */
+export type NfcTagStatusesState = Record<string, NfcTagStatus | undefined>;

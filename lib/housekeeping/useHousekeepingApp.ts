@@ -25,8 +25,8 @@ import { translate } from './i18n';
 import { fetchMe, login as loginRequest, logout as logoutRequest } from './auth';
 import {
   DOUBLEUP_TYPES, POLL_INTERVAL, assignmentsApi, breaksApi, completionsApi, doubleupsApi, getPropertyDisplayName,
-  loadBackendState, loadProperties, loadReservations, loadReservationsRangeForProperties,
-  loadTaskAssignments, loadTaskNotices, loadTaskTimeOverrides, loadUnits, loadUnitsForProperties, setUnitCondition,
+  loadBackendState, loadNfcTagStatuses, loadProperties, loadReservations, loadReservationsRangeForProperties,
+  loadTaskAssignments, loadTaskNotices, loadTaskTimeOverrides, loadUnits, loadUnitsForProperties, nfcApi, setUnitCondition,
   taskAssignmentsApi, taskNoticesApi, taskTimeOverridesApi, usersApi,
 } from './api';
 import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './rooms';
@@ -36,9 +36,14 @@ import {
 } from './tasks';
 import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, BreakEntry, CapacityEntry, Completion, DaySummary, DoubleupsState,
-  Property, ReservationsState, Room, RoomFilter, StaffUser, TaskAssignmentsState, TaskNotice, TaskNoticeAcksState,
-  TaskNoticesState, TaskTimeOverridesState,
+  NfcTagStatusesState, Property, ReservationsState, Room, RoomFilter, StaffUser, TaskAssignmentsState, TaskNotice,
+  TaskNoticeAcksState, TaskNoticesState, TaskStartSource, TaskTimeOverridesState,
 } from './types';
+
+/** Key-Schema exakt wie api/_nfc.js#unitKey - EINZIGE Stelle im Client, die dieses Format kennt. */
+function nfcUnitKey(propertyCode: string, unitId: string): string {
+  return `${propertyCode}|${unitId}`;
+}
 
 export type AuthScreen = 'checking' | 'login' | 'app';
 export type NavId = 'tasks' | 'rooms' | 'stats' | 'team';
@@ -92,6 +97,11 @@ interface AppState {
   /** Manueller Admin-Override der Abreise-/Anreisezeit (Prioritaet 1), Key = Task-ID - eigene,
    * vom Apaleo-Reservierungskommentar/gebuchten Service getrennte Datenquelle. */
   taskTimeOverrides: TaskTimeOverridesState;
+  /** NFC-Tag-Status je Apartment (Punkt "NFC-Verwaltung", Admin-only) - Key = "propertyCode|
+   * unitId" (siehe nfcUnitKey oben). Wird nicht beim Login vorgeladen (nur fuer Admins relevant,
+   * selten benoetigt), sondern erst, wenn die NFC-Einstellungen tatsaechlich geoeffnet werden. */
+  nfcTags: NfcTagStatusesState;
+  nfcTagsLoading: boolean;
   tasksLoadError: string | null;
   taskMultiSelect: boolean;
   selectedTasks: Set<string>;
@@ -145,6 +155,8 @@ function initialState(): AppState {
     taskNotices: {},
     taskNoticeAcks: {},
     taskTimeOverrides: {},
+    nfcTags: {},
+    nfcTagsLoading: false,
     tasksLoadError: null,
     taskMultiSelect: false,
     selectedTasks: new Set(),
@@ -683,9 +695,9 @@ export function useHousekeepingApp() {
     });
   }, [patch, runAction]);
 
-  const startTaskTimer = useCallback(async (id: string) => {
+  const startTaskTimer = useCallback(async (id: string, startSource?: TaskStartSource) => {
     await runAction(async () => {
-      const { taskAssignments } = await taskAssignmentsApi.startTimer(id);
+      const { taskAssignments } = await taskAssignmentsApi.startTimer(id, startSource);
       patch({ taskAssignments });
     });
   }, [patch, runAction]);
@@ -819,6 +831,63 @@ export function useHousekeepingApp() {
     });
   }, [patch, runAction]);
 
+  // --- NFC-Tag-Verwaltung (Admin-only) - anders als die uebrigen Aktionen NICHT ueber
+  // runAction() (das schluckt Rueckgabewerte), da die aufrufende Komponente die frisch erzeugte/
+  // abgefragte URL direkt zum Anzeigen/Kopieren braucht.
+  const loadNfcTags = useCallback(async () => {
+    patch({ nfcTagsLoading: true });
+    try {
+      const nfcTags = await loadNfcTagStatuses();
+      patch({ nfcTags, nfcTagsLoading: false });
+    } catch (err) {
+      patch({ nfcTagsLoading: false });
+      showToast(err instanceof Error ? err.message : String(err));
+    }
+  }, [patch, showToast]);
+
+  const createNfcTag = useCallback(async (propertyCode: string, unitId: string, unitName: string): Promise<string | null> => {
+    try {
+      const { url, status } = await nfcApi.create(propertyCode, unitId, unitName);
+      patch((s) => ({ nfcTags: { ...s.nfcTags, [nfcUnitKey(propertyCode, unitId)]: status } }));
+      return url;
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err));
+      return null;
+    }
+  }, [patch, showToast]);
+
+  const revealNfcTag = useCallback(async (propertyCode: string, unitId: string): Promise<string | null> => {
+    try {
+      const { url } = await nfcApi.reveal(propertyCode, unitId);
+      return url;
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err));
+      return null;
+    }
+  }, [showToast]);
+
+  const deactivateNfcTag = useCallback(async (propertyCode: string, unitId: string): Promise<boolean> => {
+    try {
+      await nfcApi.deactivate(propertyCode, unitId);
+      patch((s) => ({ nfcTags: { ...s.nfcTags, [nfcUnitKey(propertyCode, unitId)]: undefined } }));
+      return true;
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  }, [patch, showToast]);
+
+  const replaceNfcTag = useCallback(async (propertyCode: string, unitId: string, unitName: string): Promise<string | null> => {
+    try {
+      const { url, status } = await nfcApi.replace(propertyCode, unitId, unitName);
+      patch((s) => ({ nfcTags: { ...s.nfcTags, [nfcUnitKey(propertyCode, unitId)]: status } }));
+      return url;
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err));
+      return null;
+    }
+  }, [patch, showToast]);
+
   return {
     state, t, roomKey,
     rooms, DOUBLEUP_TYPES,
@@ -829,7 +898,7 @@ export function useHousekeepingApp() {
     saveUser, deleteUser,
 
     // Reinigungsplanung
-    tasksForDay, daySummaryFor, capacityFor, workloadForPropertyDay, retryTasksLoad,
+    tasksForDay, tasksForDayAll, daySummaryFor, capacityFor, workloadForPropertyDay, retryTasksLoad,
     selectDay, selectPropertyScope, toggleMyTasksOnly,
     toggleTaskMultiSelect, toggleTaskSelection, openTask, closeTaskModal,
     claimTask, releaseTask, assignTask, bulkAssignTasks, clearDayAssignments,
@@ -841,6 +910,9 @@ export function useHousekeepingApp() {
 
     // Manueller Zeiten-Override
     saveTaskTimeOverride, removeTaskTimeOverride,
+
+    // NFC-Tag-Verwaltung
+    loadNfcTags, createNfcTag, revealNfcTag, deactivateNfcTag, replaceNfcTag,
   };
 }
 

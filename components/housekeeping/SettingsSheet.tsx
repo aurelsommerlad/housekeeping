@@ -5,6 +5,7 @@ import { LANGUAGES } from '@/lib/housekeeping/i18n';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { BottomSheet } from './BottomSheet';
 import { RulesScreen } from './RulesScreen';
+import { NfcSettingsScreen } from './NfcSettingsScreen';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/cn';
 
@@ -57,6 +58,12 @@ export function SettingsSheet({ app, open, onClose }: SettingsSheetProps) {
       {isAdmin ? (
         <div className="mt-5 -mx-5 border-t border-line px-1 pt-4">
           <RulesScreen app={app} />
+        </div>
+      ) : null}
+
+      {isAdmin ? (
+        <div className="mt-5 -mx-5 border-t border-line px-5 pt-4">
+          <NfcSettingsScreen app={app} />
         </div>
       ) : null}
 

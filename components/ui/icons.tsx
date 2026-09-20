@@ -177,6 +177,19 @@ export function IconEdit(props: IconProps) {
   );
 }
 
+/** Fuer die NFC-Tag-Verwaltung (Admin-Einstellungen) und den kompakten NFC-Scan-Einstieg - ein
+ * Geraet/Tag (abgerundetes Rechteck) mit zwei radial abstrahlenden Kontaktlos-Wellen, dieselbe
+ * Outline-Sprache wie die uebrigen Icons (kein Emoji, kein Fuellton). */
+export function IconNfc(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="4" y="6" width="10" height="15" rx="2.5" />
+      <path d="M16.5 9.5c1 1 1.5 2.2 1.5 3.5s-.5 2.5-1.5 3.5" />
+      <path d="M19 6.5c2 2 3 4 3 6.5s-1 4.5-3 6.5" />
+    </svg>
+  );
+}
+
 export const NAV_ICONS = {
   bed: IconBed,
   chart: IconChart,

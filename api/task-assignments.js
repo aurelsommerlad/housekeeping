@@ -47,8 +47,10 @@ async function claimTask(redis, taskId, record) {
 // an, auf dem status/cleaningStartedAt/elapsedSeconds bereits liegen - kein zweiter, paralleler
 // Speicherort. `action` ist ereignisbezogen (started/paused/resumed/completed) statt nur den
 // Status zu spiegeln, damit die Verlaufszeile ohne weitere Herleitung den geforderten Text traegt.
-function appendHistory(record, action, user) {
-  record.history = [...(record.history || []), { action, at: Date.now(), byUserId: user.id, byUserName: user.name || user.username }];
+function appendHistory(record, action, user, source) {
+  const entry = { action, at: Date.now(), byUserId: user.id, byUserName: user.name || user.username };
+  if (source) entry.source = source;
+  record.history = [...(record.history || []), entry];
   return record;
 }
 
@@ -168,8 +170,11 @@ module.exports = async (req, res) => {
       });
       if (toDelete.length) await redis.hDel(HASH_KEY, toDelete);
     } else if (action === 'startTimer') {
-      const { taskId } = req.body;
+      const { taskId, startSource } = req.body;
       if (!taskId) { res.status(400).json({ error: 'taskId ist erforderlich.' }); return; }
+      // Punkt "Startquelle speichern": rein informativ fuer den Reinigungsverlauf, kein
+      // Berechtigungs-/Verhaltensunterschied - ein unbekannter/fehlender Wert zaehlt als 'manual'.
+      const source = startSource === 'nfc' ? 'nfc' : 'manual';
       if (!(await canTouchOwnAssignment(redis, user, taskId))) {
         res.status(403).json({ error: 'Diese Aufgabe gehoert einer anderen Person.' });
         return;
@@ -191,7 +196,7 @@ module.exports = async (req, res) => {
       // Punkt "Reinigungsverlauf": ein bereits einmal begonnener Task (elapsedSeconds > 0, z. B.
       // nach einer Pause) wird beim erneuten Start als "Fortgesetzt" statt "Reinigung gestartet"
       // protokolliert - reine Ableitung aus dem ohnehin vorhandenen Feld, kein zweiter Zaehler.
-      appendHistory(existing, (existing.elapsedSeconds || 0) > 0 ? 'resumed' : 'started', user);
+      appendHistory(existing, (existing.elapsedSeconds || 0) > 0 ? 'resumed' : 'started', user, source);
       existing.status = 'in_progress';
       existing.cleaningStartedAt = Date.now();
       await redis.hSet(HASH_KEY, taskId, JSON.stringify(existing));

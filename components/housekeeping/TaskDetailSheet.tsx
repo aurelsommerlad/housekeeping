@@ -474,6 +474,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
               {task.history.map((entry, i) => (
                 <p key={i} className="text-[12.5px] text-muted">
                   {formatClock(entry.at)} · {t(HISTORY_LABEL_KEYS[entry.action])} · {entry.byUserName}
+                  {entry.source ? <> · {t(entry.source === 'nfc' ? 'source_nfc' : 'source_manual')}</> : null}
                 </p>
               ))}
             </div>
