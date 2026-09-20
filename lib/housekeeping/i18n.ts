@@ -56,6 +56,8 @@ export const I18N = {
     selected_count: '{{n}} ausgewaehlt',
     assigned_to_label: 'Zustaendig',
     change_assignment: 'Zuweisung aendern',
+    // Neu fuer das Redesign - Login-Karte im Owner-Center-Stil.
+    login_subtitle: 'Mit deinen Zugangsdaten fuer den Housekeeping-Bereich.',
   },
   en: {
     app_name: 'Housekeeping', login_title: 'Sign in', username: 'Username', password: 'Password',
@@ -101,6 +103,7 @@ export const I18N = {
     selected_count: '{{n}} selected',
     assigned_to_label: 'Assigned to',
     change_assignment: 'Change assignment',
+    login_subtitle: 'Sign in with your housekeeping credentials.',
   },
   pl: {
     app_name: 'Housekeeping', login_title: 'Zaloguj sie', username: 'Nazwa uzytkownika', password: 'Haslo',
@@ -146,6 +149,7 @@ export const I18N = {
     selected_count: 'Wybrano {{n}}',
     assigned_to_label: 'Odpowiedzialny',
     change_assignment: 'Zmien przypisanie',
+    login_subtitle: 'Zaloguj sie danymi dostepowymi do Housekeeping.',
   },
   ro: {
     app_name: 'Housekeeping', login_title: 'Autentificare', username: 'Utilizator', password: 'Parola',
@@ -191,6 +195,7 @@ export const I18N = {
     selected_count: '{{n}} selectate',
     assigned_to_label: 'Responsabil',
     change_assignment: 'Schimba atribuirea',
+    login_subtitle: 'Autentifica-te cu datele tale pentru Housekeeping.',
   },
 } as const;
 

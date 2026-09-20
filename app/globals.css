@@ -58,6 +58,9 @@
   /* Radien - kleine, ruhige Rundungen wie im Owner Center */
   --radius-card: 14px;
   --radius-control: 10px;
+  /* Grosszuegigere Rundung fuer freistehende Auth-Karten (Login/Setup) - exakt wie im
+     Owner-Center-Login (siehe Referenz-Screenshot). */
+  --radius-card-lg: 28px;
 
   /* Typografie: UNIQUE-PLACES-Schriften - Josefin Sans fuer Ueberschriften, Roboto fuer
      Fliess-/UI-Text (siehe Housekeeping-Redesign-Briefing). Self-hosted via next/font
