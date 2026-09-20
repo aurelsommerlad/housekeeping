@@ -232,6 +232,31 @@ export function IconClose(props: IconProps) {
   );
 }
 
+/** Fuer die Belegungsanzeige auf der kompakten Task Card (Punkt 3: bewusst KEIN Flugzeug-Symbol) -
+ * klassisches "Log-out"-Piktogramm (Tuer + herausfuehrender Pfeil) fuer die abreisende Belegung,
+ * dieselbe Outline-Sprache wie die uebrigen Icons. */
+export function IconExit(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M13 4H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h7" />
+      <path d="M10 12h10" />
+      <path d="m16 8 4 4-4 4" />
+    </svg>
+  );
+}
+
+/** Fuer die Belegungsanzeige auf der kompakten Task Card - klassisches "Log-in"-Piktogramm
+ * (Pfeil in eine Tuer hinein) fuer die ankommende Belegung, spiegelbildlich zu IconExit. */
+export function IconEnter(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M11 4h7a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-7" />
+      <path d="M14 12H4" />
+      <path d="m8 8-4 4 4 4" />
+    </svg>
+  );
+}
+
 export const NAV_ICONS = {
   bed: IconBed,
   chart: IconChart,

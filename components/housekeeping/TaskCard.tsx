@@ -1,7 +1,7 @@
 import type { Lang } from '@/lib/housekeeping/i18n';
 import { translate } from '@/lib/housekeeping/i18n';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
-import { DoubleupIcon, IconAlertCircle, IconCheck, IconClock, IconEdit, IconPause, IconPlay, IconUser } from '@/components/ui/icons';
+import { DoubleupIcon, IconAlertCircle, IconCheck, IconClock, IconEdit, IconEnter, IconExit, IconPause, IconPlay, IconUser } from '@/components/ui/icons';
 import { TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
 import type { ResolvedTask } from '@/lib/housekeeping/useHousekeepingApp';
 import { TonePill } from './TonePill';
@@ -169,31 +169,72 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
   return null;
 }
 
-/**
- * Gast/Buchung + Extras (Punkt 6/7 des Redesigns) - EINE sekundaere Fusszeile statt zuvor bis zu
- * drei getrennten (Reservierung/Gaestezahl, Doubleup-Icons, Zuweisung). Extras-Icons rechts in
- * derselben Zeile statt einer eigenen Zeile.
- */
-function GuestLine({ task, lang, doubleTypes }: { task: ResolvedTask; lang: Lang; doubleTypes: typeof DOUBLEUP_TYPES }) {
-  // Punkt "Wichtige Korrektur" (unveraendert): Turnover zeigt die ANKOMMENDE, alle anderen Typen
-  // die eigene Reservierung - siehe tasks.ts.
-  const cardReservation = task.type === 'turnover' ? task.nextReservationInfo : task.reservationInfo;
-  const guestText = cardReservation
-    ? `${cardReservation.guestName || translate(lang, 'unassigned')} · ${cardReservation.reservationId}`
-    : typeof task.guestCount === 'number'
-      ? translate(lang, 'guests_count', { n: task.guestCount })
-      : null;
+/** Kompakte "N Erw. · N Kinder"-Belegung (Punkt 6/7) - bewusst abgekuerzt, ohne Gesamtzahl und
+ * ohne Kinderalter (beides bleibt der Detailansicht vorbehalten). `null`, wenn keine Erwachsenen-
+ * Zahl bekannt ist (dann wird auf der Karte nichts behauptet statt einer falschen "0"). */
+function formatOccupancy(lang: Lang, adults: number | null, childrenCount: number): string | null {
+  if (adults == null) return null;
+  const parts = [translate(lang, 'occ_adults', { n: adults })];
+  if (childrenCount > 0) parts.push(translate(lang, childrenCount === 1 ? 'occ_child_one' : 'occ_children_many', { n: childrenCount }));
+  return parts.join(' · ');
+}
 
-  if (!guestText && !doubleTypes.length) return null;
+/**
+ * Belegungszeile + Extras (Redesign Punkt 1-9: ersetzt die zuvor hier gezeigte Gastname+
+ * Buchungsnummer-Zeile) - bei Turnover STRIKT getrennt Abreise-Belegung (links, aus
+ * task.reservationInfo, der abreisenden Reservierung) und Anreise-Belegung (rechts, aus
+ * task.nextReservationInfo, der naechsten Reservierung) mit je einem eindeutigen Check-out-/
+ * Check-in-Icon (kein Flugzeug-Symbol) - niemals aus derselben Reservierung gemischt, siehe
+ * tasks.ts fuer die bereits bestehende, hier nur gelesene Trennung. Bei reiner Abreise nur die
+ * abreisende Seite; bei Zwischenreinigung (laufender Aufenthalt, weder An- noch Abreise heute)
+ * neutral ohne Richtungssymbol. Extras-Icons bleiben rechts in derselben Zeile.
+ */
+function OccupancyLine({ task, lang, doubleTypes }: { task: ResolvedTask; lang: Lang; doubleTypes: typeof DOUBLEUP_TYPES }) {
+  const departureText = task.reservationInfo ? formatOccupancy(lang, task.reservationInfo.adults, task.reservationInfo.childrenCount) : null;
+  const arrivalText = task.type === 'turnover' && task.nextReservationInfo
+    ? formatOccupancy(lang, task.nextReservationInfo.adults, task.nextReservationInfo.childrenCount)
+    : null;
+
+  let occupancy = null;
+  if (task.type === 'turnover' && (departureText || arrivalText)) {
+    occupancy = (
+      <span className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap text-[12px] text-muted">
+        {departureText ? (
+          <span className="flex shrink-0 items-center gap-1">
+            <IconExit width={13} height={13} className="shrink-0" aria-label={translate(lang, 'label_departure')} />
+            {departureText}
+          </span>
+        ) : null}
+        {departureText && arrivalText ? <span className="shrink-0">→</span> : null}
+        {arrivalText ? (
+          <span className="flex min-w-0 items-center gap-1 truncate">
+            <IconEnter width={13} height={13} className="shrink-0" aria-label={translate(lang, 'label_arrival')} />
+            <span className="truncate">{arrivalText}</span>
+          </span>
+        ) : null}
+      </span>
+    );
+  } else if (task.type === 'departure' && departureText) {
+    occupancy = (
+      <span className="flex min-w-0 items-center gap-1 truncate text-[12px] text-muted">
+        <IconExit width={13} height={13} className="shrink-0" aria-label={translate(lang, 'label_departure')} />
+        <span className="truncate">{departureText}</span>
+      </span>
+    );
+  } else if (task.type === 'stayover' && departureText) {
+    occupancy = (
+      <span className="flex min-w-0 items-center gap-1 truncate text-[12px] text-muted">
+        <IconUser width={13} height={13} className="shrink-0" aria-hidden="true" />
+        <span className="truncate">{departureText}</span>
+      </span>
+    );
+  }
+
+  if (!occupancy && !doubleTypes.length) return null;
 
   return (
     <div className="flex items-center justify-between gap-2">
-      {guestText ? (
-        <span className="flex min-w-0 items-center gap-1.5 truncate text-[12px] text-muted">
-          <IconUser width={13} height={13} className="shrink-0" aria-hidden="true" />
-          <span className="truncate">{guestText}</span>
-        </span>
-      ) : <span />}
+      {occupancy || <span />}
       {doubleTypes.length ? (
         <span className="flex shrink-0 items-center gap-1.5 text-muted">
           {doubleTypes.map((dt) => {
@@ -263,7 +304,7 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
 
       <TimeLine task={task} lang={lang} />
 
-      <GuestLine task={task} lang={lang} doubleTypes={doubleTypes} />
+      <OccupancyLine task={task} lang={lang} doubleTypes={doubleTypes} />
     </button>
   );
 }

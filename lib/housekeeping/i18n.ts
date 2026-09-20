@@ -121,6 +121,9 @@ export const I18N = {
     reservation_adults: 'Erwachsene', reservation_children: 'Kinder', reservation_children_ages: 'Alter',
     reservation_children_ages_value: '{{ages}} Jahre',
     reservation_children_count: '{{n}} Kinder', reservation_children_ages_line: 'Kinder: {{ages}} Jahre',
+    // Neu: kompakte Belegungsanzeige auf der Task Card (Punkt 6/7 - bewusst abgekuerzt, keine
+    // Gesamtzahl zusaetzlich, kein Kinderalter).
+    occ_adults: '{{n}} Erw.', occ_child_one: '{{n}} Kind', occ_children_many: '{{n}} Kinder',
     search_title: 'Reservierung suchen', search_placeholder: 'Buchungsnummer oder Gastname',
     search_aria_label: 'Reservierung suchen', search_no_results: 'Keine Treffer.',
     search_no_task: 'Für diese Reservierung ist aktuell keine Reinigungsaufgabe vorhanden.',
@@ -237,6 +240,7 @@ export const I18N = {
     reservation_adults: 'Adults', reservation_children: 'Children', reservation_children_ages: 'Age',
     reservation_children_ages_value: '{{ages}} years',
     reservation_children_count: '{{n}} children', reservation_children_ages_line: 'Children: {{ages}} years',
+    occ_adults: '{{n}} adults', occ_child_one: '{{n}} child', occ_children_many: '{{n}} children',
     search_title: 'Search reservation', search_placeholder: 'Booking number or guest name',
     search_aria_label: 'Search reservation', search_no_results: 'No results.',
     search_no_task: 'No cleaning task currently exists for this reservation.',
@@ -352,6 +356,7 @@ export const I18N = {
     reservation_adults: 'Dorosli', reservation_children: 'Dzieci', reservation_children_ages: 'Wiek',
     reservation_children_ages_value: '{{ages}} lat',
     reservation_children_count: '{{n}} dzieci', reservation_children_ages_line: 'Dzieci: {{ages}} lat',
+    occ_adults: '{{n}} dor.', occ_child_one: '{{n}} dziecko', occ_children_many: '{{n}} dzieci',
     search_title: 'Szukaj rezerwacji', search_placeholder: 'Numer rezerwacji lub nazwisko goscia',
     search_aria_label: 'Szukaj rezerwacji', search_no_results: 'Brak wynikow.',
     search_no_task: 'Dla tej rezerwacji nie ma obecnie zadania sprzatania.',
@@ -467,6 +472,7 @@ export const I18N = {
     reservation_adults: 'Adulti', reservation_children: 'Copii', reservation_children_ages: 'Varsta',
     reservation_children_ages_value: '{{ages}} ani',
     reservation_children_count: '{{n}} copii', reservation_children_ages_line: 'Copii: {{ages}} ani',
+    occ_adults: '{{n}} ad.', occ_child_one: '{{n}} copil', occ_children_many: '{{n}} copii',
     search_title: 'Cauta rezervare', search_placeholder: 'Numar de rezervare sau numele oaspetelui',
     search_aria_label: 'Cauta rezervare', search_no_results: 'Niciun rezultat.',
     search_no_task: 'Pentru aceasta rezervare nu exista momentan nicio sarcina de curatenie.',

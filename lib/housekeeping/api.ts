@@ -36,7 +36,17 @@ import type {
 // sichtbar (der Server erlaubte startTimer/stopTimer/release fuer sie bereits zuvor, siehe
 // api/task-assignments.js, nur die UI zeigte dafuer bislang keinen Button). Reine Darstellung -
 // Task-Ableitung, Zuweisung, Timer, Pausen, NFC, Notices und Zeiten-Overrides unveraendert.
-export const APP_VERSION = '2.7.0';
+// MINOR-Bump (2.7.0 -> 2.8.0): TaskCard - Gastname+Buchungsnummer auf der kompakten Karte durch
+// eine housekeeping-relevantere Belegungsanzeige ersetzt: bei Turnover strikt getrennt Abreise-
+// Belegung (aus task.reservationInfo) links und Anreise-Belegung (aus task.nextReservationInfo)
+// rechts, je "N Erw. · N Kinder" (abgekuerzt, ohne Gesamtzahl, ohne Kinderalter - das bleibt der
+// Detailansicht vorbehalten), mit neuen IconExit/IconEnter (kein Flugzeug-Symbol, dieselbe
+// Outline-Sprache). Bei reiner Abreise nur die abreisende Seite, bei Zwischenreinigung neutral
+// ohne Richtungssymbol. Gastname/Buchungsnummer bleiben unveraendert vollstaendig in der
+// Detailansicht und der Reservierungssuche. Reine Darstellung (siehe TaskCard.tsx) - gegen einen
+// git-gestashten Vorher/Nachher-Vergleich verifiziert: die Kartenhoehe ist fuer jeden geprueften
+// Zustand exakt identisch geblieben, nie hoeher.
+export const APP_VERSION = '2.8.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
