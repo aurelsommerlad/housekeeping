@@ -23,6 +23,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const {
     state, t, tasksForDay, daySummaryFor, capacityFor, selectDay, selectPropertyScope, toggleMyTasksOnly,
     toggleTaskMultiSelect, toggleTaskSelection, openTask, bulkAssignTasks, clearDayAssignments, retryTasksLoad,
+    noticeForTask, isNoticeAcknowledgedBy,
   } = app;
   const [bulkOpen, setBulkOpen] = useState(false);
 
@@ -155,16 +156,26 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         <div className="px-4 py-10 text-center text-sm text-muted">{t('no_tasks')}</div>
       ) : (
         <div className="grid grid-cols-1 gap-3 px-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
-          {visible.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              lang={state.lang}
-              selected={state.selectedTasks.has(task.id)}
-              selectable={state.taskMultiSelect}
-              onOpen={() => openTask(task.id)}
-            />
-          ))}
+          {visible.map((task) => {
+            // Punkt 9: dezente Warnkennzeichnung nur, wenn ein Hinweis existiert UND jemand
+            // zugewiesen ist UND GENAU diese Person ihn noch nicht bestaetigt hat - kein Hinweis
+            // ohne Zuweisung, kein Zustand ohne echte Bestaetigungspruefung.
+            const notice = noticeForTask(task.id);
+            const noticeState: 'none' | 'unread' | 'read' = !notice || !task.assignedUserId
+              ? 'none'
+              : isNoticeAcknowledgedBy(task.id, task.assignedUserId) ? 'read' : 'unread';
+            return (
+              <TaskCard
+                key={task.id}
+                task={task}
+                lang={state.lang}
+                selected={state.selectedTasks.has(task.id)}
+                selectable={state.taskMultiSelect}
+                noticeState={noticeState}
+                onOpen={() => openTask(task.id)}
+              />
+            );
+          })}
         </div>
       )}
 

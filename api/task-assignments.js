@@ -13,6 +13,7 @@ const { getRedis, parseJSON, migrateLegacyKey } = require('./_redis');
 const { requireSession } = require('./_auth');
 const { getUserRawById } = require('./_users');
 const { hasPropertyAccess, isPropertyManager, propertyCodeFromTaskId, dateFromTaskId } = require('./_permissions');
+const { isAcknowledged } = require('./_task-notices');
 
 const HASH_KEY = 'housekeeping:task_assignments';
 const LEGACY_HASH_KEY = 'hk:task_assignments';
@@ -170,6 +171,14 @@ module.exports = async (req, res) => {
       const existing = existingRaw
         ? parseJSON(existingRaw, {})
         : { taskId, housekeeperId: user.id, housekeeperName: user.name || user.username, since: Date.now(), status: 'assigned', elapsedSeconds: 0 };
+      // Punkt 6: Reinigungsstart serverseitig gesperrt, solange der ZUGEWIESENE Mitarbeiter (nicht
+      // notwendigerweise der Aufrufer - z. B. wenn ein Admin fuer jemand anderen startet) einen
+      // wichtigen Hinweis in seiner aktuellen Version noch nicht bestaetigt hat. Kein Hinweis
+      // vorhanden -> isAcknowledged() liefert true, also keine Aenderung am bisherigen Verhalten.
+      if (!(await isAcknowledged(redis, taskId, existing.housekeeperId || user.id))) {
+        res.status(409).json({ error: 'Bitte bestaetige zuerst den wichtigen Hinweis.' });
+        return;
+      }
       existing.status = 'in_progress';
       existing.cleaningStartedAt = Date.now();
       await redis.hSet(HASH_KEY, taskId, JSON.stringify(existing));

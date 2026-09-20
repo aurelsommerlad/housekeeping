@@ -12,7 +12,7 @@
  */
 import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, DoubleupsState, Completion, BreakEntry, Property, ReservationsState, StaffUser,
-  TaskAssignmentsState,
+  TaskAssignmentsState, TaskNotice, TaskNoticeAck, TaskNoticeAcksState, TaskNoticesState,
 } from './types';
 
 // MINOR-Bump (2.0.0 -> 2.1.0): neue, rein additive Reinigungsplanung (Aufgaben/Task-Modell,
@@ -51,15 +51,16 @@ export function getPropertyDisplayName(property: { code: string; name?: string }
 
 export interface DoubleupTypeDef {
   id: string;
-  icon: string;
   label: 'doubleup_crib' | 'doubleup_sofabed' | 'doubleup_dog' | 'doubleup_extra';
 }
 
+// Icons dafuer: siehe components/ui/icons.tsx#DOUBLEUP_ICONS (id -> Outline-Icon-Komponente) -
+// keine Emojis mehr (id dient dort direkt als Lookup-Schluessel, kein separates Icon-Feld noetig).
 export const DOUBLEUP_TYPES: DoubleupTypeDef[] = [
-  { id: 'crib', icon: '\u{1F476}', label: 'doubleup_crib' },
-  { id: 'sofabed', icon: '\u{1F6CB}\u{FE0F}', label: 'doubleup_sofabed' },
-  { id: 'dog', icon: '\u{1F415}', label: 'doubleup_dog' },
-  { id: 'extra', icon: '➕', label: 'doubleup_extra' },
+  { id: 'crib', label: 'doubleup_crib' },
+  { id: 'sofabed', label: 'doubleup_sofabed' },
+  { id: 'dog', label: 'doubleup_dog' },
+  { id: 'extra', label: 'doubleup_extra' },
 ];
 
 export const FORCED_CLEAN_INTERVAL_NIGHTS = 2;
@@ -320,6 +321,25 @@ export const taskAssignmentsApi = {
 
 export const completionsApi = {
   add: (entry: Omit<Completion, 'id'>) => backendPost('completions', { action: 'add', entry }),
+};
+
+export interface TaskNoticesData {
+  notices: TaskNoticesState;
+  acks: TaskNoticeAcksState;
+}
+
+export async function loadTaskNotices(): Promise<TaskNoticesData> {
+  const data = await backendGet<{ notices?: TaskNoticesState; acks?: TaskNoticeAcksState }>('task-notices');
+  return { notices: data.notices || {}, acks: data.acks || {} };
+}
+
+/** "Wichtiger Hinweis" pro Task (Punkt 3-8) - eigene Datenquelle, siehe api/task-notices.js fuer
+ * die serverseitige Rechtepruefung (nur Admin/Standortverantwortlich duerfen set/remove, jeder
+ * mit Property-Zugriff darf acknowledge). */
+export const taskNoticesApi = {
+  set: (taskId: string, text: string) => backendPost<{ notice: TaskNotice }>('task-notices', { action: 'set', taskId, text }),
+  remove: (taskId: string) => backendPost<{ ok: true }>('task-notices', { action: 'remove', taskId }),
+  acknowledge: (taskId: string) => backendPost<{ ack: TaskNoticeAck }>('task-notices', { action: 'acknowledge', taskId }),
 };
 
 export const breaksApi = {

@@ -2,6 +2,7 @@ import type { Room } from '@/lib/housekeeping/types';
 import type { Lang } from '@/lib/housekeeping/i18n';
 import { translate } from '@/lib/housekeeping/i18n';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
+import { DoubleupIcon } from '@/components/ui/icons';
 import { formatDuration, workflowStatus } from '@/lib/housekeeping/rooms';
 import { describeTurnover, isSameDayTurnover } from '@/lib/housekeeping/turnover';
 import { WorkflowStatusPill } from './WorkflowStatusPill';
@@ -72,9 +73,9 @@ export function RoomCard({ room, lang, selected, selectable, onOpen }: RoomCardP
           {room.assignment ? room.assignment.housekeeperName : ''}
         </span>
         {doubleTypes.length ? (
-          <span className="inline-flex items-center gap-0.5 text-[13px]" aria-hidden="true">
+          <span className="inline-flex items-center gap-1 text-muted" aria-hidden="true">
             {doubleTypes.map((dt) => (
-              <span key={dt.id}>{dt.icon}</span>
+              <DoubleupIcon key={dt.id} id={dt.id} width={16} height={16} />
             ))}
           </span>
         ) : null}

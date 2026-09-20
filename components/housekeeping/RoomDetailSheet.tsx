@@ -1,5 +1,6 @@
 import type { Room } from '@/lib/housekeeping/types';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
+import { DoubleupIcon } from '@/components/ui/icons';
 import { formatDuration, workflowStatus } from '@/lib/housekeeping/rooms';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { BottomSheet } from './BottomSheet';
@@ -110,7 +111,7 @@ export function RoomDetailSheet({ app, room }: RoomDetailSheetProps) {
                     on ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
                   )}
                 >
-                  <span aria-hidden="true">{dt.icon}</span>
+                  <DoubleupIcon id={dt.id} width={16} height={16} aria-hidden="true" />
                   {t(dt.label)}
                 </button>
               );
@@ -133,7 +134,7 @@ export function RoomDetailSheet({ app, room }: RoomDetailSheetProps) {
                     key={dt.id}
                     className="inline-flex items-center gap-1.5 rounded-full border border-ink bg-ink px-3.5 py-1.5 text-[13px] font-medium text-warm-white"
                   >
-                    <span aria-hidden="true">{dt.icon}</span>
+                    <DoubleupIcon id={dt.id} width={16} height={16} aria-hidden="true" />
                     {t(dt.label)}
                   </span>
                 ))}

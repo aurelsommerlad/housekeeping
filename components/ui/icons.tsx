@@ -1,4 +1,4 @@
-import type { SVGProps } from 'react';
+import type { ComponentType, SVGProps } from 'react';
 
 /**
  * Kleines, selbst gezeichnetes Icon-Set (Strichstaerke 1.5, 20x20) - bewusst ohne externe
@@ -92,6 +92,69 @@ export function IconChevronDown(props: IconProps) {
   );
 }
 
+/** Ersetzt das Babybett-Emoji - kein exaktes "Krippe"-Icon im bestehenden Set, daher ein
+ * eigenes, stilistisch passendes Gitterbett gezeichnet (Rahmen + Seitenstreben), statt auf ein
+ * Emoji zurueckzufallen. */
+export function IconCrib(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M5 20V9a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v11" />
+      <path d="M5 20h14" />
+      <path d="M8 8V5M12 8V5M16 8V5" />
+    </svg>
+  );
+}
+
+/** Ersetzt das Hund-Emoji - Pfotenabdruck statt Hundesilhouette (Briefing nennt beides als
+ * Option), rein aus Linien/Kreisen im selben Stil wie die uebrigen Icons (kein Fill). */
+export function IconPawPrint(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="16.5" r="3.5" />
+      <circle cx="6" cy="10.5" r="1.8" />
+      <circle cx="10" cy="6.5" r="1.8" />
+      <circle cx="14" cy="6.5" r="1.8" />
+      <circle cx="18" cy="10.5" r="1.8" />
+    </svg>
+  );
+}
+
+export function IconPlus(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function IconCheck(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
+
+export function IconCircle(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="12" r="8" />
+    </svg>
+  );
+}
+
+/** Fuer den "Wichtiger Hinweis"-Block (Punkt 3) und die dezente Warnkennzeichnung auf
+ * Planungskarten (Punkt 9) - bewusst kein farbiges/gefuelltes Ausrufezeichen-Icon. */
+export function IconAlertCircle(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7.5v6" />
+      <path d="M12 16.5h.01" />
+    </svg>
+  );
+}
+
 export const NAV_ICONS = {
   bed: IconBed,
   chart: IconChart,
@@ -100,3 +163,18 @@ export const NAV_ICONS = {
   checklist: IconChecklist,
   users: IconUsers,
 };
+
+/** Loest komplett die frueheren Emojis (👶/🛏️/🐕/➕) auf den Zusatzausstattungs-Buttons/-Chips
+ * ab (Task Cards, Task-/Room-Detail, DoubleupScreen) - dieselbe Icon-Sprache (Outline,
+ * currentColor, 1.6 Strichstaerke) wie ueberall sonst in der App, keine zweite Icon-Library. */
+export const DOUBLEUP_ICONS: Record<string, ComponentType<IconProps>> = {
+  crib: IconCrib,
+  sofabed: IconBed,
+  dog: IconPawPrint,
+  extra: IconPlus,
+};
+
+export function DoubleupIcon({ id, ...props }: IconProps & { id: string }) {
+  const Icon = DOUBLEUP_ICONS[id];
+  return Icon ? <Icon {...props} /> : null;
+}

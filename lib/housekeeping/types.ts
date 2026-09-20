@@ -209,6 +209,44 @@ export interface TaskAssignment {
 
 export type TaskAssignmentsState = Record<string, TaskAssignment | null>;
 
+/**
+ * Interner "Wichtiger Hinweis" pro Task (Redis housekeeping:task_notices, Key = Task-ID) - eine
+ * VOM Apaleo-Reservierungskommentar (task.comment) komplett getrennte Datenquelle: nie in die
+ * Apaleo-Reservierung zurueckgeschrieben, nie von dort ueberschrieben. `id` ist bewusst identisch
+ * zur (bereits deterministischen) Task-ID - ein Task hat hoechstens einen aktiven Hinweis. Jede
+ * inhaltliche Aenderung erhoeht `version`; Lesebestaetigungen sind an eine EXAKTE Version
+ * gekoppelt (siehe TaskNoticeAck) und werden dadurch automatisch ungueltig, sobald der Text
+ * geaendert wird - kein separates "Bestaetigungen loeschen" noetig, ein reiner Versionsvergleich
+ * genuegt (Server loescht alte Acks zusaetzlich aktiv, siehe api/task-notices.js, aber selbst ohne
+ * das waere ein Ack mit alter Version nie mehr gueltig).
+ */
+export interface TaskNotice {
+  id: string;
+  taskId: string;
+  text: string;
+  version: number;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type TaskNoticesState = Record<string, TaskNotice | null>;
+
+/** Lesebestaetigung EINES Users fuer EINE bestimmte Hinweis-Version (Redis
+ * housekeeping:task_notice_acks, Key = "<taskId>|<userId>") - userbezogen, nie pauschal pro Task:
+ * wird eine Aufgabe neu zugewiesen, gilt der Hinweis fuer die neue Person nicht automatisch als
+ * gelesen (Punkt 5), da fuer sie schlicht kein Eintrag mit ihrer userId existiert. */
+export interface TaskNoticeAck {
+  userId: string;
+  userName: string;
+  noticeId: string;
+  noticeVersion: number;
+  acknowledgedAt: number;
+}
+
+/** Key = "<taskId>|<userId>", siehe TaskNoticeAck. */
+export type TaskNoticeAcksState = Record<string, TaskNoticeAck | null>;
+
 /** Planungshorizont Heute+3 (Punkt 2) - ein Eintrag pro Kalendertag. */
 export interface PlanningDay {
   date: string;

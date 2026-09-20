@@ -26,7 +26,8 @@ import { fetchMe, login as loginRequest, logout as logoutRequest } from './auth'
 import {
   DOUBLEUP_TYPES, POLL_INTERVAL, assignmentsApi, breaksApi, completionsApi, doubleupsApi, getPropertyDisplayName,
   loadBackendState, loadProperties, loadReservations, loadReservationsRangeForProperties,
-  loadTaskAssignments, loadUnits, loadUnitsForProperties, setUnitCondition, taskAssignmentsApi, usersApi,
+  loadTaskAssignments, loadTaskNotices, loadUnits, loadUnitsForProperties, setUnitCondition, taskAssignmentsApi,
+  taskNoticesApi, usersApi,
 } from './api';
 import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './rooms';
 import {
@@ -35,7 +36,8 @@ import {
 } from './tasks';
 import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, BreakEntry, CapacityEntry, Completion, DaySummary, DoubleupsState,
-  Property, ReservationsState, Room, RoomFilter, StaffUser, TaskAssignmentsState,
+  Property, ReservationsState, Room, RoomFilter, StaffUser, TaskAssignmentsState, TaskNotice, TaskNoticeAcksState,
+  TaskNoticesState,
 } from './types';
 
 export type AuthScreen = 'checking' | 'login' | 'app';
@@ -83,6 +85,10 @@ interface AppState {
   planningUnits: ApaleoUnit[];
   planningReservations: ApaleoReservation[];
   taskAssignments: TaskAssignmentsState;
+  /** "Wichtiger Hinweis" pro Task + userbezogene Lesebestaetigungen (Key "<taskId>|<userId>") -
+   * eigene, vom Apaleo-Reservierungskommentar getrennte Datenquelle (Punkt 3-8). */
+  taskNotices: TaskNoticesState;
+  taskNoticeAcks: TaskNoticeAcksState;
   tasksLoadError: string | null;
   taskMultiSelect: boolean;
   selectedTasks: Set<string>;
@@ -133,6 +139,8 @@ function initialState(): AppState {
     planningUnits: [],
     planningReservations: [],
     taskAssignments: {},
+    taskNotices: {},
+    taskNoticeAcks: {},
     tasksLoadError: null,
     taskMultiSelect: false,
     selectedTasks: new Set(),
@@ -216,16 +224,20 @@ export function useHousekeepingApp() {
     const today = todayISO();
     const days = [0, 1, 2, 3].map((n) => addDaysISO(today, n));
     if (scopeCodes.length === 0) {
-      patch({ planningUnits: [], planningReservations: [], taskAssignments: {}, planningDays: days });
+      patch({ planningUnits: [], planningReservations: [], taskAssignments: {}, taskNotices: {}, taskNoticeAcks: {}, planningDays: days });
       return;
     }
-    const [units, reservations, taskAssignments] = await Promise.all([
+    const [units, reservations, taskAssignments, noticesData] = await Promise.all([
       loadUnitsForProperties(scopeCodes),
       loadReservationsRangeForProperties(scopeCodes, days[0], days[3]),
       loadTaskAssignments(),
+      loadTaskNotices(),
       loadBackend(),
     ]);
-    patch({ planningUnits: units, planningReservations: reservations, taskAssignments, planningDays: days });
+    patch({
+      planningUnits: units, planningReservations: reservations, taskAssignments,
+      taskNotices: noticesData.notices, taskNoticeAcks: noticesData.acks, planningDays: days,
+    });
   }, [loadBackend, patch]);
 
   // Gleiches Muster wie loadRoomsData/roomsLoadError oben, fuer die jetzt primaere
@@ -734,6 +746,50 @@ export function useHousekeepingApp() {
     });
   }, [loadBackend, runAction, showToast, t]);
 
+  // --- "Wichtiger Hinweis" (Punkt 3-8): eigene, vom Apaleo-Reservierungskommentar getrennte
+  // Datenquelle. noticeAckKey() spiegelt exakt api/_task-notices.js#ackKey ("<taskId>|<userId>").
+  function noticeAckKey(taskId: string, userId: string): string {
+    return `${taskId}|${userId}`;
+  }
+
+  const noticeForTask = useCallback(
+    (taskId: string): TaskNotice | null => state.taskNotices[taskId] || null,
+    [state.taskNotices],
+  );
+
+  /** Punkt 5/6: true, wenn kein Hinweis existiert ODER GENAU dieser User GENAU die aktuelle
+   * Version bestaetigt hat - eine Bestaetigung einer frueheren Version (vor einer Bearbeitung)
+   * oder einer anderen Person zaehlt nicht. */
+  const isNoticeAcknowledgedBy = useCallback((taskId: string, userId: string | null | undefined): boolean => {
+    const notice = state.taskNotices[taskId];
+    if (!notice) return true;
+    if (!userId) return false;
+    const ack = state.taskNoticeAcks[noticeAckKey(taskId, userId)];
+    return !!ack && ack.noticeVersion === notice.version;
+  }, [state.taskNotices, state.taskNoticeAcks]);
+
+  const saveTaskNotice = useCallback(async (taskId: string, text: string) => {
+    await runAction(async () => {
+      const { notice } = await taskNoticesApi.set(taskId, text);
+      patch((s) => ({ taskNotices: { ...s.taskNotices, [taskId]: notice } }));
+      showToast(t('saved'));
+    });
+  }, [patch, runAction, showToast, t]);
+
+  const removeTaskNotice = useCallback(async (taskId: string) => {
+    await runAction(async () => {
+      await taskNoticesApi.remove(taskId);
+      patch((s) => ({ taskNotices: { ...s.taskNotices, [taskId]: null } }));
+    });
+  }, [patch, runAction]);
+
+  const acknowledgeTaskNotice = useCallback(async (taskId: string) => {
+    await runAction(async () => {
+      const { ack } = await taskNoticesApi.acknowledge(taskId);
+      patch((s) => ({ taskNoticeAcks: { ...s.taskNoticeAcks, [noticeAckKey(taskId, ack.userId)]: ack } }));
+    });
+  }, [patch, runAction]);
+
   return {
     state, t, roomKey,
     rooms, DOUBLEUP_TYPES,
@@ -750,6 +806,9 @@ export function useHousekeepingApp() {
     claimTask, releaseTask, assignTask, bulkAssignTasks, clearDayAssignments,
     startTaskTimer, pauseTaskTimer, finishTask, completeTaskInspection,
     toggleTaskDoubleType, finishTaskDoubleup,
+
+    // Wichtiger Hinweis
+    noticeForTask, isNoticeAcknowledgedBy, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice,
   };
 }
 

@@ -1,6 +1,7 @@
 import type { Lang } from '@/lib/housekeeping/i18n';
 import { translate } from '@/lib/housekeeping/i18n';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
+import { DoubleupIcon, IconAlertCircle, IconCheck } from '@/components/ui/icons';
 import { TASK_STATUS_CONFIG, TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
 import { formatDuration } from '@/lib/housekeeping/rooms';
 import type { ResolvedTask } from '@/lib/housekeeping/useHousekeepingApp';
@@ -12,6 +13,9 @@ export interface TaskCardProps {
   lang: Lang;
   selected: boolean;
   selectable: boolean;
+  /** Punkt 9: 'unread' zeigt ein dezentes Outline-Warnsymbol (wichtiger, vom zugewiesenen
+   * Mitarbeiter noch nicht bestaetigter Hinweis), 'read' ein dezentes Haekchen, 'none' nichts. */
+  noticeState?: 'none' | 'unread' | 'read';
   onOpen: () => void;
 }
 
@@ -34,7 +38,7 @@ function formatDayMonth(iso: string | null): string {
  * (Turnover hoechste Prioritaet, Punkt 9), dann An-/Abreisezeiten, Gaesteanzahl, Extras,
  * zuletzt die Zuweisung.
  */
-export function TaskCard({ task, lang, selected, selectable, onOpen }: TaskCardProps) {
+export function TaskCard({ task, lang, selected, selectable, noticeState = 'none', onOpen }: TaskCardProps) {
   const typeConfig = TASK_TYPE_CONFIG[task.type];
   const statusConfig = TASK_STATUS_CONFIG[task.status];
   const doubleTypes = task.doubleupTypes.length
@@ -68,6 +72,11 @@ export function TaskCard({ task, lang, selected, selectable, onOpen }: TaskCardP
         <span className="font-heading italic text-[17px] leading-none text-ink">
           {task.unitName} <span className="text-muted">· {task.propertyName}</span>
         </span>
+        {noticeState === 'unread' ? (
+          <IconAlertCircle width={16} height={16} className="mt-0.5 shrink-0 text-muted" aria-hidden="true" />
+        ) : noticeState === 'read' ? (
+          <IconCheck width={14} height={14} className="mt-1 shrink-0 text-sage" aria-hidden="true" />
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
@@ -98,9 +107,9 @@ export function TaskCard({ task, lang, selected, selectable, onOpen }: TaskCardP
       ) : null}
 
       {doubleTypes.length ? (
-        <p className="flex items-center gap-1 text-[13px]" aria-hidden="true">
+        <p className="flex items-center gap-1.5 text-muted" aria-hidden="true">
           {doubleTypes.map((dt) => (
-            <span key={dt.id}>{dt.icon}</span>
+            <DoubleupIcon key={dt.id} id={dt.id} width={16} height={16} />
           ))}
         </p>
       ) : null}
