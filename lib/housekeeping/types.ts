@@ -138,7 +138,11 @@ export interface ApaleoReservation {
    * tasks.ts) - das Apaleo-Kommentarfeld enthaelt teils redundante/unzuverlaessige Freitext-Spuren
    * von Gaeste-Portal-Anfragen, die mit dem tatsaechlich gebuchten Service auseinanderlaufen koennen.
    */
-  services?: { service?: { id?: string; code?: string; name?: string } }[];
+  /** `dates[].serviceDate` (live gegen den echten Account verifiziert, `expand=services` liefert
+   * dieses Feld bereits mit, siehe Punkt 12 der Feinschliff-Analyse) - das tatsaechliche
+   * Leistungsdatum JEDER gebuchten Instanz dieses Service, z. B. mehrere Eintraege bei einem ueber
+   * mehrere Tage gebuchten INTERCLEAN. Fehlt bei Services, die nicht datumsgenau gebucht sind. */
+  services?: { service?: { id?: string; code?: string; name?: string }; dates?: { serviceDate?: string }[] }[];
 }
 
 export interface ReservationsState {
@@ -221,7 +225,7 @@ export type RoomFilter = 'all' | 'forced' | 'dirty' | 'inspect' | 'clean' | 'dou
  * traegt selbst keinen Zuweisungs-/Fortschrittszustand, der liegt getrennt in
  * TaskAssignment (Redis, siehe lib/housekeeping/api.ts#taskAssignmentsApi).
  */
-export type TaskType = 'turnover' | 'departure' | 'stayover' | 'extra';
+export type TaskType = 'turnover' | 'departure' | 'stayover' | 'extra' | 'manual';
 
 /**
  * Kompakte, ausschliesslich aus echten Apaleo-Feldern abgeleitete Zusammenfassung EINER
@@ -334,7 +338,74 @@ export interface Task {
    * wird (Punkt 4) - niemals mit reservationInfo vermischt (z. B. Babybett-Bedarf gehoert
    * eindeutig zur Anreise, nicht zur Abreise). */
   nextReservationInfo: TaskReservationSummary | null;
+  /** NUR bei type==='manual' gesetzt (Punkt "Admin-Aufgabe") - Titel/Beschreibung der manuell
+   * erstellten Aufgabe. Bewusst NICHT ueber `comment`/`guestName` mitgefuehrt, da diese Felder an
+   * anderer Stelle als "Gaestekommentar" beschriftet angezeigt werden - eine manuelle Aufgabe hat
+   * fachlich weder Gast noch Reservierung. */
+  manualTitle?: string;
+  manualDescription?: string;
+  /** Housekeeping-relevante Aenderung der zugrundeliegenden Apaleo-Reservierung seit dem letzten
+   * bekannten Stand (Punkt "Buchungsaenderung sichtbar machen") - `null`, wenn keine relevante
+   * Aenderung bekannt ist oder der Task keine eigene Reservierung hat (manual/extra). Wird beim
+   * Zusammenfuehren in resolveTasks() aus dem separat gespeicherten housekeeping:*-Snapshot-
+   * Vergleich ergaenzt (siehe tasks.ts#applyBookingChanges), NIE aus Apaleo selbst berechnet (Apaleo
+   * liefert nur den aktuellen Stand, siehe types.ts#BookingChangeRecord). */
+  bookingChange: BookingChangeRecord | null;
 }
+
+/**
+ * Manuell von Admin erstellte, operative Aufgabe (Punkt "Admin kann Aufgaben erstellen") - KEIN
+ * Apaleo-Bezug, KEIN Reinigungs-Workflow (kein Timer/Start/Pause), Redis housekeeping:manual_tasks,
+ * Key = eigene stabile ID (siehe api/_manual-tasks.js). Bewusst nicht in TaskType 'extra'
+ * hineingebogen - 'extra' bleibt die bestehende, tagesbezogene Doubleup-Ableitung (siehe
+ * lib/housekeeping/tasks.ts#buildTasks), waehrend eine manuelle Aufgabe Titel/Beschreibung/Datum
+ * traegt und ueber beliebig viele Tage hinweg bestehen bleibt, bis sie erledigt wird.
+ */
+export type ManualTaskStatus = 'open' | 'completed';
+
+export interface ManualTask {
+  id: string;
+  propertyCode: string;
+  propertyName: string;
+  /** `null` = standortweite Aufgabe ohne bestimmtes Apartment (Punkt 2 "Apartment optional"). */
+  unitId: string | null;
+  unitName: string | null;
+  date: string;
+  title: string;
+  description: string;
+  assignedUserId: string | null;
+  assignedUserName: string | null;
+  status: ManualTaskStatus;
+  createdByUserId: string;
+  createdByUserName: string;
+  createdAt: number;
+  completedByUserId?: string;
+  completedByUserName?: string;
+  completedAt?: number;
+}
+
+export type ManualTasksState = Record<string, ManualTask | null>;
+
+/**
+ * Housekeeping-relevante Aenderung EINER Apaleo-Reservierung (Punkt "Buchungsaenderung sichtbar
+ * machen") - Redis housekeeping:booking_change_snapshots (Baseline je reservationId) +
+ * housekeeping:booking_changes (dieser Datensatz, letzte erkannte Aenderung je reservationId).
+ * Nur die drei housekeeping-relevanten Felder (Anreise/Abreise/Einheit) werden verglichen - jedes
+ * andere Reservierungsfeld wird ignoriert (Punkt "nur housekeeping-relevante Aenderungen
+ * loggen"). Nur die JEWEILS zuletzt erkannte Aenderung wird gehalten (kein volles Log noetig).
+ */
+export interface BookingChangeRecord {
+  reservationId: string;
+  changedAt: number;
+  arrivalFrom?: string;
+  arrivalTo?: string;
+  departureFrom?: string;
+  departureTo?: string;
+  unitFrom?: string;
+  unitTo?: string;
+}
+
+export type BookingChangeRecordsState = Record<string, BookingChangeRecord | null>;
 
 export type TaskStatus = 'open' | 'assigned' | 'in_progress' | 'paused' | 'inspection' | 'completed';
 

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
 import { isAdmin, isPropertyManager, isTeamLead } from '@/lib/housekeeping/permissions';
 import { TASK_STATUS_CONFIG, TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
@@ -10,7 +10,7 @@ import { TimeFlag } from './TimeFlag';
 import { Button } from '@/components/ui/Button';
 import {
   DoubleupIcon, IconAlertCircle, IconCheck, IconChevronDown, IconCircle, IconClock, IconClose, IconEdit, IconPlus,
-  IconUser,
+  IconRefresh, IconTask, IconUser,
 } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
@@ -60,7 +60,12 @@ function CompactReservation({ info, heading, t }: { info: TaskReservationSummary
     <div className="flex flex-col gap-1">
       {heading ? <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{heading}</p> : null}
       <p className="font-medium text-ink">{info.guestName || t('unassigned')}</p>
-      <p className="text-[12px] text-muted">{info.reservationId}</p>
+      {/* Punkt 8: Buchungsnummer + "gebucht am" kompakt in EINER Zeile statt zweier Zeilen mit
+       * eigener Ueberschrift ("Gebucht am\n10.08.2026") - dieselben Werte, nur zusammengefasst. */}
+      <p className="text-[12px] text-muted">
+        {info.reservationId}
+        {info.bookingDate ? ` · ${t('reservation_booked_on')} ${formatFullDate(info.bookingDate)}` : ''}
+      </p>
       {info.adults != null ? (
         <p className="text-[12.5px] text-ink">
           {t('search_adults_count', { n: info.adults })}
@@ -93,9 +98,6 @@ function CompactReservation({ info, heading, t }: { info: TaskReservationSummary
           </div>
         </div>
       ) : null}
-      <p className="text-[11.5px] text-muted">
-        {t('reservation_booked_on')} {info.bookingDate ? formatFullDate(info.bookingDate) : '–'}
-      </p>
     </div>
   );
 }
@@ -108,6 +110,42 @@ function TimeBadge({ icon, tone, title, children }: { icon: Parameters<typeof Ti
     <span title={title}>
       <TimeFlag icon={icon} tone={tone}>{children}</TimeFlag>
     </span>
+  );
+}
+
+/** Punkt "Buchungsaenderung sichtbar machen" (9): nachvollziehbare Vorher/Nachher-Anzeige in der
+ * Detailansicht - nur die housekeeping-relevanten Felder, die sich tatsaechlich geaendert haben
+ * (siehe types.ts#BookingChangeRecord/api/booking-changes.js). Apaleo liefert nur den aktuellen
+ * Stand; der Vorher-Wert kommt ausschliesslich aus dem separat gespeicherten Snapshot. */
+function BookingChangeDetail({ change, t }: { change: NonNullable<ResolvedTask['bookingChange']>; t: HousekeepingApp['t'] }) {
+  return (
+    <div className="rounded-control border border-line bg-surface px-3.5 py-3">
+      <div className="flex items-start gap-2">
+        <IconRefresh width={16} height={16} className="mt-0.5 shrink-0 text-muted" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-medium text-ink">
+            {t('booking_changed_title')} <span className="font-normal text-muted">· {formatDateShort(change.changedAt)} {formatClock(change.changedAt)}</span>
+          </p>
+          <div className="mt-1.5 flex flex-col gap-1">
+            {change.arrivalFrom !== undefined || change.arrivalTo !== undefined ? (
+              <p className="text-[12.5px] text-ink">
+                <span className="text-muted">{t('label_arrival')}:</span> {formatDayMonth(change.arrivalFrom || null)} → {formatDayMonth(change.arrivalTo || null)}
+              </p>
+            ) : null}
+            {change.departureFrom !== undefined || change.departureTo !== undefined ? (
+              <p className="text-[12.5px] text-ink">
+                <span className="text-muted">{t('label_departure')}:</span> {formatDayMonth(change.departureFrom || null)} → {formatDayMonth(change.departureTo || null)}
+              </p>
+            ) : null}
+            {change.unitFrom !== undefined || change.unitTo !== undefined ? (
+              <p className="text-[12.5px] text-ink">
+                <span className="text-muted">{t('reservation_title')}:</span> {change.unitFrom || '–'} → {change.unitTo || '–'}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -251,13 +289,48 @@ function CleaningAssignmentSection({
  * startTimer/stopTimer/release, siehe api/task-assignments.js) - vorher konnten Admin/
  * Standortverantwortliche den Timer eines Tasks ueberhaupt nicht ueber die UI bedienen, obwohl der
  * Server es schon erlaubte. */
-function PrimaryAction({ app, task, isManager, mine }: { app: HousekeepingApp; task: ResolvedTask; isManager: boolean; mine: boolean }) {
-  const { t, claimTask, releaseTask, startTaskTimer, pauseTaskTimer, openLinenCompletion, completeTaskInspection, noticeForTask, state } = app;
+function PrimaryAction({
+  app, task, isManager, mine, onNoticeBlocked,
+}: { app: HousekeepingApp; task: ResolvedTask; isManager: boolean; mine: boolean; onNoticeBlocked: () => void }) {
+  const {
+    t, claimTask, releaseTask, startTaskTimer, pauseTaskTimer, openLinenCompletion, completeTaskInspection, noticeForTask,
+    completeManualTask, state,
+  } = app;
   const canAct = isManager || mine;
   const notice = noticeForTask(task.id);
   const currentUserId = state.user?.id || null;
   const currentUserAck = currentUserId ? state.taskNoticeAcks[`${task.id}|${currentUserId}`] : null;
   const currentUserAckCurrent = !!(notice && currentUserAck && currentUserAck.noticeVersion === notice.version);
+
+  // Punkt 3: manuelle Aufgaben haben KEINEN Reinigungs-Workflow (kein Start/Pause/Timer) - eigener,
+  // vollstaendig getrennter Zweig ganz am Anfang, damit keiner der Status-basierten Reinigungs-
+  // Zweige unten (insb. 'open'/'assigned' faellt sonst mit dem Claim-Flow zusammen) je greift.
+  if (task.type === 'manual') {
+    if (task.status === 'completed') {
+      const doneEntry = task.history[0];
+      return (
+        <div className="flex flex-col gap-1.5">
+          <Button variant="secondary" className="w-full" disabled>
+            <IconCheck width={15} height={15} className="text-sage" aria-hidden="true" />
+            {t('manual_task_done_status')}
+          </Button>
+          {doneEntry ? (
+            <p className="text-center text-[12px] text-muted">
+              {doneEntry.byUserName}{doneEntry.byUserName ? ' · ' : ''}{formatDateShort(doneEntry.at)} {formatClock(doneEntry.at)}
+            </p>
+          ) : null}
+        </div>
+      );
+    }
+    if (canAct) {
+      return (
+        <Button variant="primary" className="w-full" onClick={() => completeManualTask(task.id)}>
+          {t('finish_manual_task')}
+        </Button>
+      );
+    }
+    return null;
+  }
 
   if (task.status === 'inspection' && isManager) {
     return (
@@ -285,16 +358,16 @@ function PrimaryAction({ app, task, isManager, mine }: { app: HousekeepingApp; t
   }
 
   if (task.status === 'assigned' && canAct) {
+    // Punkt 7: keine dauerhaft sichtbare Erklaerung mehr ueber dem Button - stattdessen blockiert
+    // ein Klick den Start, zeigt EINMALIG (Toast) "Bitte bestaetige zuerst den wichtigen Hinweis."
+    // und hebt die Notice-Card selbst hervor (siehe onNoticeBlocked in der Elternkomponente).
+    const blocked = !isManager && !!notice && !currentUserAckCurrent;
     return (
       <div className="flex flex-col gap-2">
-        {notice && !currentUserAckCurrent && !isManager ? (
-          <p className="text-[12px] text-muted">{t('notice_start_blocked')}</p>
-        ) : null}
         <Button
           variant="primary"
           className="w-full"
-          disabled={!isManager && !!notice && !currentUserAckCurrent}
-          onClick={() => startTaskTimer(task.id)}
+          onClick={() => (blocked ? onNoticeBlocked() : startTaskTimer(task.id))}
         >
           {t('start_clean')}
         </Button>
@@ -344,7 +417,7 @@ function PrimaryAction({ app, task, isManager, mine }: { app: HousekeepingApp; t
 export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   const {
     state, t, closeTaskModal, toggleTaskDoubleType,
-    finishTaskDoubleup,
+    finishTaskDoubleup, showToast,
     noticeForTask, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice,
     saveTaskTimeOverride, removeTaskTimeOverride, setTaskTeam,
   } = app;
@@ -356,6 +429,10 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   const [arrivalDraft, setArrivalDraft] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [assignmentOpen, setAssignmentOpen] = useState(false);
+  // Punkt 7: kurzzeitige Hervorhebung der Notice-Card, wenn ein Housekeeper "Reinigung starten"
+  // versucht, ohne den wichtigen Hinweis bestaetigt zu haben (siehe onNoticeBlocked unten).
+  const noticeRef = useRef<HTMLDivElement>(null);
+  const [noticeHighlight, setNoticeHighlight] = useState(false);
 
   if (!task) {
     return <BottomSheet open={false} onClose={closeTaskModal}><div /></BottomSheet>;
@@ -410,13 +487,30 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
     setTimeFormOpen(false);
   }
 
+  // Punkt 7: EINMALIGE, transiente Rueckmeldung statt eines dauerhaft sichtbaren Erklaerungstextes
+  // ueber dem Start-Button - zusaetzlich wird die Notice-Card selbst kurz optisch hervorgehoben und
+  // ins Bild gescrollt (nichts Neues erklaert, derselbe Text steht bereits in der Notice-Card).
+  function handleNoticeBlocked() {
+    showToast(t('notice_start_blocked'));
+    setNoticeHighlight(true);
+    noticeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => setNoticeHighlight(false), 2000);
+  }
+
   const hasTimeRow = task.type === 'turnover' || task.type === 'departure';
+
+  const isManualTask = task.type === 'manual';
 
   return (
     <BottomSheet open={open} onClose={closeTaskModal}>
       <div className="flex items-start justify-between gap-2">
         <h3 className="italic text-xl leading-tight text-[#17160f]">
-          {task.unitName} <span className="text-[15px] text-muted">· {task.propertyName}</span>
+          {/* Standortweite manuelle Aufgabe (Punkt 2 "Apartment optional") hat kein unitName. */}
+          {task.unitName ? (
+            <>{task.unitName} <span className="text-[15px] text-muted">· {task.propertyName}</span></>
+          ) : (
+            task.propertyName
+          )}
         </h3>
         <button
           type="button"
@@ -429,7 +523,10 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
       </div>
 
       <div className="mt-2 flex flex-col gap-3">
-        <TonePill config={TASK_TYPE_CONFIG[task.type]} lang={state.lang} size="sm" className="self-start" />
+        <span className="flex items-center gap-1.5 self-start">
+          {isManualTask ? <IconTask width={15} height={15} className="shrink-0 text-type-manual" aria-hidden="true" /> : null}
+          <TonePill config={TASK_TYPE_CONFIG[task.type]} lang={state.lang} size="sm" />
+        </span>
 
         {/* Zeitfenster (Punkt 1/2/3) - EINE Zeile: Uhr-Icon + Kernzeit prominent, Edit-Stift nur
          * fuer Admin direkt daneben statt eines Textlinks, LCO/ECI/Konflikt/Override kompakt mit
@@ -537,17 +634,11 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           <p className="text-[13px] text-muted">{t(task.nights === 1 ? 'nights_one' : 'nights_many', { n: task.nights })}</p>
         ) : null}
 
-        {/* Kompakte Zuweisungszeile (Punkt 1) - ersetzt das fruehere "Zugewiesen"-Badge, der Name
-         * allein zeigt bereits eindeutig, dass zugewiesen ist. Die interaktive Zuweisung/Aenderung
-         * bleibt unten im Zuweisung-Abschnitt (Admin/Standortverantwortlich). */}
-        <div className="flex items-center gap-1.5 border-y border-line/70 py-2 text-[13px]">
-          <IconUser width={15} height={15} className="shrink-0 text-muted" aria-hidden="true" />
-          <span className={(task.assignedUserName || task.assignedTeamName) ? 'font-medium text-ink' : 'text-muted'}>
-            {task.assignedUserName
-              ? (task.assignedTeamName ? `${task.assignedUserName} · ${task.assignedTeamName}` : task.assignedUserName)
-              : (task.assignedTeamName ? `${task.assignedTeamName} · ${t('team_task_unclaimed')}` : t('unassigned'))}
-          </span>
-        </div>
+        {/* Punkt 6: die fruehere, hier zusaetzlich stehende Zuweisungszeile wurde entfernt - der
+         * Name gehoert visuell eindeutig zur "Reinigung"-Sektion weiter unten (Mitarbeiter+Status
+         * zusammengefuehrt), eine zweite Anzeige an dieser Stelle wirkte nur zerstreut. Fuer
+         * manuelle Aufgaben (kein Reinigungs-Workflow) steht die Zuweisung stattdessen direkt vor
+         * der Hauptaktion (siehe unten). */}
 
         {/* Reservierung (Punkt 4/5) - bei Turnover zweispaltig (Desktop/Tablet), sonst ein
          * einzelner kompakter Block; strikt getrennt in Abreise/Naechste Anreise. */}
@@ -576,10 +667,30 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           </div>
         ) : null}
 
+        {/* Beschreibung der manuellen Aufgabe (Punkt "Admin kann Aufgaben erstellen") - ersetzt an
+         * dieser Stelle Reservierung/Gaestekommentar, die es fuer eine Aufgabe nicht gibt. */}
+        {isManualTask && task.manualDescription ? (
+          <div className="rounded-control border border-line bg-surface px-3.5 py-3 text-[13px] text-ink">
+            <p className="mb-1 font-medium text-muted">{t('manual_task_description_title')}</p>
+            <p className="whitespace-pre-wrap">{task.manualDescription}</p>
+          </div>
+        ) : null}
+
+        {/* Buchungsaenderung (Punkt 9) - nur fuer Apaleo-abgeleitete Tasks (turnover/departure/
+         * stayover) ueberhaupt moeglich, siehe types.ts#BookingChangeRecord. */}
+        {task.bookingChange ? <BookingChangeDetail change={task.bookingChange} t={t} /> : null}
+
         {/* Wichtiger Hinweis - NIE aus dem Apaleo-Kommentar abgeleitet/ueberschrieben (Punkt 12),
-         * sehr helle warme Flaeche statt roter Warnbox. */}
+         * sehr helle warme Flaeche statt roter Warnbox. Punkt 7: ref+Hervorhebung fuer den
+         * blockierten Start-Versuch (siehe handleNoticeBlocked oben). */}
         {notice ? (
-          <div className="rounded-control border border-line bg-surface px-3.5 py-3">
+          <div
+            ref={noticeRef}
+            className={cn(
+              'rounded-control border px-3.5 py-3 transition-shadow',
+              noticeHighlight ? 'border-status-attention ring-2 ring-status-attention/30' : 'border-line bg-surface',
+            )}
+          >
             <div className="flex items-start gap-2">
               <IconAlertCircle width={18} height={18} className="mt-0.5 shrink-0 text-muted" aria-hidden="true" />
               <div className="min-w-0 flex-1">
@@ -611,7 +722,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
               </div>
             </div>
           </div>
-        ) : isManager && !noticeFormOpen ? (
+        ) : isManager && !noticeFormOpen && !isManualTask ? (
           <div className="flex flex-col gap-1">
             <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('important_notice_title')}</p>
             <button
@@ -646,7 +757,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
          * "UNIQUE PLACES Admin kann ... einzelne Reinigungen einer anderen Reinigungsfirma
          * zuordnen"), unabhaengig vom Standortverantwortlichen-Recht unten. Nur sichtbar, wenn
          * ueberhaupt Teams existieren - vorher entstuende eine leere, sinnlose Auswahl. */}
-        {isAdmin(state.user) && state.teams.length > 0 ? (
+        {!isManualTask && isAdmin(state.user) && state.teams.length > 0 ? (
           <div className="flex items-center justify-between gap-2 text-[13px]">
             <span className="text-muted">{t('team_label')}</span>
             <select
@@ -664,70 +775,90 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
 
         {/* "Reinigung" (Zuweisung + Reinigungsstatus zusammengefuehrt) - Admin/Standortverantwortlich
          * koennen die Zeile aufklappen, um denselben Zuweisungs-Picker wie zuvor zu nutzen, statt
-         * dass die Mitarbeiterliste dauerhaft sichtbar ist; Housekeeper sehen nur die Anzeige. */}
-        <CleaningAssignmentSection
-          app={app}
-          task={task}
-          isManager={isManager}
-          assignmentOpen={assignmentOpen}
-          onToggleAssignment={() => setAssignmentOpen((v) => !v)}
-        />
+         * dass die Mitarbeiterliste dauerhaft sichtbar ist; Housekeeper sehen nur die Anzeige.
+         * Manuelle Aufgaben haben keinen Reinigungs-Workflow - dort nur eine schlichte
+         * Zuweisungszeile direkt vor der Hauptaktion (Punkt "Admin kann Aufgaben erstellen"). */}
+        {!isManualTask ? (
+          <CleaningAssignmentSection
+            app={app}
+            task={task}
+            isManager={isManager}
+            assignmentOpen={assignmentOpen}
+            onToggleAssignment={() => setAssignmentOpen((v) => !v)}
+          />
+        ) : (
+          <div className="flex items-center gap-1.5 text-[13px]">
+            <IconUser width={15} height={15} className="shrink-0 text-muted" aria-hidden="true" />
+            <span className={task.assignedUserName ? 'font-medium text-ink' : 'text-muted'}>
+              {task.assignedUserName || t('unassigned')}
+            </span>
+          </div>
+        )}
 
         {/* "Vorbereitung" (vormals "Zusatzausstattung") - Admin/Standortverantwortlich: interaktive
-         * Toggles; sonst nur die bereits ausgewaehlte Ausstattung als Chips (read-only), unveraendert. */}
-        <div className="flex flex-col gap-1">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('task_prep_title')}</p>
-          <div className="flex flex-wrap gap-1.5">
-            {isManager
-              ? DOUBLEUP_TYPES.map((dt) => {
-                const on = selectedTypes.includes(dt.id);
-                return (
-                  <button
+         * Toggles; sonst nur die bereits ausgewaehlte Ausstattung als Chips (read-only), unveraendert.
+         * Fuer manuelle Aufgaben nicht relevant (kein Doubleup-Bezug). */}
+        {!isManualTask ? (
+          <div className="flex flex-col gap-1">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('task_prep_title')}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {isManager
+                ? DOUBLEUP_TYPES.map((dt) => {
+                  const on = selectedTypes.includes(dt.id);
+                  return (
+                    <button
+                      key={dt.id}
+                      type="button"
+                      onClick={() => toggleTaskDoubleType(task!, dt.id)}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors',
+                        on ? 'border-sage bg-type-stayover-bg text-ink' : 'border-line bg-warm-white text-muted hover:text-ink',
+                      )}
+                    >
+                      <DoubleupIcon id={dt.id} width={14} height={14} aria-hidden="true" />
+                      {t(dt.label)}
+                      {on ? <IconCheck width={12} height={12} className="text-sage" aria-hidden="true" /> : null}
+                    </button>
+                  );
+                })
+                : DOUBLEUP_TYPES.filter((dt) => selectedTypes.includes(dt.id)).map((dt) => (
+                  <span
                     key={dt.id}
-                    type="button"
-                    onClick={() => toggleTaskDoubleType(task!, dt.id)}
-                    className={cn(
-                      'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors',
-                      on ? 'border-sage bg-type-stayover-bg text-ink' : 'border-line bg-warm-white text-muted hover:text-ink',
-                    )}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-sage bg-type-stayover-bg px-2.5 py-1 text-[12px] font-medium text-ink"
                   >
                     <DoubleupIcon id={dt.id} width={14} height={14} aria-hidden="true" />
                     {t(dt.label)}
-                    {on ? <IconCheck width={12} height={12} className="text-sage" aria-hidden="true" /> : null}
-                  </button>
-                );
-              })
-              : DOUBLEUP_TYPES.filter((dt) => selectedTypes.includes(dt.id)).map((dt) => (
-                <span
-                  key={dt.id}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-sage bg-type-stayover-bg px-2.5 py-1 text-[12px] font-medium text-ink"
-                >
-                  <DoubleupIcon id={dt.id} width={14} height={14} aria-hidden="true" />
-                  {t(dt.label)}
-                </span>
-              ))}
+                  </span>
+                ))}
+            </div>
           </div>
-        </div>
+        ) : null}
 
-        {!isManager && selectedTypes.length > 0 && task.type === 'extra' ? (
+        {!isManualTask && !isManager && selectedTypes.length > 0 && task.type === 'extra' ? (
           <Button variant="secondary" className="w-full" onClick={() => finishTaskDoubleup(task!)}>
             {t('finish_doubleup')}
           </Button>
         ) : null}
 
-        <PrimaryAction app={app} task={task} isManager={isManager} mine={mine} />
+        <PrimaryAction app={app} task={task} isManager={isManager} mine={mine} onNoticeBlocked={handleNoticeBlocked} />
 
         {/* "Vorfall melden" (Briefing Punkt 4) - sekundaere Aktion, bevorzugter Workflow waehrend
          * einer laufenden Reinigung: die Reinigung ist hier bereits bekannt, der Benutzer muss sie
-         * im Formular nicht nochmal auswaehlen (siehe useHousekeepingApp.ts#openIncidentReport). */}
-        <Button variant="ghost" className="w-full" onClick={() => app.openIncidentReport(task!.id)}>
-          <IconAlertCircle width={15} height={15} aria-hidden="true" />
-          {t('report_incident_title')}
-        </Button>
+         * im Formular nicht nochmal auswaehlen (siehe useHousekeepingApp.ts#openIncidentReport).
+         * Fuer manuelle Aufgaben nicht sinnvoll (keine Reinigung, taskId folgt zudem nicht dem von
+         * openIncidentReport erwarteten Apaleo-Task-ID-Format). */}
+        {!isManualTask ? (
+          <Button variant="ghost" className="w-full" onClick={() => app.openIncidentReport(task!.id)}>
+            <IconAlertCircle width={15} height={15} aria-hidden="true" />
+            {t('report_incident_title')}
+          </Button>
+        ) : null}
 
         {/* Reinigungsverlauf (Punkt 13: bei Bedarf aufklappbar statt immer sichtbar, reduziert
-         * das Scrollen fuer den operativ wichtigeren Teil oberhalb). */}
-        {task.history.length > 0 ? (
+         * das Scrollen fuer den operativ wichtigeren Teil oberhalb) - fuer manuelle Aufgaben
+         * ausgeblendet: der Erledigt-Status inkl. Mitarbeiter/Zeitpunkt steht bereits direkt bei
+         * der Hauptaktion (siehe PrimaryAction), eine zweite Anzeige waere redundant. */}
+        {!isManualTask && task.history.length > 0 ? (
           <div>
             <button
               type="button"

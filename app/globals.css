@@ -85,6 +85,13 @@
   --color-type-extra: #74736E;
   --color-type-extra-bg: #F0EFEC;
 
+  /* "Aufgabe" (manuell von Admin erstellte Aufgabe, Punkt 1 der Feinschliff-Analyse) - eigener,
+     bewusst besonders zurueckhaltender Neutralton, damit eine Aufgabe schon farblich klar von
+     JEDER Reinigung (turnover/departure/stayover/extra) unterscheidbar ist, ohne wie ein
+     Bearbeitungsstatus (--color-status-*) auszusehen. */
+  --color-type-manual: #7D8580;
+  --color-type-manual-bg: #E8EAE7;
+
   /* Radien - exakt wie im Owner Center (rounded-xl fuer Felder/Controls, rounded-3xl fuer
      freistehende Auth-Karten). Room-/Stat-Cards behalten ihre kompaktere, housekeeping-eigene
      Rundung (--radius-card). */

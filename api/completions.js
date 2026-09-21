@@ -1,6 +1,15 @@
 // Abgeschlossene Reinigungen / Zusatzausstattungs-Aufgaben, fuer den Statistik-Screen.
+//
+// Rechte (Punkt 5 der Feinschliff-Analyse, Sicherheitsluecke behoben): Statistik ist ausschliess-
+// lich fuer Admin gedacht (siehe StaffNavBar.tsx/app/page.tsx) - GET lieferte hier bisher JEDEM
+// eingeloggten User (auch normalen Housekeepern) alle Abschlussdaten ueber ALLE Standorte hinweg,
+// unabhaengig davon, dass die Statistik-Ansicht selbst fuer sie ausgeblendet war. Ein 403 wuerde
+// jedoch loadBackendState() (Promise.all ueber mehrere /api/*-Requests, siehe api.ts) fuer JEDEN
+// Nicht-Admin beim Login zum Scheitern bringen - GET liefert Nicht-Admins deshalb bewusst weiterhin
+// HTTP 200 mit einer leeren Liste statt eines Fehlers.
 const { getRedis, parseJSON, migrateLegacyKey } = require('./_redis');
 const { requireSession } = require('./_auth');
+const { getUserRawById } = require('./_users');
 
 const LIST_KEY = 'housekeeping:completions';
 const LEGACY_LIST_KEY = 'hk:completions';
@@ -17,7 +26,11 @@ module.exports = async (req, res) => {
     await migrateLegacyKey(redis, LEGACY_LIST_KEY, LIST_KEY);
 
     if (req.method === 'GET') {
-      if (!(await requireSession(req, res))) return;
+      const session = await requireSession(req, res);
+      if (!session) return;
+      // Immer frisch laden statt der im Session-Cookie gecachten role, siehe api/_permissions.js.
+      const user = await getUserRawById(redis, session.userId);
+      if (!user || user.role !== 'admin') { res.status(200).json({ completions: [] }); return; }
       res.status(200).json({ completions: await allCompletions(redis) });
       return;
     }

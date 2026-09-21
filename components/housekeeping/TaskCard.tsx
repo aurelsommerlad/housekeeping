@@ -1,7 +1,10 @@
 import type { Lang } from '@/lib/housekeeping/i18n';
 import { translate } from '@/lib/housekeeping/i18n';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
-import { DoubleupIcon, IconAlertCircle, IconCheck, IconClock, IconEdit, IconEnter, IconExit, IconPause, IconPlay, IconUser } from '@/components/ui/icons';
+import {
+  DoubleupIcon, IconAlertCircle, IconCheck, IconClock, IconEdit, IconEnter, IconExit, IconPause, IconPlay, IconRefresh,
+  IconTask, IconUser,
+} from '@/components/ui/icons';
 import { TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
 import type { ResolvedTask } from '@/lib/housekeeping/useHousekeepingApp';
 import { TonePill } from './TonePill';
@@ -33,6 +36,7 @@ const TYPE_LEFT_BORDER: Record<ResolvedTask['type'], string> = {
   departure: 'border-l-type-departure/50',
   stayover: 'border-l-type-stayover/50',
   extra: 'border-l-type-extra/50',
+  manual: 'border-l-type-manual/50',
 };
 
 function formatClock(ms: number): string {
@@ -131,6 +135,12 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
   const overrideFlag = task.departureOverridden || task.arrivalOverridden ? (
     <TimeFlag icon={IconEdit}>{translate(lang, 'time_changed_badge')}</TimeFlag>
   ) : null;
+  // Punkt "Buchungsaenderung sichtbar machen": nur ein dezenter Hinweis auf der kompakten Karte,
+  // niemals die volle Vorher/Nachher-Historie (die steht in der Detailansicht, siehe
+  // TaskDetailSheet.tsx) - dasselbe TimeFlag-Badge wie die uebrigen Zeit-Kennzeichnungen.
+  const bookingChangeFlag = task.bookingChange ? (
+    <TimeFlag icon={IconRefresh}>{translate(lang, 'booking_changed_badge')}</TimeFlag>
+  ) : null;
 
   if (task.type === 'turnover') {
     return (
@@ -141,6 +151,7 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
         </span>
         {flags}
         {overrideFlag}
+        {bookingChangeFlag}
       </div>
     );
   }
@@ -155,6 +166,7 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
           </span>
           {flags}
           {overrideFlag}
+          {bookingChangeFlag}
         </span>
         {task.followingArrivalDate ? (
           <span className="text-right text-[11px] leading-tight text-muted">
@@ -165,11 +177,22 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
     );
   }
 
-  if (task.type === 'stayover' && task.nights) {
+  if (task.type === 'stayover' && (task.nights || task.bookingChange)) {
     return (
-      <p className="border-t border-line/70 pt-2 text-[12.5px] text-muted">
-        {translate(lang, task.nights === 1 ? 'nights_one' : 'nights_many', { n: task.nights })}
-      </p>
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-line/70 pt-2">
+        {task.nights ? (
+          <p className="text-[12.5px] text-muted">
+            {translate(lang, task.nights === 1 ? 'nights_one' : 'nights_many', { n: task.nights })}
+          </p>
+        ) : null}
+        {bookingChangeFlag}
+      </div>
+    );
+  }
+
+  if (task.type === 'manual' && task.manualTitle) {
+    return (
+      <p className="truncate border-t border-line/70 pt-2 text-[13px] text-ink">{task.manualTitle}</p>
     );
   }
 
@@ -330,7 +353,13 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
 
       <div className="flex items-start justify-between gap-2 pr-6">
         <span className="italic text-[17px] font-medium leading-none text-ink">
-          {task.unitName} <span className="text-[13px] font-normal not-italic text-muted">· {task.propertyName}</span>
+          {/* Standortweite manuelle Aufgabe (Punkt 2 "Apartment optional") hat kein unitName -
+           * dann traegt der Standortname allein die Ueberschrift statt eines leeren "· Standort". */}
+          {task.unitName ? (
+            <>{task.unitName} <span className="text-[13px] font-normal not-italic text-muted">· {task.propertyName}</span></>
+          ) : (
+            task.propertyName
+          )}
         </span>
         {noticeState === 'unread' ? (
           <IconAlertCircle width={16} height={16} className="mt-0.5 shrink-0 text-muted" aria-hidden="true" />
@@ -340,7 +369,12 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
       </div>
 
       <div className="flex items-center justify-between gap-2">
-        <TonePill config={typeConfig} lang={lang} size="sm" />
+        <span className="flex items-center gap-1.5">
+          {/* Punkt 1: Aufgabe vs. Reinigung nie nur ueber Farbe - zusaetzliches monochromes
+           * Outline-Icon neben dem ohnehin schon textlichen "Aufgabe"-Label der TonePill. */}
+          {task.type === 'manual' ? <IconTask width={14} height={14} className="shrink-0 text-type-manual" aria-hidden="true" /> : null}
+          <TonePill config={typeConfig} lang={lang} size="sm" />
+        </span>
         <WorkStatus task={task} lang={lang} />
       </div>
 

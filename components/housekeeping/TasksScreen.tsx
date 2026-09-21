@@ -8,12 +8,13 @@ import { getPropertyDisplayName } from '@/lib/housekeeping/api';
 import { isPropertyManager, managedPropertyCodes } from '@/lib/housekeeping/permissions';
 import { TaskCard } from './TaskCard';
 import { TaskDetailSheet } from './TaskDetailSheet';
+import { ManualTaskFormSheet } from './ManualTaskFormSheet';
 import { MultiSelectBar } from './MultiSelectBar';
 import { BulkAssignSheet } from './BulkAssignSheet';
 import { BottomSheet } from './BottomSheet';
 import { Button } from '@/components/ui/Button';
 import {
-  IconChecklist, IconCheck, IconCheckSquare, IconChevronDown, IconCircle, IconLayers, IconPause, IconPlay, IconUsers,
+  IconChecklist, IconCheck, IconCheckSquare, IconChevronDown, IconCircle, IconLayers, IconPause, IconPlay, IconPlus, IconUsers,
 } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
@@ -59,7 +60,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const {
     state, t, tasksForDay, daySummaryFor, capacityFor, selectDay, selectPropertyScope, toggleMyTasksOnly,
     toggleTaskMultiSelect, toggleTaskSelection, openTask, bulkAssignTasks, clearDayAssignments, retryTasksLoad,
-    noticeForTask, isNoticeAcknowledgedBy,
+    noticeForTask, isNoticeAcknowledgedBy, openManualTaskForm, setManualTaskFilter,
   } = app;
   const [bulkOpen, setBulkOpen] = useState(false);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
@@ -100,64 +101,78 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
     await clearDayAssignments();
   }
 
-  // Punkt 6/12: EINE Chip-Zeile statt zweier getrennter Zeilen (Standortfilter + separater
-  // Meine-Aufgaben-Button) - "Meine Aufgaben" bleibt eine bewusste Auswahl neben "Alle"/den
-  // einzelnen Standorten (kein neuer Filtermechanismus, ruft ausschliesslich die bestehenden
-  // toggleMyTasksOnly/selectPropertyScope-Aktionen auf). Fuer Admin/Standortverantwortliche
-  // entfaellt "Meine Aufgaben" (siehe Mockup Variante B) - sie starten ohnehin auf "Alle".
+  // Punkt 10 (Feinschliff-Analyse): "Ansicht" (Zuweisungsfilter: Meine Aufgaben/Alle Aufgaben) und
+  // "Standort" (Property-Filter) sind zwei UNABHAENGIGE Dimensionen - anders als zuvor (wo jede
+  // Standortauswahl "Meine Aufgaben" automatisch zuruecksetzte) aendert selectScope() jetzt
+  // ausschliesslich propertyScope, selectMine()/selectAllTasks() ausschliesslich myTasksOnly. Eine
+  // Standortkraft kann so z. B. "Meine Aufgaben" MIT einem Standortfilter kombinieren.
   function selectMine() {
     if (!state.myTasksOnly) toggleMyTasksOnly();
   }
-  function selectScope(scope: string) {
+  function selectAllTasks() {
     if (state.myTasksOnly) toggleMyTasksOnly();
+  }
+  function selectScope(scope: string) {
     if (state.propertyScope !== scope) selectPropertyScope(scope);
   }
 
   const showPropertyChips = allowedProps.length > 1;
   const showScopeRow = !isManagerHere || showPropertyChips;
 
+  const chipClass = (active: boolean) => cn(
+    'inline-flex h-9 shrink-0 items-center rounded-full border px-4 text-[13px] font-medium transition-colors',
+    active ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
+  );
+
   return (
     <div className="pb-6">
       {showScopeRow ? (
-        <div className="flex gap-2 overflow-x-auto border-b border-line px-4 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex flex-col gap-2 border-b border-line px-4 py-2.5">
+          {/* "Ansicht" (Zuweisungsfilter) - entfaellt fuer Admin/Standortverantwortliche (sie
+           * starten ohnehin auf "Alle Aufgaben", siehe afterLogin()), analog zum bisherigen
+           * Verhalten, nur jetzt als eigene, klein beschriftete Gruppe statt Teil einer gemischten
+           * Chip-Zeile. */}
           {!isManagerHere ? (
-            <button
-              type="button"
-              onClick={selectMine}
-              aria-pressed={state.myTasksOnly}
-              className={cn(
-                'inline-flex h-9 shrink-0 items-center rounded-full border px-4 text-[13px] font-medium transition-colors',
-                state.myTasksOnly ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
-              )}
-            >
-              {t('my_tasks_only')}
-            </button>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10.5px] font-medium uppercase tracking-wide text-muted">{t('filter_group_view')}</span>
+              <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <button type="button" onClick={selectMine} aria-pressed={state.myTasksOnly} className={chipClass(state.myTasksOnly)}>
+                  {t('my_tasks_only')}
+                </button>
+                <button type="button" onClick={selectAllTasks} aria-pressed={!state.myTasksOnly} className={chipClass(!state.myTasksOnly)}>
+                  {t('scope_all_tasks')}
+                </button>
+              </div>
+            </div>
           ) : null}
-          <button
-            type="button"
-            onClick={() => selectScope('all')}
-            aria-pressed={!state.myTasksOnly && state.propertyScope === 'all'}
-            className={cn(
-              'inline-flex h-9 shrink-0 items-center rounded-full border px-4 text-[13px] font-medium transition-colors',
-              !state.myTasksOnly && state.propertyScope === 'all' ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
-            )}
-          >
-            {t('scope_all')}
-          </button>
-          {showPropertyChips ? allowedProps.map((p) => (
-            <button
-              key={p.code}
-              type="button"
-              onClick={() => selectScope(p.code)}
-              aria-pressed={!state.myTasksOnly && state.propertyScope === p.code}
-              className={cn(
-                'inline-flex h-9 shrink-0 items-center rounded-full border px-4 text-[13px] font-medium transition-colors',
-                !state.myTasksOnly && state.propertyScope === p.code ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
-              )}
-            >
-              {getPropertyDisplayName(p)}
-            </button>
-          )) : null}
+          {/* "Standort" (Property-Filter) - unabhaengig von der Ansicht oben, startet bei "Alle"
+           * (Punkt 10 Default), sofern der Kontext nicht bereits etwas anderes vorausgewaehlt hat. */}
+          {showPropertyChips ? (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10.5px] font-medium uppercase tracking-wide text-muted">{t('filter_group_property')}</span>
+              <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <button
+                  type="button"
+                  onClick={() => selectScope('all')}
+                  aria-pressed={state.propertyScope === 'all'}
+                  className={chipClass(state.propertyScope === 'all')}
+                >
+                  {t('scope_all')}
+                </button>
+                {allowedProps.map((p) => (
+                  <button
+                    key={p.code}
+                    type="button"
+                    onClick={() => selectScope(p.code)}
+                    aria-pressed={state.propertyScope === p.code}
+                    className={chipClass(state.propertyScope === p.code)}
+                  >
+                    {getPropertyDisplayName(p)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -209,13 +224,22 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       ) : null}
 
       {/* Punkt 9: Admin-/Manageraktionen kompakt hinter "Auswaehlen" + "Weitere Aktionen" statt
-       * dauerhaft sichtbarer Einzelbuttons - fuer normale Housekeeper vollstaendig ausgeblendet. */}
+       * dauerhaft sichtbarer Einzelbuttons - fuer normale Housekeeper vollstaendig ausgeblendet.
+       * "+ Aufgabe erstellen" (Punkt "Admin kann Aufgaben erstellen") ist bewusst NUR fuer Admin
+       * sichtbar (serverseitig ebenso durchgesetzt, siehe api/manual-tasks.js) - Standort-
+       * verantwortliche/Team-Leads sehen weiterhin nur die bestehenden Aktionen. */}
       {isManagerHere ? (
-        <div className="flex items-center gap-2 px-4 pt-3">
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
           <Button variant={state.taskMultiSelect ? 'primary' : 'secondary'} size="sm" onClick={toggleTaskMultiSelect}>
             <IconCheckSquare width={14} height={14} aria-hidden="true" />
             {state.taskMultiSelect ? t('multiselect_on') : t('select_tasks_action')}
           </Button>
+          {isAdmin ? (
+            <Button variant="secondary" size="sm" onClick={openManualTaskForm}>
+              <IconPlus width={14} height={14} aria-hidden="true" />
+              {t('create_manual_task_action')}
+            </Button>
+          ) : null}
           <button
             type="button"
             onClick={() => setMoreActionsOpen(true)}
@@ -224,6 +248,40 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
           >
             <span aria-hidden="true" className="text-[15px] leading-none tracking-[0.05em]">&bull;&bull;&bull;</span>
           </button>
+        </div>
+      ) : null}
+
+      {/* Offen/Erledigt-Filter fuer manuelle Aufgaben (Punkt "erledigte Aufgaben bleiben fuer Admin
+       * sichtbar") - betrifft AUSSCHLIESSLICH manuelle Aufgaben (siehe useHousekeepingApp.ts#
+       * resolvedTasksAll), Reinigungen bleiben von diesem Filter vollstaendig unberuehrt. Nur fuer
+       * Admin sichtbar/aenderbar - alle anderen Rollen sehen implizit immer nur "Offen". */}
+      {isAdmin ? (
+        <div className="flex flex-col gap-1.5 px-4 pt-3">
+          <span className="text-[10.5px] font-medium uppercase tracking-wide text-muted">{t('filter_group_manual_tasks')}</span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setManualTaskFilter('open')}
+              aria-pressed={state.manualTaskFilter === 'open'}
+              className={cn(
+                'inline-flex h-8 items-center rounded-full border px-3.5 text-[12.5px] font-medium transition-colors',
+                state.manualTaskFilter === 'open' ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
+              )}
+            >
+              {t('manual_tasks_open')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setManualTaskFilter('completed')}
+              aria-pressed={state.manualTaskFilter === 'completed'}
+              className={cn(
+                'inline-flex h-8 items-center rounded-full border px-3.5 text-[12.5px] font-medium transition-colors',
+                state.manualTaskFilter === 'completed' ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
+              )}
+            >
+              {t('manual_tasks_completed')}
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -338,6 +396,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       </BottomSheet>
 
       <TaskDetailSheet app={app} task={state.detailTaskId ? visible.find((task) => task.id === state.detailTaskId) || null : null} />
+      <ManualTaskFormSheet app={app} />
     </div>
   );
 }

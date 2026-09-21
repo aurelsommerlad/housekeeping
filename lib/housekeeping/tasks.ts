@@ -6,18 +6,21 @@
  * (housekeeping:task_assignments, siehe api/task-assignments.js), gemaess Punkt 23 (Task-Status
  * = unser Workflow, Apaleo Unit Condition = PMS-Zustand, beides bewusst getrennt).
  *
- * Die bestehende Zwangsreinigungsregel (siehe rooms.ts#buildRooms) wird fuer HEUTE exakt
- * unveraendert uebernommen (inkl. echtem Apaleo-Zustand). Fuer zukuenftige Tage kann der Apaleo-
- * Zustand naturgemaess nicht im Voraus bekannt sein (Punkt 7) - dort wird ausschliesslich die
- * deterministische Naechte-/Abreise-Bedingung ausgewertet und als GEPLANTE (nicht bestaetigte)
- * Zwangsreinigung markiert (task.forced), damit Personalplanung trotzdem moeglich ist.
+ * Zwischenreinigung (Punkt 12, Feinschliff-Analyse): die frueher hier automatisch anhand von
+ * Naechten seit Anreise ausgeloeste Zwangsreinigung wurde ENTFERNT. Eine Zwischenreinigung
+ * entsteht jetzt AUSSCHLIESSLICH, wenn die Apaleo-Reservierung den Service `INTERCLEAN` fuer
+ * GENAU diesen Tag gebucht hat (siehe bookedServiceDates() unten) - das tatsaechliche
+ * Leistungsdatum liefert Apaleo bereits ueber `services[].dates[].serviceDate` mit demselben
+ * `expand=services`, der schon fuer ECI/LCO/HUND/BABY verwendet wird (kein zusaetzlicher Request
+ * noetig, live gegen den echten Account verifiziert). Diese Reinigung ist eine normale Reinigung
+ * (Timer/Pause/Abschluss) wie jede andere - `forced` bleibt aus Typkompatibilitaet bestehen, ist
+ * fuer type==='stayover' aber immer `false` (kein "erzwungener" Charakter mehr).
  */
-import { FORCED_CLEAN_INTERVAL_NIGHTS } from './api';
-import { addDaysISO, unitCondition } from './rooms';
+import { unitCondition } from './rooms';
 import type {
-  ApaleoReservation, ApaleoUnit, CapacityEntry, DaySummary, DoubleupsState, HousekeepingTeam, Task, TaskAssignmentsState,
-  TaskHistoryEntry, TaskReservationSummary, TaskStatus, TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState,
-  TeamCapacityEntry, TeamPropertyDefaultsState, TaskType,
+  ApaleoReservation, ApaleoUnit, BookingChangeRecord, BookingChangeRecordsState, CapacityEntry, DaySummary, DoubleupsState,
+  HousekeepingTeam, ManualTask, Task, TaskAssignmentsState, TaskHistoryEntry, TaskReservationSummary, TaskStatus,
+  TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState, TeamCapacityEntry, TeamPropertyDefaultsState, TaskType,
 } from './types';
 
 /** Standardzeiten (Prioritaet 3, ohne gebuchtes Extra/Override) - siehe Briefing Punkt 1.
@@ -42,6 +45,22 @@ export const EXTRA_TIME = '13:00';
  * (HUESLE/LAEKE/ALPILA/ALTUS) verifiziert - identischer Code ueberall. */
 function hasBookedService(r: ApaleoReservation | undefined, code: 'ECI' | 'LCO' | 'HUND' | 'BABY'): boolean {
   return !!r?.services?.some((s) => s.service?.code === code);
+}
+
+/** Alle gebuchten Leistungsdatane (yyyy-mm-dd) EINES Servicecodes auf dieser Reservierung (Punkt
+ * 12) - `INTERCLEAN` ist `availability.mode: "Daily"` (live gegen alle Properties verifiziert) und
+ * wird deshalb, anders als ECI/LCO/HUND/BABY, potenziell fuer mehrere einzelne Tage gebucht. */
+function bookedServiceDates(r: ApaleoReservation | undefined, code: string): string[] {
+  if (!r?.services) return [];
+  const out: string[] = [];
+  for (const s of r.services) {
+    if (s.service?.code !== code) continue;
+    for (const d of s.dates || []) {
+      const day = dateOnly(d.serviceDate);
+      if (day) out.push(day);
+    }
+  }
+  return out;
 }
 
 /** "HH:MM" -> Minuten seit Mitternacht, fuer Sortierung/Fensterberechnung. */
@@ -123,9 +142,12 @@ export interface BuildTasksInput {
   /** Die zu betrachtenden Kalendertage, z. B. [heute, heute+1, heute+2, heute+3]. */
   days: string[];
   today: string;
+  /** Bekannte housekeeping-relevante Buchungsaenderungen je reservationId (Punkt 9) - optional,
+   * da nicht jeder Aufrufer (z. B. Tests) diese Daten mitfuehrt. */
+  bookingChanges?: BookingChangeRecordsState;
 }
 
-export function buildTasks({ propertyNames, units, reservations, doubleups, days, today }: BuildTasksInput): Task[] {
+export function buildTasks({ propertyNames, units, reservations, doubleups, days, today, bookingChanges = {} }: BuildTasksInput): Task[] {
   // Keine Filterung nach Tagen hier: eine Reservierung, die keinen der betrachteten Tage direkt
   // als An-/Abreise beruehrt, kann trotzdem als laufender Aufenthalt (Stayover) relevant sein -
   // die eigentliche Tageszuordnung passiert weiter unten pro Tag.
@@ -174,6 +196,7 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
           // Punkt 4: strikt getrennt - reservationInfo IMMER von departingRes, nextReservationInfo
           // IMMER von arrivingRes, nie vermischt.
           reservationInfo: reservationSummary(departingRes), nextReservationInfo: reservationSummary(arrivingRes),
+          bookingChange: bookingChanges[departingRes.id] || null,
         });
         continue;
       }
@@ -196,6 +219,7 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
           bookedDepartureTime: hasLateCheckout ? EXTRA_TIME : STANDARD_DEPARTURE_TIME,
           bookedArrivalTime: null,
           reservationInfo: reservationSummary(departingRes), nextReservationInfo: null,
+          bookingChange: bookingChanges[departingRes.id] || null,
         });
         continue;
       }
@@ -206,30 +230,25 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
         return !!arr && !!dep && arr <= date && date < dep;
       });
 
-      if (occupiedRes) {
+      // Zwischenreinigung (Punkt 12): ausschliesslich, wenn `INTERCLEAN` fuer GENAU diesen Tag
+      // gebucht ist (siehe bookedServiceDates()) - keine Naechte-/Abreise-Heuristik mehr.
+      if (occupiedRes && bookedServiceDates(occupiedRes, 'INTERCLEAN').includes(date)) {
         const arrivalDate = dateOnly(occupiedRes.arrival) as string;
-        const nights = nightsSince(arrivalDate, date);
-        const departsNextDay = unitReservations.some((r) => dateOnly(r.departure) === addDaysISO(date, 1));
-        const meetsNightsRule = nights >= FORCED_CLEAN_INTERVAL_NIGHTS && nights % FORCED_CLEAN_INTERVAL_NIGHTS === 0 && !departsNextDay;
-        // Heute: bestehende Regel exakt (inkl. echtem Apaleo-Zustand). Zukunft: Zustand nicht
-        // vorhersagbar, siehe Datei-Kommentar oben - nur die deterministische Bedingung zaehlt.
-        const forced = isToday ? conditionNow === 'Dirty' && meetsNightsRule : meetsNightsRule;
-        if (forced) {
-          tasks.push({
-            id: taskId(propertyCode, unit.id, date, 'stayover', occupiedRes.id),
-            propertyId: propertyCode, propertyCode, propertyName, unitId: unit.id, unitName, date, type: 'stayover',
-            sourceReservationId: occupiedRes.id, departureReservationId: null, nextReservationId: null,
-            departureTime: null, nextArrivalTime: null,
-            guestName: guestName(occupiedRes), nextGuestName: '',
-            guestCount: guestCount(occupiedRes), comment: reservationComment(occupiedRes),
-            doubleupTypes: doubleup?.types || [], followingArrivalDate: null,
-            forced: true, nights, condition: conditionNow,
-            hasLateCheckout: false, hasEarlyCheckin: false,
-            bookedDepartureTime: STANDARD_DEPARTURE_TIME, bookedArrivalTime: null,
-            reservationInfo: reservationSummary(occupiedRes), nextReservationInfo: null,
-          });
-          continue;
-        }
+        tasks.push({
+          id: taskId(propertyCode, unit.id, date, 'stayover', occupiedRes.id),
+          propertyId: propertyCode, propertyCode, propertyName, unitId: unit.id, unitName, date, type: 'stayover',
+          sourceReservationId: occupiedRes.id, departureReservationId: null, nextReservationId: null,
+          departureTime: null, nextArrivalTime: null,
+          guestName: guestName(occupiedRes), nextGuestName: '',
+          guestCount: guestCount(occupiedRes), comment: reservationComment(occupiedRes),
+          doubleupTypes: doubleup?.types || [], followingArrivalDate: null,
+          forced: false, nights: nightsSince(arrivalDate, date), condition: conditionNow,
+          hasLateCheckout: false, hasEarlyCheckin: false,
+          bookedDepartureTime: STANDARD_DEPARTURE_TIME, bookedArrivalTime: null,
+          reservationInfo: reservationSummary(occupiedRes), nextReservationInfo: null,
+          bookingChange: bookingChanges[occupiedRes.id] || null,
+        });
+        continue;
       }
 
       // EXTRA (Punkt 6): Zusatzausstattung ohne begleitende Reinigung an diesem Tag. Doubleups
@@ -249,6 +268,7 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
           hasLateCheckout: false, hasEarlyCheckin: false,
           bookedDepartureTime: STANDARD_DEPARTURE_TIME, bookedArrivalTime: null,
           reservationInfo: null, nextReservationInfo: null,
+          bookingChange: null,
         });
       }
     }
@@ -257,7 +277,7 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
   return tasks;
 }
 
-const TYPE_TIER: Record<TaskType, number> = { turnover: 0, departure: 1, stayover: 2, extra: 3 };
+const TYPE_TIER: Record<TaskType, number> = { turnover: 0, departure: 1, stayover: 2, extra: 3, manual: 4 };
 
 export interface ResolvedTask extends Task {
   status: TaskStatus;
@@ -353,6 +373,69 @@ export function resolveTasks(
       history: a.history || [],
     };
   });
+}
+
+/**
+ * Manuell erstellte Aufgaben (Punkt "Admin kann Aufgaben erstellen") in dieselbe ResolvedTask-Form
+ * wie Apaleo-abgeleitete Reinigungsauftraege gebracht, damit TaskCard/TaskDetailSheet/
+ * sortTasksForDay/tasksForDay sie ohne Sonderpfad mitrendern koennen. Bewusst KEIN Durchlauf durch
+ * resolveTasks()/TaskAssignmentsState - eine manuelle Aufgabe hat keinen Reinigungs-Workflow
+ * (kein Timer/Pause/Team), ihr Status kommt 1:1 aus dem ManualTask-Datensatz selbst (Punkt 3).
+ */
+export function manualTaskToResolvedTask(mt: ManualTask): ResolvedTask {
+  return {
+    id: mt.id,
+    propertyId: mt.propertyCode,
+    propertyCode: mt.propertyCode,
+    propertyName: mt.propertyName,
+    unitId: mt.unitId || '',
+    unitName: mt.unitName || '',
+    date: mt.date,
+    type: 'manual',
+    sourceReservationId: null,
+    departureReservationId: null,
+    nextReservationId: null,
+    departureTime: null,
+    nextArrivalTime: null,
+    guestName: '',
+    nextGuestName: '',
+    guestCount: null,
+    comment: '',
+    doubleupTypes: [],
+    followingArrivalDate: null,
+    forced: false,
+    nights: null,
+    condition: '',
+    hasLateCheckout: false,
+    hasEarlyCheckin: false,
+    bookedDepartureTime: '',
+    bookedArrivalTime: null,
+    reservationInfo: null,
+    nextReservationInfo: null,
+    manualTitle: mt.title,
+    manualDescription: mt.description,
+    bookingChange: null,
+    // Punkt 3: bewusst nur Offen/Erledigt, kein Reinigungs-Zwischenstatus (assigned/in_progress/
+    // paused/inspection gibt es fuer eine manuelle Aufgabe nicht).
+    status: mt.status === 'completed' ? 'completed' : 'open',
+    assignedUserId: mt.assignedUserId,
+    assignedUserName: mt.assignedUserName,
+    assignedTeamId: null,
+    assignedTeamName: null,
+    cleaningStartedAt: null,
+    elapsedSeconds: 0,
+    completedAt: mt.completedAt || null,
+    history: mt.completedAt && mt.completedByUserId
+      ? [{ action: 'completed', at: mt.completedAt, byUserId: mt.completedByUserId, byUserName: mt.completedByUserName || '' }]
+      : [],
+    timeOverride: null,
+    effectiveDepartureTime: '',
+    effectiveArrivalTime: null,
+    departureOverridden: false,
+    arrivalOverridden: false,
+    cleaningWindowMinutes: null,
+    timeConflict: false,
+  };
 }
 
 /** Priorisierung innerhalb eines Tages - kombiniert den Bearbeitungsstatus (Punkt "Sortierung

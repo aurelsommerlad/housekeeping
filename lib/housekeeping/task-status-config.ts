@@ -105,4 +105,14 @@ export const TASK_TYPE_CONFIG: Record<TaskType, ToneConfig> = {
     toneBorderClass: 'border-type-extra/30',
     dotClass: 'bg-type-extra',
   },
+  // Punkt 1 (Feinschliff-Analyse): manuelle Aufgabe - eigener Neutralton (siehe app/globals.css),
+  // damit sie schon farblich klar von jeder Reinigung unterscheidbar ist. Nie nur ueber Farbe:
+  // TaskCard zeigt zusaetzlich IconTask + das explizite Label "Aufgabe" (siehe TaskCard.tsx).
+  manual: {
+    labelKey: 'type_manual',
+    toneClass: 'text-type-manual',
+    toneBgClass: 'bg-type-manual-bg',
+    toneBorderClass: 'border-type-manual/30',
+    dotClass: 'bg-type-manual',
+  },
 };

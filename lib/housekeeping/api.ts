@@ -11,10 +11,10 @@
  * lib/housekeeping/auth.ts.
  */
 import type {
-  ApaleoReservation, ApaleoUnit, AssignmentsState, DoubleupsState, Completion, BreakEntry, ConsumableItem,
-  ConsumableReport, HousekeepingIncident, HousekeepingTeam, LinenItem, NfcTagStatusesState, Property,
-  ReservationSearchResult, ReservationsState, StaffUser, TaskAssignmentsState, TaskNotice, TaskNoticeAck,
-  TaskNoticeAcksState, TaskNoticesState, TaskStartSource, TaskTeamOverridesState, TaskTimeOverride,
+  ApaleoReservation, ApaleoUnit, AssignmentsState, BookingChangeRecordsState, DoubleupsState, Completion, BreakEntry,
+  ConsumableItem, ConsumableReport, HousekeepingIncident, HousekeepingTeam, LinenItem, ManualTasksState,
+  NfcTagStatusesState, Property, ReservationSearchResult, ReservationsState, StaffUser, TaskAssignmentsState, TaskNotice,
+  TaskNoticeAck, TaskNoticeAcksState, TaskNoticesState, TaskStartSource, TaskTeamOverridesState, TaskTimeOverride,
   TaskTimeOverridesState, TeamPropertyDefaultsState,
 } from './types';
 
@@ -245,7 +245,38 @@ import type {
 // Namen der Elternseite (Owner-Center-Pattern "← Objekte") statt eines generischen "Zurueck",
 // auf Desktop zusaetzlich eine dezente volle Breadcrumb-Zeile. Mobile bleibt bewusst einspaltig
 // mit kompakten Zeilen statt horizontal gequetschter Desktop-Layouts.
-export const APP_VERSION = '2.15.1';
+// MINOR-Bump (2.15.1 -> 2.16.0): Reinigung/Aufgabe klar getrennt (Feinschliff-Analyse, 13 Punkte).
+// (1) Neuer TaskType 'manual' (eigener Neutralton --color-type-manual + IconTask, nie nur ueber
+// Farbe) fuer admin-erstellte, nicht aus Apaleo abgeleitete Aufgaben - bestehender TaskType
+// 'extra' (Doubleup-Ableitung) bleibt unveraendert bestehen und heisst in Deutsch jetzt
+// "Zusatzausstattung" statt "Aufgabe" (Namenskonflikt mit dem neuen Typ aufgeloest). (2/3/4) Admin
+// kann ueber "+ Aufgabe erstellen" (TasksScreen) eine Aufgabe mit Standort/optionalem Apartment/
+// Datum/Titel/Beschreibung/optionaler Zuweisung anlegen (housekeeping:manual_tasks, api/manual-
+// tasks.js, admin-only); kein Reinigungs-Workflow (kein Timer/Pause), Primaeraktion "Aufgabe
+// erledigen", Offen/Erledigt-Filter fuer Admin (betrifft ausschliesslich manuelle Aufgaben, nie
+// Reinigungen). (5) Statistik jetzt ausschliesslich Admin: StaffNavBar+app/page.tsx-Guard UND
+// serverseitig - api/completions.js lieferte GET bisher JEDEM eingeloggten User alle
+// Abschlussdaten aller Standorte (Sicherheitsluecke), liefert Nicht-Admins jetzt bewusst HTTP 200
+// mit leerer Liste (kein 403, um loadBackendState() fuer alle nicht abzureissen). (6) TaskDetail-
+// Sheet: doppelte Zuweisungszeile entfernt (Zuweisung gehoert eindeutig zur "Reinigung"-Sektion).
+// (7) Notice-Card: Start blockiert jetzt per Klick-Guard statt disabled-Button + dauerhaftem Text;
+// stattdessen einmaliger Toast + kurze visuelle Hervorhebung/Scroll zur Notice-Card. (8) Buchungs-
+// nummer + "gebucht am" kompakt in einer Zeile. (9) Buchungsaenderungen (Anreise/Abreise/Einheit)
+// sichtbar: neuer Snapshot-Vergleich (housekeeping:booking_change_snapshots/-changes, api/booking-
+// changes.js) - Apaleo liefert nur den aktuellen Stand, der Vorzustand wird hier erstmals selbst
+// gespeichert; dezentes Icon auf der Karte, Vorher/Nachher in der Detailansicht. (10) "Meine
+// Aufgaben"/Standortfilter sind jetzt echte unabhaengige Dimensionen (vorher setzte JEDE
+// Standortauswahl "Meine Aufgaben" zurueck) - zwei eigene, klein beschriftete Gruppen "Ansicht"/
+// "Standort" statt einer gemischten Chip-Zeile. (11) Neuer, separater Pause-Button im Header nur
+// bei aktiver eigener Reinigung (in_progress/paused) - der bestehende, davon unabhaengige
+// Pausen-Button ("Pause von der Arbeit", toggleBreak) bleibt unveraendert. (12) Zwischenreinigung
+// entsteht nur noch bei gebuchtem Apaleo-Service `INTERCLEAN` fuer GENAU den Tag (Leistungsdatum
+// aus `services[].dates[].serviceDate`, live verifiziert bereits im bestehenden `expand=services`
+// enthalten, kein zusaetzlicher Request) - die alte, naechtebasierte Zwangsreinigungsregel wurde
+// entfernt (FORCED_CLEAN_INTERVAL_NIGHTS-Nutzung in tasks.ts). Reine Additive/Refactoring-Aenderung
+// an der bestehenden Turnover-/Abreise-/Timer-/Zuweisungs-/Notice-/Team-Logik - nichts davon wurde
+// umgebaut.
+export const APP_VERSION = '2.16.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -638,6 +669,44 @@ export const taskTimeOverridesApi = {
     backendPost<{ override: TaskTimeOverride }>('task-time-overrides', { action: 'set', taskId, ...times }),
   remove: (taskId: string) => backendPost<{ ok: true }>('task-time-overrides', { action: 'remove', taskId }),
 };
+
+/** Manuell von Admin erstellte Aufgaben (Punkt "Admin kann Aufgaben erstellen") - siehe
+ * api/manual-tasks.js fuer die serverseitige Rechtepruefung (Anlegen: nur Admin; Erledigen:
+ * zugewiesene Person oder Standortverantwortlich; Lesen: jeder mit Property-Zugriff). */
+export interface ManualTaskCreateInput {
+  propertyCode: string;
+  propertyName: string;
+  unitId?: string | null;
+  unitName?: string | null;
+  date: string;
+  title: string;
+  description: string;
+  assignedUserId?: string | null;
+  assignedUserName?: string | null;
+}
+
+export async function loadManualTasks(): Promise<ManualTasksState> {
+  const data = await backendGet<{ manualTasks?: ManualTasksState }>('manual-tasks');
+  return data.manualTasks || {};
+}
+
+export const manualTasksApi = {
+  create: (input: ManualTaskCreateInput) =>
+    backendPost<{ manualTasks: ManualTasksState }>('manual-tasks', { action: 'create', ...input }),
+  complete: (taskId: string) => backendPost<{ manualTasks: ManualTasksState }>('manual-tasks', { action: 'complete', taskId }),
+};
+
+/** Housekeeping-relevante Buchungsaenderungen (Punkt "Buchungsaenderung sichtbar machen") - siehe
+ * api/booking-changes.js. `syncBookingChanges` wird nach jedem Laden der Apaleo-Reservierungen
+ * fuer den Planungszeitraum aufgerufen (siehe useHousekeepingApp.ts#loadPlanningData) und liefert
+ * die vollstaendige, fuer den User sichtbare Aenderungsliste zurueck (Server vergleicht gegen den
+ * zuletzt gespeicherten housekeeping:*-Snapshot und aktualisiert ihn bei Bedarf). */
+export async function syncBookingChanges(
+  reservations: { id: string; arrival?: string | null; departure?: string | null; unitId?: string | null; propertyCode: string }[],
+): Promise<BookingChangeRecordsState> {
+  const data = await backendPost<{ changes?: BookingChangeRecordsState }>('booking-changes', { action: 'sync', reservations });
+  return data.changes || {};
+}
 
 export async function loadNfcTagStatuses(): Promise<NfcTagStatusesState> {
   const data = await backendGet<{ statuses?: NfcTagStatusesState }>('nfc-tags');

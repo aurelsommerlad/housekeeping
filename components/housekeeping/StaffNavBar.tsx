@@ -19,7 +19,10 @@ const ITEMS: { id: NavId | 'melden'; icon: keyof typeof NAV_ICONS; labelKey: I18
   { id: 'tasks', icon: 'checklist', labelKey: 'nav_tasks' },
   { id: 'rooms', icon: 'bed', labelKey: 'nav_apartments', requires: 'elevated' },
   { id: 'melden', icon: 'alert', labelKey: 'nav_report_menu', requires: 'nonElevated' },
-  { id: 'stats', icon: 'chart', labelKey: 'nav_stats', requires: 'manager' },
+  // Punkt 5 (Feinschliff-Analyse): Statistik ist bewusst NUR fuer Admin sichtbar (vorher
+  // 'manager' = auch Standortverantwortliche/Team-Leads) - server-seitig zusaetzlich in
+  // api/completions.js abgesichert, diese Nav-Sichtbarkeit ist nur die UI-Bequemlichkeit dazu.
+  { id: 'stats', icon: 'chart', labelKey: 'nav_stats', requires: 'admin' },
   { id: 'team', icon: 'users', labelKey: 'nav_team', requires: 'admin' },
 ];
 

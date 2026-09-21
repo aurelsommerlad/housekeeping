@@ -4,6 +4,45 @@ import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { IconPause, IconPlay, IconSearch, IconUser } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
+/**
+ * Punkt 11 (Feinschliff-Analyse): globaler Pause-Button oben rechts NUR wenn der eingeloggte
+ * Mitarbeiter gerade eine aktive (laufende/pausierte) Reinigung zugewiesen hat - vollstaendig
+ * getrennt vom bestehenden Pausen-Button daneben (toggleBreak/onBreak, "Pause von der Arbeit",
+ * eigenstaendiges, unabhaengiges Feature, siehe useHousekeepingApp.ts#toggleBreak). Nutzt
+ * ausschliesslich die bestehenden startTaskTimer/pauseTaskTimer-Aktionen auf GENAU den Task, den
+ * app.activeCleaningTask() ermittelt - niemals fuer eine manuelle Aufgabe (die hat keinen
+ * Reinigungs-Timer, siehe tasks.ts#manualTaskToResolvedTask).
+ */
+function CleaningPauseButton({ app }: { app: HousekeepingApp }) {
+  const { t, activeCleaningTask, startTaskTimer, pauseTaskTimer } = app;
+  const task = activeCleaningTask();
+  if (!task) return null;
+
+  if (task.status === 'paused') {
+    return (
+      <button
+        type="button"
+        onClick={() => startTaskTimer(task.id)}
+        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-warm-white px-3 text-[12px] font-medium text-muted transition-colors"
+      >
+        <IconPlay width={13} height={13} aria-hidden="true" />
+        {t('resume_clean')}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => pauseTaskTimer(task.id)}
+      className="inline-flex h-8 items-center gap-1.5 rounded-full border border-status-progress/30 bg-status-progress-bg px-3 text-[12px] font-medium text-status-progress transition-colors"
+    >
+      <IconPause width={13} height={13} aria-hidden="true" />
+      {t('pause_clean')}
+    </button>
+  );
+}
+
 const LOCALES: Record<string, string> = { de: 'de-DE', en: 'en-GB', pl: 'pl-PL', ro: 'ro-RO' };
 
 export interface StaffHeaderProps {
@@ -59,6 +98,7 @@ export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderPr
               {state.onBreak ? t('on_break') : t('break_toggle_label')}
             </button>
           ) : null}
+          <CleaningPauseButton app={app} />
           {state.user?.role === 'admin' ? (
             <button
               type="button"

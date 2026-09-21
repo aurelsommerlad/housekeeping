@@ -26,22 +26,24 @@ import { fetchMe, login as loginRequest, logout as logoutRequest } from './auth'
 import {
   DOUBLEUP_TYPES, POLL_INTERVAL, assignmentsApi, breaksApi, completionsApi, consumablesApi, doubleupsApi,
   getPropertyDisplayName, housekeepingTeamsApi, incidentPhotosApi, incidentsApi, linenItemsApi, loadBackendState,
-  loadConsumableItems, loadHousekeepingTeams, loadIntegrationsStatus, loadLinenItems, loadNfcTagStatuses, loadProperties,
-  loadReservations, loadReservationsRangeForProperties, loadTaskAssignments, loadTaskNotices, loadTaskTimeOverrides,
-  loadUnits, loadUnitsForProperties, nfcApi, setUnitCondition, taskAssignmentsApi, taskNoticesApi, taskTimeOverridesApi,
-  usersApi, type IntegrationsStatus, type ReportIncidentInput,
+  loadConsumableItems, loadHousekeepingTeams, loadIntegrationsStatus, loadLinenItems, loadManualTasks, loadNfcTagStatuses,
+  loadProperties, loadReservations, loadReservationsRangeForProperties, loadTaskAssignments, loadTaskNotices,
+  loadTaskTimeOverrides, loadUnits, loadUnitsForProperties, manualTasksApi, nfcApi, setUnitCondition, syncBookingChanges,
+  taskAssignmentsApi, taskNoticesApi, taskTimeOverridesApi, usersApi, type IntegrationsStatus, type ManualTaskCreateInput,
+  type ReportIncidentInput,
 } from './api';
 import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './rooms';
 import { managedPropertyCodes } from './permissions';
 import {
-  buildTasks, capacityForDay, daySummary, requiresInspection, resolveTasks, sortTasksForDay, teamCapacityForDay,
-  type ResolvedTask, type TeamContext,
+  buildTasks, capacityForDay, daySummary, manualTaskToResolvedTask, requiresInspection, resolveTasks, sortTasksForDay,
+  teamCapacityForDay, type ResolvedTask, type TeamContext,
 } from './tasks';
 import type {
-  ApaleoReservation, ApaleoUnit, AssignmentsState, BreakEntry, CapacityEntry, Completion, ConsumableItem, ConsumableReport,
-  DaySummary, DoubleupsState, HousekeepingIncident, HousekeepingTeam, LinenItem, NfcTagStatusesState, Property, ReservationsState,
-  Room, RoomFilter, StaffUser, TaskAssignmentsState, TaskNotice, TaskNoticeAcksState, TaskNoticesState, TaskStartSource,
-  TaskTeamOverridesState, TaskTimeOverridesState, TeamCapacityEntry, TeamPropertyDefaultsState,
+  ApaleoReservation, ApaleoUnit, AssignmentsState, BookingChangeRecordsState, BreakEntry, CapacityEntry, Completion,
+  ConsumableItem, ConsumableReport, DaySummary, DoubleupsState, HousekeepingIncident, HousekeepingTeam, LinenItem,
+  ManualTask, ManualTasksState, NfcTagStatusesState, Property, ReservationsState, Room, RoomFilter, StaffUser,
+  TaskAssignmentsState, TaskNotice, TaskNoticeAcksState, TaskNoticesState, TaskStartSource, TaskTeamOverridesState,
+  TaskTimeOverridesState, TeamCapacityEntry, TeamPropertyDefaultsState,
 } from './types';
 
 /** Key-Schema exakt wie api/_nfc.js#unitKey - EINZIGE Stelle im Client, die dieses Format kennt. */
@@ -119,6 +121,17 @@ interface AppState {
   taskMultiSelect: boolean;
   selectedTasks: Set<string>;
   detailTaskId: string | null;
+
+  /** Manuell von Admin erstellte Aufgaben (Punkt "Admin kann Aufgaben erstellen") - Key = eigene
+   * stabile ID (siehe api/manual-tasks.js), NICHT Teil von taskAssignments (kein Reinigungs-
+   * Workflow). `manualTaskFilter` steuert nur die Sichtbarkeit dieser Aufgaben (Punkt "Offen/
+   * Erledigt-Filter fuer Admin") - Reinigungen bleiben davon vollstaendig unberuehrt. */
+  manualTasks: ManualTasksState;
+  manualTaskFilter: 'open' | 'completed';
+  manualTaskFormOpen: boolean;
+  /** Bekannte housekeeping-relevante Buchungsaenderungen je reservationId (Punkt "Buchungs-
+   * aenderung sichtbar machen") - siehe api/booking-changes.js. */
+  bookingChanges: BookingChangeRecordsState;
 
   /** "Vorfall melden" (Briefing) - eigenes, von detailTaskId unabhaengiges Sheet: kann sowohl
    * standalone (Nav/Einstellungen, ohne Vorauswahl) als auch aus der Task-Detailansicht heraus
@@ -214,6 +227,10 @@ function initialState(): AppState {
     taskMultiSelect: false,
     selectedTasks: new Set(),
     detailTaskId: null,
+    manualTasks: {},
+    manualTaskFilter: 'open',
+    manualTaskFormOpen: false,
+    bookingChanges: {},
     incidentSheetOpen: false,
     incidentPresetTaskId: null,
     reportMenuOpen: false,
@@ -309,28 +326,46 @@ export function useHousekeepingApp() {
       const [teamsData, linenItems, consumableItems] = await Promise.all([loadHousekeepingTeams(), loadLinenItems(), loadConsumableItems()]);
       patch({
         planningUnits: [], planningReservations: [], taskAssignments: {}, taskNotices: {}, taskNoticeAcks: {},
-        taskTimeOverrides: {}, planningDays: days,
+        taskTimeOverrides: {}, planningDays: days, manualTasks: {}, bookingChanges: {},
         teams: teamsData.teams, teamPropertyDefaults: teamsData.propertyDefaults, taskTeamOverrides: teamsData.taskTeamOverrides,
         linenItems, consumableItems,
       });
       return;
     }
-    const [units, reservations, taskAssignments, noticesData, taskTimeOverrides, teamsData, linenItems, consumableItems] = await Promise.all([
-      loadUnitsForProperties(scopeCodes),
-      loadReservationsRangeForProperties(scopeCodes, days[0], days[3]),
-      loadTaskAssignments(),
-      loadTaskNotices(),
-      loadTaskTimeOverrides(),
-      loadHousekeepingTeams(),
-      loadLinenItems(),
-      loadConsumableItems(),
-      loadBackend(),
-    ]);
+    const [units, reservations, taskAssignments, noticesData, taskTimeOverrides, teamsData, linenItems, consumableItems, manualTasks] =
+      await Promise.all([
+        loadUnitsForProperties(scopeCodes),
+        loadReservationsRangeForProperties(scopeCodes, days[0], days[3]),
+        loadTaskAssignments(),
+        loadTaskNotices(),
+        loadTaskTimeOverrides(),
+        loadHousekeepingTeams(),
+        loadLinenItems(),
+        loadConsumableItems(),
+        loadManualTasks(),
+        loadBackend(),
+      ]);
+    // Buchungsaenderungen (Punkt "Buchungsaenderung sichtbar machen"): rein informative
+    // Zusatzfunktion - ein Fehler hier darf die eigentliche Aufgabenplanung nicht blockieren,
+    // deshalb eigenes try/catch statt im Promise.all oben.
+    let bookingChanges: BookingChangeRecordsState = stateRef.current.bookingChanges;
+    try {
+      const syncInput = reservations.map((r) => ({
+        id: r.id,
+        arrival: r.arrival || null,
+        departure: r.departure || null,
+        unitId: r.unit?.id || r.unit?.code || null,
+        propertyCode: r.property?.code || r.property?.id || '',
+      })).filter((r) => r.propertyCode);
+      if (syncInput.length > 0) bookingChanges = await syncBookingChanges(syncInput);
+    } catch {
+      // still, siehe Kommentar oben - vorheriger Stand bleibt erhalten.
+    }
     patch({
       planningUnits: units, planningReservations: reservations, taskAssignments,
       taskNotices: noticesData.notices, taskNoticeAcks: noticesData.acks, taskTimeOverrides, planningDays: days,
       teams: teamsData.teams, teamPropertyDefaults: teamsData.propertyDefaults, taskTeamOverrides: teamsData.taskTeamOverrides,
-      linenItems, consumableItems,
+      linenItems, consumableItems, manualTasks, bookingChanges,
     });
   }, [loadBackend, patch]);
 
@@ -723,14 +758,23 @@ export function useHousekeepingApp() {
     const today = state.planningDays[0] || todayISO();
     const raw = buildTasks({
       propertyNames, units: state.planningUnits, reservations: state.planningReservations,
-      doubleups: state.doubleups, days: state.planningDays, today,
+      doubleups: state.doubleups, days: state.planningDays, today, bookingChanges: state.bookingChanges,
     });
     const teamsById = Object.fromEntries(state.teams.map((tm) => [tm.id, tm]));
     const teamContext: TeamContext = { overrides: state.taskTeamOverrides, propertyDefaults: state.teamPropertyDefaults, teamsById };
-    return resolveTasks(raw, state.taskAssignments, state.taskTimeOverrides, state.now, teamContext);
+    const resolved = resolveTasks(raw, state.taskAssignments, state.taskTimeOverrides, state.now, teamContext);
+    // Manuelle Aufgaben (Punkt "Admin kann Aufgaben erstellen") - eigener Merge-Pfad statt durch
+    // resolveTasks()/TaskAssignmentsState, siehe tasks.ts#manualTaskToResolvedTask. Der Offen/
+    // Erledigt-Filter betrifft AUSSCHLIESSLICH diese Aufgaben, nie die Reinigungen oben.
+    const manual = Object.values(state.manualTasks)
+      .filter((mt): mt is ManualTask => !!mt)
+      .filter((mt) => mt.status === state.manualTaskFilter)
+      .map(manualTaskToResolvedTask);
+    return [...resolved, ...manual];
   }, [
     state.properties, state.planningUnits, state.planningReservations, state.doubleups, state.planningDays,
     state.taskAssignments, state.taskTimeOverrides, state.now, state.teams, state.taskTeamOverrides, state.teamPropertyDefaults,
+    state.bookingChanges, state.manualTasks, state.manualTaskFilter,
   ]);
 
   /** Aufgaben eines Tages, ungefiltert von "Meine Aufgaben" - fuer Tageszusammenfassung/
@@ -1003,6 +1047,53 @@ export function useHousekeepingApp() {
     });
   }, [loadBackend, runAction, showToast, t]);
 
+  // --- Manuell erstellte Aufgaben (Punkt "Admin kann Aufgaben erstellen") - admin-only Anlegen,
+  // Erledigen durch zugewiesene Person oder Standortverantwortliche (serverseitig durchgesetzt,
+  // siehe api/manual-tasks.js). Kein Timer/Pause/Team - siehe tasks.ts#manualTaskToResolvedTask.
+  const openManualTaskForm = useCallback(() => patch({ manualTaskFormOpen: true }), [patch]);
+  const closeManualTaskForm = useCallback(() => patch({ manualTaskFormOpen: false }), [patch]);
+
+  const createManualTask = useCallback(async (input: ManualTaskCreateInput) => {
+    await runAction(async () => {
+      const { manualTasks } = await manualTasksApi.create(input);
+      patch({ manualTasks, manualTaskFormOpen: false });
+      showToast(t('saved'));
+    });
+  }, [patch, runAction, showToast, t]);
+
+  // Schliesst die Detailansicht bewusst NICHT (anders als finishTask()) - Punkt 3: nach dem
+  // Erledigen soll "✓ Aufgabe erledigt" inkl. Mitarbeiter/Zeitpunkt direkt in derselben Ansicht
+  // sichtbar bleiben, statt das Sheet sofort zu schliessen.
+  const completeManualTask = useCallback(async (taskId: string) => {
+    await runAction(async () => {
+      const { manualTasks } = await manualTasksApi.complete(taskId);
+      patch({ manualTasks });
+      showToast(t('saved'));
+    });
+  }, [patch, runAction, showToast, t]);
+
+  const setManualTaskFilter = useCallback((filter: 'open' | 'completed') => patch({ manualTaskFilter: filter }), [patch]);
+
+  /** Punkt 11 (Pause-Button oben rechts nur bei aktiver Reinigung): liefert die aktive
+   * Reinigung DIESES Users, niemals eine manuelle Aufgabe (die hat keinen Timer/Pause-Zustand).
+   * Der Server erlaubt technisch mehrere gleichzeitig laufende/pausierte Zuweisungen pro Person
+   * (kein globales "nur ein aktiver Timer"-Limit in api/task-assignments.js) - dieser globale
+   * Header-Button ist eine reine Bequemlichkeit fuer den HAEUFIGEN Fall genau einer aktiven
+   * Reinigung und bevorzugt bei mehreren die zuletzt gestartete/fortgesetzte (laufend vor
+   * pausiert); jede einzelne bleibt unveraendert ueber die Task-Detailansicht bedienbar - es
+   * geht dadurch keine bestehende Faehigkeit verloren. */
+  const activeCleaningTask = useCallback((): ResolvedTask | null => {
+    const user = state.user;
+    if (!user) return null;
+    const candidates = resolvedTasksAll().filter((t) =>
+      t.type !== 'manual' && t.assignedUserId === user.id && (t.status === 'in_progress' || t.status === 'paused'));
+    if (candidates.length === 0) return null;
+    const running = candidates.filter((t) => t.status === 'in_progress');
+    const pool = running.length > 0 ? running : candidates;
+    const lastActivityAt = (t: ResolvedTask) => (t.history.length > 0 ? t.history[t.history.length - 1].at : (t.cleaningStartedAt || 0));
+    return pool.slice().sort((a, b) => lastActivityAt(b) - lastActivityAt(a))[0];
+  }, [state.user, resolvedTasksAll]);
+
   // --- "Wichtiger Hinweis" (Punkt 3-8): eigene, vom Apaleo-Reservierungskommentar getrennte
   // Datenquelle. noticeAckKey() spiegelt exakt api/_task-notices.js#ackKey ("<taskId>|<userId>").
   function noticeAckKey(taskId: string, userId: string): string {
@@ -1179,6 +1270,9 @@ export function useHousekeepingApp() {
     claimTask, releaseTask, assignTask, bulkAssignTasks, clearDayAssignments,
     startTaskTimer, pauseTaskTimer, finishTask, completeTaskInspection,
     toggleTaskDoubleType, finishTaskDoubleup,
+
+    // Manuell erstellte Aufgaben
+    openManualTaskForm, closeManualTaskForm, createManualTask, completeManualTask, setManualTaskFilter, activeCleaningTask,
 
     // Wichtiger Hinweis
     noticeForTask, isNoticeAcknowledgedBy, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice,

@@ -75,7 +75,11 @@ export default function HousekeepingPage() {
             <RoomsScreen app={app} />
           )
         ) : null}
-        {state.activeNav === 'stats' ? <StatsScreen app={app} /> : null}
+        {/* Punkt 5: Statistik-Route serverseitig zusaetzlich abgesichert (api/completions.js) -
+         * dieser Guard verhindert zusaetzlich, dass ein Nicht-Admin den Screen ueberhaupt clientseitig
+         * sieht, falls activeNav jemals ausserhalb der (bereits auf Admin beschraenkten) NavBar
+         * gesetzt wird, analog zum bestehenden Guard fuer 'settings' unten. */}
+        {state.activeNav === 'stats' && state.user?.role === 'admin' ? <StatsScreen app={app} /> : null}
         {state.activeNav === 'team' ? <TeamScreen app={app} /> : null}
         {state.activeNav === 'settings' && isElevatedHousekeepingUser(state.user, state.properties.map((p) => p.code)) ? (
           <SettingsScreen app={app} />

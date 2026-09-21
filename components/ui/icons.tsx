@@ -316,6 +316,32 @@ export function IconGear(props: IconProps) {
   );
 }
 
+/** Fuer manuelle Aufgaben (Punkt 1: "Reinigung" vs. "Aufgabe" klar getrennt, monochromes Icon
+ * statt Farbe allein) - ein Klemmbrett mit Haekchen, bewusst kein Bett/Reinigungssymbol, damit
+ * eine Aufgabe schon am Icon nicht mit einer Reinigung verwechselt werden kann. */
+export function IconTask(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="5" y="4" width="14" height="17" rx="2" />
+      <path d="M9 3.5h6a1 1 0 0 1 1 1V6H8V4.5a1 1 0 0 1 1-1Z" />
+      <path d="m8.5 13 2 2 4-4" />
+    </svg>
+  );
+}
+
+/** Fuer den dezenten "Buchung geändert"-Hinweis auf Karte/Detail (Punkt 9) - zwei umlaufende
+ * Pfeile (Refresh/Change), dieselbe Outline-Sprache wie die uebrigen Icons. */
+export function IconRefresh(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 12a8 8 0 0 1 13.66-5.66L20 8.5" />
+      <path d="M20 4v4.5h-4.5" />
+      <path d="M20 12a8 8 0 0 1-13.66 5.66L4 15.5" />
+      <path d="M4 20v-4.5h4.5" />
+    </svg>
+  );
+}
+
 export const NAV_ICONS = {
   bed: IconBed,
   chart: IconChart,
