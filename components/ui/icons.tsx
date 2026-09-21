@@ -46,6 +46,19 @@ export function IconLayers(props: IconProps) {
   );
 }
 
+/** Reinigungs-/Housekeeping-Symbol (Korrektur UX-Feinschliff Runde 4, ersetzt IconLayers als
+ * Akzent fuer "Reinigungen" - IconLayers wirkte visuell/semantisch nicht eindeutig genug als
+ * Reinigungssymbol). Ein vierzackiges Funkeln/"Sparkle" ("frisch gereinigt/glaenzend") plus zwei
+ * kleine Nebenfunken, im selben Strich-/Kein-Fuellton-Stil wie die uebrigen Icons gezeichnet. */
+export function IconSparkles(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="m12 3 1.6 4.7a2.2 2.2 0 0 0 1.4 1.4L19.5 11l-4.5 1.6a2.2 2.2 0 0 0-1.4 1.4L12 19l-1.6-4.7a2.2 2.2 0 0 0-1.4-1.4L4.5 11l4.5-1.6a2.2 2.2 0 0 0 1.4-1.4L12 3Z" />
+      <path d="M19 3.5v3M18 5h3" />
+    </svg>
+  );
+}
+
 export function IconBook(props: IconProps) {
   return (
     <svg {...base} {...props}>

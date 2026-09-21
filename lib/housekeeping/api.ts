@@ -318,7 +318,25 @@ import type {
 // Singular-/Pluralform), hoechstens begleitet vom kleinen, bereits bestehenden Kennzahl-Icon im
 // dezenten Akzent der jeweiligen Kategorie. Filter, Tagesnavigation, Kennzahlen-Zeile, Task Cards
 // und Fachlogik unveraendert.
-export const APP_VERSION = '2.17.1';
+//
+// 2.17.2 - Vier gezielte Korrekturen, sonst unveraendert: (1) den linken "Pause von der
+// Arbeit"-Button (toggleBreak/onBreak) aus dem Header entfernt - er wirkte neben dem
+// kontextabhaengigen Reinigungs-Pause-Hinweis rechts wie ein zweites, verwechselbares
+// "Pause"-Element; die zugrunde liegende Pause-von-der-Arbeit-Logik selbst bleibt erhalten, nur
+// ihr Aufruf im Header entfaellt. (2)+(3) Akzent-Icon fuer "Reinigungen" (KPI-Zeile UND
+// Abschnitts-Header) von IconLayers auf ein neu gezeichnetes, stilistisch passendes
+// Sparkles/Cleaning-Outline-Icon (IconSparkles, icons.tsx) umgestellt, Farbe von Sage auf
+// dasselbe dezente Turnover-Rot/Terracotta (--color-type-turnover, bereits bestehender Token,
+// keine neue Farbe) - ausschliesslich Icon-Akzent, Text bleibt text-ink. (4) "Fertig" nutzt jetzt
+// exakt dieselbe visuelle Grundstruktur (Hoehe/Typografie/Icon-Groesse/Abstaende/Klickflaeche) wie
+// der Reinigungen-/Aufgaben-Header, lediglich mit Chevron rechts (einzig aufklappbarer Bereich).
+// (5) korrekte Singular-/Pluralform an ALLEN betroffenen Stellen (KPI-Zeile unter der
+// Tagesnavigation, Reinigungen-/Aufgaben-Abschnittsheader, Team-Auslastung) durch eine einzige
+// gemeinsame Hilfsfunktion (countLabel(), TasksScreen.tsx) statt hartcodierter Strings - "1
+// Reinigung"/"1 Aufgabe" statt zuvor faelschlich "1 Reinigungen"/"1 Aufgaben". Filter,
+// Tagesnavigation, Task Cards, Detailansicht, Notice/Zuweisung/Timer/Workflows, INTERCLEAN und
+// Apaleo-Integration unveraendert.
+export const APP_VERSION = '2.17.2';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

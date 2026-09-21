@@ -2,15 +2,13 @@
 
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { IconPause, IconPlay, IconSearch, IconUser } from '@/components/ui/icons';
-import { cn } from '@/lib/cn';
 
-// Korrektur (UX-Feinschliff Runde 3): der PERMANENTE/global verfuegbare "Pause starten"-Button
-// bleibt entfernt - aber die kontextabhaengige Anzeige rechts oben, die NUR erscheint, wenn der
-// eingeloggte Mitarbeiter tatsaechlich eine aktive (laufende/pausierte) Reinigung hat, wurde bei
-// dieser Entfernung versehentlich mit ausgebaut und wird hier gezielt wiederhergestellt
-// (CleaningPauseButton, nutzt weiterhin dieselben pauseTaskTimer/startTaskTimer-Aktionen auf
-// GENAU den Task, den app.activeCleaningTask() liefert - niemals eine manuelle Aufgabe). Der
-// davon komplett unabhaengige "Pause von der Arbeit"-Button (toggleBreak/onBreak) ist unveraendert.
+// Korrektur (UX-Feinschliff Runde 4): der linke "Pause von der Arbeit"-Button (toggleBreak/
+// onBreak) ist aus dem Header entfernt, weil er neben dem kontextabhaengigen Reinigungs-Pause-
+// Hinweis rechts als zweites, verwechselbares "Pause"-Element wirkte - im Header bleibt
+// ausschliesslich der kontextabhaengige CleaningPauseButton. Die zugrunde liegende Pause-von-
+// der-Arbeit-Logik (state.onBreak/toggleBreak, breaksApi) selbst wird NICHT geloescht/neu gebaut,
+// nur ihr Aufruf hier im Header entfernt.
 
 /**
  * Kontextabhaengiger Reinigungsstatus rechts oben: existiert NUR, wenn app.activeCleaningTask()
@@ -70,7 +68,7 @@ export interface StaffHeaderProps {
  * (Aufgabenliste) zu lassen - das ist das primaere Ziel dieses Refactorings.
  */
 export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderProps) {
-  const { state, t, toggleBreak } = app;
+  const { state, t } = app;
   const dateLabel = new Intl.DateTimeFormat(LOCALES[state.lang] || 'de-DE', {
     weekday: 'short',
     day: '2-digit',
@@ -89,23 +87,6 @@ export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderPr
           <p className="mt-0.5 truncate text-[10px] font-medium uppercase tracking-[0.18em] text-muted">{t('app_name')}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {state.user?.role !== 'admin' ? (
-            <button
-              type="button"
-              onClick={toggleBreak}
-              aria-label={state.onBreak ? t('break_end') : t('break_start')}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium transition-colors',
-                state.onBreak ? 'border-status-attention/30 bg-status-attention-bg text-status-attention' : 'border-line bg-warm-white text-muted',
-              )}
-            >
-              {/* Punkt 5: Zustand nie nur ueber Farbe - waehrend der Pause zeigt ein Play- statt
-               * Pause-Icon an, dass ein Klick die Pause beendet/die Arbeit fortsetzt (dieselbe
-               * Play/Pause-Sprache wie beim Reinigungs-Arbeitsstatus auf der Task Card). */}
-              {state.onBreak ? <IconPlay width={13} height={13} aria-hidden="true" /> : <IconPause width={13} height={13} aria-hidden="true" />}
-              {state.onBreak ? t('on_break') : t('break_toggle_label')}
-            </button>
-          ) : null}
           <CleaningPauseButton app={app} />
           {state.user?.role === 'admin' ? (
             <button

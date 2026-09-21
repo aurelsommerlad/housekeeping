@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import type { ResolvedTask } from '@/lib/housekeeping/tasks';
 import type { StaffUser } from '@/lib/housekeeping/types';
+import type { I18nKey } from '@/lib/housekeeping/i18n';
 import { allowedProperties } from '@/lib/housekeeping/rooms';
 import { getPropertyDisplayName } from '@/lib/housekeeping/api';
 import { isPropertyManager, managedPropertyCodes } from '@/lib/housekeeping/permissions';
@@ -15,7 +16,7 @@ import { MultiSelectBar } from './MultiSelectBar';
 import { BulkAssignSheet } from './BulkAssignSheet';
 import { BottomSheet } from './BottomSheet';
 import { Button } from '@/components/ui/Button';
-import { IconCheck, IconCheckSquare, IconChevronDown, IconLayers, IconPlus, IconTask, IconUsers } from '@/components/ui/icons';
+import { IconCheck, IconCheckSquare, IconChevronDown, IconPlus, IconSparkles, IconTask, IconUsers } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
 const DAY_LABEL_KEYS = ['day_today', 'day_tomorrow'] as const;
@@ -28,6 +29,14 @@ function shortDayLabel(iso: string, locale: string): string {
   const d = new Date(`${iso}T00:00:00`);
   const weekday = new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(d).replace(/[.,]/g, '');
   return `${weekday} ${d.getDate()}.`;
+}
+
+/** Korrektur (UX-Feinschliff Runde 4, Punkt 5): eine einzige gemeinsame Stelle fuer korrektes
+ * Singular/Plural statt an jeder Anzeige-Stelle einzeln hartcodiert - waehlt je nach `n` den
+ * `_one`/`_many` Nomen-Schluessel und setzt "<n> <Nomen>" zusammen (nur `n === 1` ist Singular,
+ * `0` zaehlt sprachlich als Plural: "0 Reinigungen"). */
+function countLabel(t: (key: I18nKey) => string, n: number, oneKey: I18nKey, manyKey: I18nKey): string {
+  return `${n} ${t(n === 1 ? oneKey : manyKey)}`;
 }
 
 /** Punkt 6/7 (UX-Feinschliff): Icon DIREKT neben der Zahl (statt darunter beim Label) - eine
@@ -215,8 +224,18 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
        * Farbakzente (nie eine farbige Flaeche hinter der ganzen Kennzahl). */}
       {visible.length > 0 ? (
         <div className="grid grid-cols-3 gap-2 px-4 pt-3">
-          <SummaryStat value={cleaningTasks.length} label={t('summary_cleanings_label')} icon={IconLayers} toneClass="text-type-stayover" />
-          <SummaryStat value={openManualTasks.length} label={t('filter_group_manual_tasks')} icon={IconTask} toneClass="text-type-departure" />
+          <SummaryStat
+            value={cleaningTasks.length}
+            label={t(cleaningTasks.length === 1 ? 'noun_cleaning_one' : 'noun_cleaning_many')}
+            icon={IconSparkles}
+            toneClass="text-type-turnover"
+          />
+          <SummaryStat
+            value={openManualTasks.length}
+            label={t(openManualTasks.length === 1 ? 'noun_task_one' : 'noun_task_many')}
+            icon={IconTask}
+            toneClass="text-type-departure"
+          />
           <SummaryStat value={doneTasks.length} label={t('wf_done')} icon={IconCheck} toneClass="text-status-clean" />
         </div>
       ) : null}
@@ -281,7 +300,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
               {capacity.map((entry) => (
                 <div key={entry.housekeeperId || 'unassigned'} className="flex items-center justify-between text-[13px]">
                   <span className="text-ink">{entry.housekeeperId ? shortStaffName(entry.housekeeperName) : t('unassigned')}</span>
-                  <span className="text-muted">{entry.count} {t('task_count_suffix')}</span>
+                  <span className="text-muted">{countLabel(t, entry.count, 'noun_task_one', 'noun_task_many')}</span>
                 </div>
               ))}
             </div>
@@ -325,9 +344,9 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         <>
           {cleaningTasks.length > 0 ? (
             <TaskGroup
-              text={t(cleaningTasks.length === 1 ? 'section_cleanings_one' : 'section_cleanings_many', { n: cleaningTasks.length })}
-              icon={IconLayers}
-              toneClass="text-type-stayover"
+              text={countLabel(t, cleaningTasks.length, 'noun_cleaning_one', 'noun_cleaning_many')}
+              icon={IconSparkles}
+              toneClass="text-type-turnover"
             >
               {cleaningTasks.map((task) => (
                 <TaskCard
@@ -346,7 +365,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
 
           {openManualTasks.length > 0 ? (
             <TaskGroup
-              text={t(openManualTasks.length === 1 ? 'section_tasks_one' : 'section_tasks_many', { n: openManualTasks.length })}
+              text={countLabel(t, openManualTasks.length, 'noun_task_one', 'noun_task_many')}
               icon={IconTask}
               toneClass="text-type-departure"
             >
@@ -367,16 +386,20 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
 
           {doneTasks.length > 0 ? (
             <div className="mt-1">
+              {/* Korrektur (UX-Feinschliff Runde 4, Punkt 4): exakt dieselbe Grundstruktur wie der
+               * Reinigungen-/Aufgaben-Header oben (gleiche Hoehe/Typografie/Icon-Groesse/Abstaende/
+               * Klickflaeche, siehe TaskGroup) - einziger Unterschied ist der Chevron rechts, weil
+               * ausschliesslich dieser Bereich tatsaechlich auf-/zuklappbar ist. */}
               <button
                 type="button"
                 onClick={() => setDoneOpen((v) => !v)}
-                className="flex w-full items-center gap-1.5 px-4 pt-4 pb-1 text-left"
+                className="flex w-full items-center justify-between gap-1.5 px-4 pt-4 pb-1 text-left"
               >
-                <IconChevronDown width={12} height={12} className={cn('shrink-0 text-muted transition-transform', doneOpen && 'rotate-180')} aria-hidden="true" />
                 <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
                   <IconCheck width={14} height={14} className="shrink-0 text-status-clean" aria-hidden="true" />
-                  {t('wf_done')} · {doneTasks.length}
+                  {doneTasks.length} {t('section_done_suffix')}
                 </span>
+                <IconChevronDown width={14} height={14} className={cn('shrink-0 text-muted transition-transform', doneOpen && 'rotate-180')} aria-hidden="true" />
               </button>
               {doneOpen ? (
                 <div className="grid grid-cols-1 gap-3 px-4 pt-2 sm:grid-cols-2 lg:grid-cols-3">
