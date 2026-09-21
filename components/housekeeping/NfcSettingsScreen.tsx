@@ -10,6 +10,9 @@ import { cn } from '@/lib/cn';
 
 export interface NfcSettingsScreenProps {
   app: HousekeepingApp;
+  /** Einstellungen > Standorte & Apartments > <Property> (Punkt 2) - zeigt nur die Apartments
+   * dieses einen Property statt aller Standorte gruppiert untereinander. */
+  propertyFilter?: string;
 }
 
 function nfcUnitKey(propertyCode: string, unitId: string): string {
@@ -171,7 +174,7 @@ function NfcUnitRow({ app, propertyCode, unitId, unitName }: NfcUnitRowProps) {
  * Aufgabenplanung) - keine hartcodierten Apartmentnamen. Wird erst bei Bedarf sichtbar (in
  * SettingsSheet nur fuer role==='admin' eingebunden) und laedt den NFC-Status dann lazy nach.
  */
-export function NfcSettingsScreen({ app }: NfcSettingsScreenProps) {
+export function NfcSettingsScreen({ app, propertyFilter }: NfcSettingsScreenProps) {
   const { state, t, loadNfcTags } = app;
 
   useEffect(() => {
@@ -183,6 +186,7 @@ export function NfcSettingsScreen({ app }: NfcSettingsScreenProps) {
   for (const unit of state.planningUnits) {
     const code = unit.property?.code || unit.property?.id;
     if (!code) continue;
+    if (propertyFilter && code !== propertyFilter) continue;
     if (!unitsByProperty.has(code)) unitsByProperty.set(code, []);
     unitsByProperty.get(code)!.push(unit);
   }

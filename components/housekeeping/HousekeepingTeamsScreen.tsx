@@ -13,6 +13,11 @@ import { cn } from '@/lib/cn';
 
 export interface HousekeepingTeamsScreenProps {
   app: HousekeepingApp;
+  /** Einstellungen > Standorte & Apartments > <Property> (Punkt 2) - zeigt fuer einen Admin nur
+   * das aktuell fuer dieses Property zustaendige Team und die Standardzuordnung ausschliesslich
+   * fuer dieses eine Property (statt der Liste aller Properties). Fuer einen Team Lead aendert sich
+   * nichts (er sieht ohnehin nur sein eigenes Team). */
+  propertyFilter?: string;
 }
 
 /**
@@ -25,7 +30,7 @@ export interface HousekeepingTeamsScreenProps {
  * Team-Lead sieht ausschliesslich die eigene Reinigungsfirma, rein lesend (Zuweisung einzelner
  * Reinigungen bleibt Sache der Task-Detailansicht, siehe TaskDetailSheet.tsx).
  */
-export function HousekeepingTeamsScreen({ app }: HousekeepingTeamsScreenProps) {
+export function HousekeepingTeamsScreen({ app, propertyFilter }: HousekeepingTeamsScreenProps) {
   const { state, t, saveTeam, setTeamPropertyDefault, saveUser, teamCapacityFor } = app;
   const [newTeamName, setNewTeamName] = useState('');
   const admin = isAdmin(state.user);
@@ -34,8 +39,9 @@ export function HousekeepingTeamsScreen({ app }: HousekeepingTeamsScreenProps) {
   const workload = teamCapacityFor(today);
 
   const visibleTeams = admin
-    ? state.teams
+    ? (propertyFilter ? state.teams.filter((tm) => state.teamPropertyDefaults[propertyFilter] === tm.id) : state.teams)
     : state.teams.filter((tm) => tm.id === state.user?.housekeepingTeamId);
+  const visibleProperties = propertyFilter ? state.properties.filter((p) => p.code === propertyFilter) : state.properties;
 
   function membersOf(teamId: string): StaffUser[] {
     return state.users.filter((u) => u.housekeepingTeamId === teamId);
@@ -134,7 +140,7 @@ export function HousekeepingTeamsScreen({ app }: HousekeepingTeamsScreenProps) {
           <div className="flex flex-col gap-2">
             <p className="text-[12px] font-medium uppercase tracking-wide text-muted">{t('team_property_defaults_title')}</p>
             <div className="flex flex-col gap-1 rounded-control border border-line">
-              {state.properties.map((p) => {
+              {visibleProperties.map((p) => {
                 const currentTeamId = state.teamPropertyDefaults[p.code] || '';
                 return (
                   <div key={p.code} className="flex items-center justify-between gap-2 border-b border-line px-3 py-2 text-[13px] last:border-b-0">

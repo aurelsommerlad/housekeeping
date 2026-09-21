@@ -17,6 +17,10 @@ export interface ItemFormSheetProps {
   kind: CatalogKind;
   item: CatalogItem | null;
   properties: Property[];
+  /** Nur fuer eine NEUE Position (item === null) relevant, wenn das Formular aus einem
+   * Property-Drilldown heraus geoeffnet wurde (Einstellungen > Standorte & Apartments >
+   * <Property>) - so muss die zugehoerige Property nicht nochmal manuell angehakt werden. */
+  defaultPropertyIds?: string[];
   onClose: () => void;
 }
 
@@ -36,12 +40,12 @@ function defaultRuleValue(type: LinenEstimationRule['type']): LinenEstimationRul
  * Briefing keine sinnvolle Schaetzbasis). Wird von ItemCatalogSettingsScreen.tsx nur gemountet,
  * waehrend das Formular offen ist (frischer Zustand pro Oeffnen, analog zu UserFormSheet.tsx).
  */
-export function ItemFormSheet({ app, kind, item, properties, onClose }: ItemFormSheetProps) {
+export function ItemFormSheet({ app, kind, item, properties, defaultPropertyIds, onClose }: ItemFormSheetProps) {
   const { t, saveLinenItem, saveConsumableItem } = app;
   const [name, setName] = useState(item?.name || '');
   const [unit, setUnit] = useState(item?.unit || '');
   const [active, setActive] = useState(item?.active !== false);
-  const [propertyIds, setPropertyIds] = useState<string[]>(item?.propertyIds || []);
+  const [propertyIds, setPropertyIds] = useState<string[]>(item?.propertyIds || defaultPropertyIds || []);
   const linenItem = kind === 'linen' ? (item as LinenItem | null) : null;
   const [ruleType, setRuleType] = useState<LinenEstimationRule['type']>(linenItem?.estimationRule?.type || 'none');
   const [ruleValue, setRuleValue] = useState<number>(

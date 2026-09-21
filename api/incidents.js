@@ -10,11 +10,11 @@
 // Property-Zugriff und wird abgelehnt. Ein deaktivierter Benutzer wird ebenso abgelehnt wie bei
 // api/task-assignments.js.
 const { getRedis } = require('./_redis');
-const { requireSession } = require('./_auth');
+const { requireSession, requireAdmin } = require('./_auth');
 const { getUserRawById } = require('./_users');
 const { hasPropertyAccess, propertyCodeFromTaskId, dateFromTaskId, unitIdFromTaskId, taskTypeFromTaskId, reservationIdFromTaskId } = require('./_permissions');
 const { getTeamById } = require('./_teams');
-const { createIncident, updateIncidentSlackStatus } = require('./_incidents');
+const { createIncident, updateIncidentSlackStatus, getAllIncidents } = require('./_incidents');
 const { sendIncidentToSlack } = require('./_slack');
 
 const MAX_DESCRIPTION_LENGTH = 2000;
@@ -22,12 +22,23 @@ const MAX_PHOTOS = 5;
 
 module.exports = async (req, res) => {
   try {
+    const redis = await getRedis();
+
+    if (req.method === 'GET') {
+      // Fuer die Admin-Uebersicht "Vorfaelle" (Einstellungen > Meldungen & Betrieb) - admin-only,
+      // da standortuebergreifend alle gemeldeten Vorfaelle (inkl. Fotos) sichtbar werden.
+      // getAllIncidents() existiert bereits seit der urspruenglichen Vorfall-melden-Implementierung,
+      // war bisher aber von keiner Route aufgerufen.
+      if (!(await requireAdmin(req, res))) return;
+      res.status(200).json({ incidents: await getAllIncidents(redis) });
+      return;
+    }
+
     if (req.method !== 'POST') {
       res.status(405).json({ error: 'Method not allowed' });
       return;
     }
 
-    const redis = await getRedis();
     const session = await requireSession(req, res);
     if (!session) return;
     const user = await getUserRawById(redis, session.userId);

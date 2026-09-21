@@ -280,6 +280,42 @@ export function IconEnter(props: IconProps) {
   );
 }
 
+/** Fuer "Standorte & Apartments" (Einstellungen-Kategorie) - ein schlichtes Gebaeude, dieselbe
+ * Outline-Sprache wie die uebrigen Icons (kein Emoji, kein Fuellton). */
+export function IconBuilding(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="5" y="3" width="11" height="18" rx="1" />
+      <path d="M9 7h3M9 10.5h3M9 14h3" />
+      <path d="M16 10h3v11h-3" />
+    </svg>
+  );
+}
+
+/** Fuer "Integrationen" (Einstellungen-Kategorie) - ein Stecker/Verbindungssymbol, dieselbe
+ * Outline-Sprache wie die uebrigen Icons. */
+export function IconPlug(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M9 3v5M15 3v5" />
+      <path d="M6.5 8h11v3.5a5.5 5.5 0 0 1-11 0V8Z" />
+      <path d="M12 15.5V21" />
+    </svg>
+  );
+}
+
+/** Fuer "App & System" (Einstellungen-Kategorie) - ein schlichtes Zahnrad, dieselbe Outline-
+ * Sprache wie die uebrigen Icons. */
+export function IconGear(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5" />
+      <path d="M17.7 6.3l-1.55 1.55M7.85 16.15 6.3 17.7M17.7 17.7l-1.55-1.55M7.85 7.85 6.3 6.3" />
+    </svg>
+  );
+}
+
 export const NAV_ICONS = {
   bed: IconBed,
   chart: IconChart,

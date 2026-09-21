@@ -6,7 +6,7 @@ const { getRedis } = require('./_redis');
 const { requireSession, requireAdmin } = require('./_auth');
 const { getUserRawById } = require('./_users');
 const { hasPropertyAccess } = require('./_permissions');
-const { getAllItems, getActiveItemsForProperty, upsertItem, reorderItems, saveReport } = require('./_consumables');
+const { getAllItems, getActiveItemsForProperty, upsertItem, reorderItems, saveReport, getAllReports } = require('./_consumables');
 
 const MAX_ITEMS_PER_REPORT = 100;
 
@@ -27,13 +27,19 @@ module.exports = async (req, res) => {
 
     const { action } = req.body || {};
 
-    if (action === 'setItem' || action === 'reorderItems') {
+    if (action === 'setItem' || action === 'reorderItems' || action === 'listReports') {
       if (!(await requireAdmin(req, res))) return;
       if (action === 'setItem') {
         const { item } = req.body;
         if (!item) { res.status(400).json({ error: 'item ist erforderlich.' }); return; }
         const saved = await upsertItem(redis, item);
         res.status(200).json({ items: await getAllItems(redis), item: saved });
+        return;
+      }
+      if (action === 'listReports') {
+        // Fuer die Admin-Uebersicht "Verbrauchsmeldungen" (Einstellungen > Meldungen & Betrieb) -
+        // admin-only, da standortuebergreifend alle gemeldeten Mengen sichtbar werden.
+        res.status(200).json({ reports: await getAllReports(redis) });
         return;
       }
       const { orderedIds } = req.body;

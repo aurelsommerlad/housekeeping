@@ -36,7 +36,7 @@ function MenuRow({ label, onClick }: MenuRowProps) {
  * und Standardzeiten leben ausschliesslich in SettingsScreen (keine Duplikate mehr hier).
  */
 export function SettingsSheet({ app, open, onClose }: SettingsSheetProps) {
-  const { state, t, doLogout, setActiveNav } = app;
+  const { state, t, doLogout, setActiveNav, openReportMenu } = app;
   const admin = isAdmin(state.user);
   // Punkt "Team-Lead-Zugriff reparieren": ein Team-Verantwortlicher (oder ein Standort-
   // verantwortlicher wie im Briefing "Vorfall melden" - beide behalten Apartments in der Bottom-
@@ -64,6 +64,12 @@ export function SettingsSheet({ app, open, onClose }: SettingsSheetProps) {
         <div className="mt-4 flex flex-col divide-y divide-line border-y border-line">
           <MenuRow label={t('settings_title')} onClick={() => goTo('settings')} />
           {admin ? <MenuRow label={t('settings_team_row')} onClick={() => goTo('team')} /> : null}
+          {/* "Vorfall melden"/"Verbrauch melden" sind operative Housekeeper-Aktionen, kein Teil des
+           * Admin-Einstellungsbereichs (siehe SettingsScreen.tsx) - fuer elevated Nutzer (Admin/
+           * Standortverantwortlich/Lead), die "Melden" NICHT in der Bottom-Nav haben (siehe
+           * StaffNavBar#ITEMS "nonElevated"), bleibt der Zugang deshalb hier im allgemeinen
+           * Profilmenue erhalten, statt in den Admin-Einstellungen zu stehen. */}
+          <MenuRow label={t('nav_report_menu')} onClick={() => { openReportMenu(); onClose(); }} />
         </div>
       ) : null}
 

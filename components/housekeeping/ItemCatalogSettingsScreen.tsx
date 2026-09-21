@@ -16,6 +16,11 @@ type CatalogItem = LinenItem | ConsumableItem;
 export interface ItemCatalogSettingsScreenProps {
   app: HousekeepingApp;
   kind: CatalogKind;
+  /** Einstellungen > Standorte & Apartments > <Property> (Punkt 2) - wenn gesetzt, zeigt die Liste
+   * nur Artikel, die bereits diesem Property zugeordnet sind, und eine hier neu angelegte Position
+   * wird direkt diesem Property zugeordnet vorbelegt. Reine Anzeige-/Vorbelegungsfilterung - das
+   * Datenmodell/die Artikel selbst bleiben global (weiterhin mehreren Properties zuordenbar). */
+  propertyFilter?: string;
 }
 
 /**
@@ -25,17 +30,27 @@ export interface ItemCatalogSettingsScreenProps {
  * per Rauf-/Runter-Pfeilen statt Drag&Drop (Punkt 6 "Reihenfolge aendern") - bewusst die einfachere,
  * ohne Zusatzbibliothek zuverlaessig bedienbare Loesung.
  */
-export function ItemCatalogSettingsScreen({ app, kind }: ItemCatalogSettingsScreenProps) {
+export function ItemCatalogSettingsScreen({ app, kind, propertyFilter }: ItemCatalogSettingsScreenProps) {
   const { state, t, reorderLinenItems, reorderConsumableItems } = app;
   const items: CatalogItem[] = kind === 'linen' ? state.linenItems : state.consumableItems;
-  const sorted = [...items].sort((a, b) => a.sortOrder - b.sortOrder);
+  const visible = propertyFilter ? items.filter((item) => item.propertyIds.includes(propertyFilter)) : items;
+  const sorted = [...visible].sort((a, b) => a.sortOrder - b.sortOrder);
   const [editing, setEditing] = useState<CatalogItem | null | undefined>(undefined);
 
-  async function move(index: number, delta: number) {
-    const target = index + delta;
-    if (target < 0 || target >= sorted.length) return;
-    const reordered = [...sorted];
-    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+  // `sortOrder` ist ein EINZIGES globales Feld ueber den gesamten Katalog (nicht je Property) -
+  // beim gefilterten Aufruf (propertyFilter) tauscht `move` deshalb die zwei betroffenen Artikel
+  // innerhalb der VOLLSTAENDIGEN, unfilterten Reihenfolge, ausgewaehlt ueber ihre Nachbarschaft in
+  // der sichtbaren (gefilterten) Liste - das haelt die globale Sortierung anderer Properties
+  // korrekt, waehrend "rauf/runter" innerhalb der gefilterten Ansicht trotzdem das Erwartete tut.
+  async function move(itemId: string, delta: number) {
+    const visibleIndex = sorted.findIndex((item) => item.id === itemId);
+    const neighbor = sorted[visibleIndex + delta];
+    if (!neighbor) return;
+    const globalSorted = [...items].sort((a, b) => a.sortOrder - b.sortOrder);
+    const currentGlobalIndex = globalSorted.findIndex((item) => item.id === itemId);
+    const neighborGlobalIndex = globalSorted.findIndex((item) => item.id === neighbor.id);
+    const reordered = [...globalSorted];
+    [reordered[currentGlobalIndex], reordered[neighborGlobalIndex]] = [reordered[neighborGlobalIndex], reordered[currentGlobalIndex]];
     const orderedIds = reordered.map((item) => item.id);
     if (kind === 'linen') await reorderLinenItems(orderedIds);
     else await reorderConsumableItems(orderedIds);
@@ -65,7 +80,7 @@ export function ItemCatalogSettingsScreen({ app, kind }: ItemCatalogSettingsScre
             <button
               type="button"
               disabled={index === 0}
-              onClick={() => move(index, -1)}
+              onClick={() => move(item.id, -1)}
               aria-label={t('catalog_move_up')}
               className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-muted transition-colors hover:text-ink disabled:opacity-30"
             >
@@ -74,7 +89,7 @@ export function ItemCatalogSettingsScreen({ app, kind }: ItemCatalogSettingsScre
             <button
               type="button"
               disabled={index === sorted.length - 1}
-              onClick={() => move(index, 1)}
+              onClick={() => move(item.id, 1)}
               aria-label={t('catalog_move_down')}
               className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-muted transition-colors hover:text-ink disabled:opacity-30"
             >
@@ -87,7 +102,14 @@ export function ItemCatalogSettingsScreen({ app, kind }: ItemCatalogSettingsScre
       {sorted.length === 0 ? <p className="text-[13px] text-muted">{t('catalog_empty')}</p> : null}
 
       {editing !== undefined ? (
-        <ItemFormSheet app={app} kind={kind} item={editing} properties={state.properties} onClose={() => setEditing(undefined)} />
+        <ItemFormSheet
+          app={app}
+          kind={kind}
+          item={editing}
+          properties={state.properties}
+          defaultPropertyIds={propertyFilter ? [propertyFilter] : undefined}
+          onClose={() => setEditing(undefined)}
+        />
       ) : null}
     </div>
   );

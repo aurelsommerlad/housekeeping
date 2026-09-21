@@ -198,7 +198,36 @@ import type {
 // ItemFormSheet.tsx) unter den neuen Einstellungen-Punkten "Waesche & Bettsachen"/
 // "Verbrauchsmaterial"; wie bei allen bisherigen Katalogen gilt: kein Hard-Delete, nur
 // Deaktivieren (active=false), damit historische Reports verstaendlich bleiben.
-export const APP_VERSION = '2.14.0';
+// MINOR-Bump (2.14.0 -> 2.15.0): Informationsarchitektur des gesamten Admin-/Einstellungsbereichs
+// neu geordnet - keine neue Businesslogik, ausschliesslich Navigation/UI. Die fruehere flache
+// Liste in SettingsScreen.tsx ist einer Startseite mit nur noch 6 uebergeordneten Kategorien
+// gewichen (Housekeeping / Standorte & Apartments / Teams & Benutzer / Meldungen & Betrieb /
+// Integrationen / App & System), zentral beschrieben in lib/housekeeping/settingsNav.ts (id/
+// titleKey/descriptionKey/icon/requiredRole/category) statt in der Komponente hartcodiert - das
+// bereitet eine spaetere "Einstellungen durchsuchen"-Suche vor, ohne sie schon zu bauen. Neu unter
+// "Standorte & Apartments": ein Property (identifiziert ausschliesslich ueber den stabilen Apaleo-
+// Code, nie ueber den Anzeigenamen) oeffnet eine eigene Unterseite mit allen dafuer relevanten
+// Einstellungen (Apartments/Wäsche & Bettsachen/Verbrauchsmaterial/Reinigungsteam/NFC-Tags) - die
+// bestehenden Screens (ItemCatalogSettingsScreen/NfcSettingsScreen/HousekeepingTeamsScreen) wurden
+// dafuer NICHT dupliziert, sondern um einen rein filternden `propertyFilter`-Prop erweitert.
+// "Team & Berechtigungen" und "Reinigungsfirmen & Teams" stehen nicht mehr gleichrangig nebeneinander,
+// sondern buendeln sich unter "Teams & Benutzer" - dort ergaenzen zwei neue, rein lesende
+// Uebersichten ("Berechtigungen", "Standortzuordnungen") die bestehende Mitarbeiterverwaltung, beide
+// ausschliesslich aus bereits geladenen Daten abgeleitet, ohne neue Rollen-/Rechte-Engine. "Vorfall
+// melden"/"Verbrauch melden" sind als AKTIONEN aus dem Admin-Bereich verschwunden (das sind
+// operative Housekeeper-Funktionen) - fuer elevated Nutzer (die "Melden" nicht in der Bottom-Nav
+// haben) bleibt der Zugang ueber das allgemeine Profilmenue (SettingsSheet) erhalten. Stattdessen
+// zeigt "Meldungen & Betrieb" jetzt echte, bisher ungenutzte Ansichten auf bereits gespeicherte
+// Daten (api/_incidents.js#getAllIncidents existierte bereits unbenutzt, api/_consumables.js hat
+// ein neues, ebenso simples getAllReports() erhalten) - kein Fantasie-Screen ohne echten Inhalt.
+// "Integrationen" zeigt fuer Apaleo/Slack ausschliesslich, ob die noetigen Umgebungsvariablen
+// gesetzt sind (api/integrations-status.js) - niemals Secrets/Tokens/Webhook-URLs selbst. Bewusst
+// NICHT gebaut: ein "Reinigungsablauf"-Punkt (keine echten Einstellungen dahinter) und ein
+// eigenstaendiger "Housekeeping"-Punkt je Property (dessen einzige Inhalte bereits die vier
+// anderen Property-Zeilen waeren) - beides waere eine leere Fantasie-Einstellung gewesen. Alle
+// bestehenden serverseitigen role/property-Pruefungen je API-Route bleiben unveraendert; diese
+// Navigation ist ausschliesslich Client-UX.
+export const APP_VERSION = '2.15.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -682,6 +711,11 @@ export interface ReportIncidentInput {
 export const incidentsApi = {
   report: (input: ReportIncidentInput) =>
     backendPost<{ incident: HousekeepingIncident; slackDelivered: boolean }>('incidents', input),
+  /** Admin-Uebersicht "Vorfaelle" (Einstellungen > Meldungen & Betrieb) - admin-only serverseitig. */
+  list: async (): Promise<HousekeepingIncident[]> => {
+    const data = await backendGet<{ incidents?: HousekeepingIncident[] }>('incidents');
+    return data.incidents || [];
+  },
 };
 
 /** Waesche & Bettsachen (Briefing "Waescheverbrauch erfassen") - Artikelliste lesen darf jede
@@ -713,4 +747,20 @@ export const consumablesApi = {
   reorder: (orderedIds: string[]) => backendPost<{ items: ConsumableItem[] }>('consumables', { action: 'reorderItems', orderedIds }),
   report: (propertyCode: string, items: { itemId: string; quantity: number }[]) =>
     backendPost<{ report: ConsumableReport }>('consumables', { action: 'report', propertyCode, items }),
+  /** Admin-Uebersicht "Verbrauchsmeldungen" (Einstellungen > Meldungen & Betrieb) - admin-only serverseitig. */
+  listReports: async (): Promise<ConsumableReport[]> => {
+    const data = await backendPost<{ reports?: ConsumableReport[] }>('consumables', { action: 'listReports' });
+    return data.reports || [];
+  },
 };
+
+/** Einstellungen > Integrationen - liefert ausschliesslich boolesche "konfiguriert"-Flags, nie
+ * Secrets/Tokens (siehe api/integrations-status.js). admin-only serverseitig. */
+export interface IntegrationsStatus {
+  apaleo: { configured: boolean };
+  slack: { configured: boolean };
+}
+
+export async function loadIntegrationsStatus(): Promise<IntegrationsStatus> {
+  return backendGet<IntegrationsStatus>('integrations-status');
+}

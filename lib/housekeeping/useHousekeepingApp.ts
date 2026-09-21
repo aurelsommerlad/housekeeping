@@ -26,10 +26,10 @@ import { fetchMe, login as loginRequest, logout as logoutRequest } from './auth'
 import {
   DOUBLEUP_TYPES, POLL_INTERVAL, assignmentsApi, breaksApi, completionsApi, consumablesApi, doubleupsApi,
   getPropertyDisplayName, housekeepingTeamsApi, incidentPhotosApi, incidentsApi, linenItemsApi, loadBackendState,
-  loadConsumableItems, loadHousekeepingTeams, loadLinenItems, loadNfcTagStatuses, loadProperties, loadReservations,
-  loadReservationsRangeForProperties, loadTaskAssignments, loadTaskNotices, loadTaskTimeOverrides, loadUnits,
-  loadUnitsForProperties, nfcApi, setUnitCondition, taskAssignmentsApi, taskNoticesApi, taskTimeOverridesApi, usersApi,
-  type ReportIncidentInput,
+  loadConsumableItems, loadHousekeepingTeams, loadIntegrationsStatus, loadLinenItems, loadNfcTagStatuses, loadProperties,
+  loadReservations, loadReservationsRangeForProperties, loadTaskAssignments, loadTaskNotices, loadTaskTimeOverrides,
+  loadUnits, loadUnitsForProperties, nfcApi, setUnitCondition, taskAssignmentsApi, taskNoticesApi, taskTimeOverridesApi,
+  usersApi, type IntegrationsStatus, type ReportIncidentInput,
 } from './api';
 import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './rooms';
 import { managedPropertyCodes } from './permissions';
@@ -38,8 +38,8 @@ import {
   type ResolvedTask, type TeamContext,
 } from './tasks';
 import type {
-  ApaleoReservation, ApaleoUnit, AssignmentsState, BreakEntry, CapacityEntry, Completion, ConsumableItem, DaySummary,
-  DoubleupsState, HousekeepingIncident, HousekeepingTeam, LinenItem, NfcTagStatusesState, Property, ReservationsState,
+  ApaleoReservation, ApaleoUnit, AssignmentsState, BreakEntry, CapacityEntry, Completion, ConsumableItem, ConsumableReport,
+  DaySummary, DoubleupsState, HousekeepingIncident, HousekeepingTeam, LinenItem, NfcTagStatusesState, Property, ReservationsState,
   Room, RoomFilter, StaffUser, TaskAssignmentsState, TaskNotice, TaskNoticeAcksState, TaskNoticesState, TaskStartSource,
   TaskTeamOverridesState, TaskTimeOverridesState, TeamCapacityEntry, TeamPropertyDefaultsState,
 } from './types';
@@ -144,6 +144,18 @@ interface AppState {
    * standortbezogen (kein Task-/Apartmentbezug, siehe ReportConsumableSheet.tsx). */
   consumableItems: ConsumableItem[];
   consumableReportOpen: boolean;
+
+  /** Einstellungen > Meldungen & Betrieb (admin-only Uebersichten) - wie nfcTags NICHT beim Login
+   * vorgeladen, sondern erst lazy beim tatsaechlichen Oeffnen der jeweiligen Ansicht. */
+  incidents: HousekeepingIncident[];
+  incidentsLoading: boolean;
+  consumableReports: ConsumableReport[];
+  consumableReportsLoading: boolean;
+
+  /** Einstellungen > Integrationen - reine "konfiguriert"-Statusflags, siehe
+   * api/integrations-status.js. `null` = noch nicht geladen. */
+  integrationsStatus: IntegrationsStatus | null;
+  integrationsStatusLoading: boolean;
 }
 
 function readLang(): Lang {
@@ -209,6 +221,12 @@ function initialState(): AppState {
     linenCompletionTaskId: null,
     consumableItems: [],
     consumableReportOpen: false,
+    incidents: [],
+    incidentsLoading: false,
+    consumableReports: [],
+    consumableReportsLoading: false,
+    integrationsStatus: null,
+    integrationsStatusLoading: false,
   };
 }
 
@@ -1104,6 +1122,42 @@ export function useHousekeepingApp() {
     }
   }, [patch, showToast]);
 
+  // --- Einstellungen > Meldungen & Betrieb / Integrationen (admin-only, siehe SettingsScreen.tsx)
+  // - dieselbe Lazy-Load-Idee wie bei den NFC-Tags oben: selten benoetigt, deshalb erst beim
+  // tatsaechlichen Oeffnen der jeweiligen Ansicht geladen, nicht beim Login.
+  const loadIncidentsList = useCallback(async () => {
+    patch({ incidentsLoading: true });
+    try {
+      const incidents = await incidentsApi.list();
+      patch({ incidents, incidentsLoading: false });
+    } catch (err) {
+      patch({ incidentsLoading: false });
+      showToast(err instanceof Error ? err.message : String(err));
+    }
+  }, [patch, showToast]);
+
+  const loadConsumableReportsList = useCallback(async () => {
+    patch({ consumableReportsLoading: true });
+    try {
+      const consumableReports = await consumablesApi.listReports();
+      patch({ consumableReports, consumableReportsLoading: false });
+    } catch (err) {
+      patch({ consumableReportsLoading: false });
+      showToast(err instanceof Error ? err.message : String(err));
+    }
+  }, [patch, showToast]);
+
+  const loadIntegrationsStatusInfo = useCallback(async () => {
+    patch({ integrationsStatusLoading: true });
+    try {
+      const integrationsStatus = await loadIntegrationsStatus();
+      patch({ integrationsStatus, integrationsStatusLoading: false });
+    } catch (err) {
+      patch({ integrationsStatusLoading: false });
+      showToast(err instanceof Error ? err.message : String(err));
+    }
+  }, [patch, showToast]);
+
   return {
     state, t, roomKey,
     rooms, DOUBLEUP_TYPES,
@@ -1134,6 +1188,9 @@ export function useHousekeepingApp() {
 
     // NFC-Tag-Verwaltung
     loadNfcTags, createNfcTag, revealNfcTag, deactivateNfcTag, replaceNfcTag,
+
+    // Einstellungen > Meldungen & Betrieb / Integrationen
+    loadIncidentsList, loadConsumableReportsList, loadIntegrationsStatusInfo,
   };
 }
 

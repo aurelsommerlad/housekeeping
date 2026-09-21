@@ -56,6 +56,13 @@ async function reorderItems(redis, orderedIds) {
   return getAllItems(redis);
 }
 
+// Fuer die Admin-Uebersicht "Verbrauchsmeldungen" (Einstellungen > Meldungen & Betrieb) - analog
+// zu api/_incidents.js#getAllIncidents, rein lesend, keine neue Mutationslogik.
+async function getAllReports(redis) {
+  const all = await redis.hGetAll(REPORTS_HASH_KEY);
+  return Object.values(all).map((v) => parseJSON(v, null)).filter(Boolean).sort((a, b) => b.createdAt - a.createdAt);
+}
+
 async function saveReport(redis, data) {
   const id = crypto.randomBytes(12).toString('hex');
   const record = {
@@ -71,4 +78,6 @@ async function saveReport(redis, data) {
   return record;
 }
 
-module.exports = { ITEMS_HASH_KEY, REPORTS_HASH_KEY, getAllItems, getActiveItemsForProperty, upsertItem, reorderItems, saveReport };
+module.exports = {
+  ITEMS_HASH_KEY, REPORTS_HASH_KEY, getAllItems, getActiveItemsForProperty, upsertItem, reorderItems, saveReport, getAllReports,
+};
