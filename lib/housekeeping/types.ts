@@ -482,3 +482,44 @@ export interface NfcTagStatus {
 
 /** Key = "propertyCode|unitId". */
 export type NfcTagStatusesState = Record<string, NfcTagStatus | undefined>;
+
+/**
+ * Housekeeping-Vorfall (Briefing "Vorfall melden") - Redis housekeeping:incidents, Key = Incident-
+ * Id. `status` ist bewusst breiter typisiert als der aktuell einzig erzeugte Wert 'reported'
+ * (Punkt 13 "Vorbereitung fuer spaeter": eine spaetere Admin-Uebersicht kann den Status direkt
+ * auf 'in_progress'/'done' setzen, ohne Datenmodell/Typen aendern zu muessen). `propertyId`/
+ * `unitId`/`reservationId`/`taskType`/`taskDate` sind ausschliesslich serverseitig aus der taskId
+ * geparst (siehe api/_permissions.js), NIEMALS vom Client uebernommen - `propertyName`/`unitName`
+ * sind reine, nicht sicherheitsrelevante Anzeigefelder (siehe api/_incidents.js-Kommentar).
+ */
+export type IncidentStatus = 'reported' | 'open' | 'in_progress' | 'done';
+export type SlackDeliveryStatus = 'pending' | 'sent' | 'failed' | 'skipped';
+
+export interface HousekeepingIncident {
+  id: string;
+  taskId: string;
+  propertyId: string;
+  unitId: string;
+  reservationId: string | null;
+  reportedByUserId: string;
+  reportedByUserName: string;
+  housekeepingTeamId: string | null;
+  housekeepingTeamName: string | null;
+  description: string;
+  /** Max. 5 (Punkt 5), bereits vor dem Upload client-seitig komprimiert - Vercel-Blob-URLs, nie
+   * Base64/Binaerdaten. */
+  photoUrls: string[];
+  createdAt: number;
+  status: IncidentStatus;
+  propertyName: string;
+  unitName: string;
+  taskType: TaskType;
+  taskTypeLabel: string;
+  taskDate: string;
+  /** Getrennt von der Speicherung behandelt (Punkt 11) - 'skipped', wenn keine Slack-Webhook-URL
+   * konfiguriert ist, 'failed' bei einem tatsaechlichen Zustellfehler. Die App zeigt in beiden
+   * Faellen trotzdem die normale Erfolgsbestaetigung (der Vorfall IST gespeichert, siehe Punkt 10) -
+   * nur eben ohne die (dann schlicht falsche) Behauptung "Slack informiert". */
+  slackDeliveryStatus: SlackDeliveryStatus;
+  slackError?: string | null;
+}

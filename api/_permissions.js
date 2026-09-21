@@ -49,7 +49,27 @@ function dateFromTaskId(taskId) {
   return String(taskId).split('|')[2];
 }
 
+// Housekeeping Incidents (Vorfall melden): der komplette Task-ID-Aufbau ist deterministisch
+// (siehe lib/housekeeping/tasks.ts#taskId: "<propertyCode>|<unitId>|<date>|<type>|
+// <sourceReservationId>") - ausser den reinen Anzeigenamen (Property-/Apartmentname) laesst sich
+// daraus ALLES faelschungssicher direkt aus der ID lesen, ohne dem Client zu vertrauen. Ein
+// Incident wird deshalb serverseitig ausschliesslich anhand dieser geparsten Werte (nie anhand
+// eines vom Client separat mitgesendeten propertyCode/unitId/... Feldes) gespeichert.
+function unitIdFromTaskId(taskId) {
+  return String(taskId).split('|')[1];
+}
+
+function taskTypeFromTaskId(taskId) {
+  return String(taskId).split('|')[3];
+}
+
+function reservationIdFromTaskId(taskId) {
+  const value = String(taskId).split('|')[4];
+  return value && value !== 'none' ? value : null;
+}
+
 module.exports = {
   hasPropertyAccess, isPropertyManager, propertyCodeFromTaskId, dateFromTaskId,
   isTeamLead, isTeamMemberOf, canManageTeamAssignments,
+  unitIdFromTaskId, taskTypeFromTaskId, reservationIdFromTaskId,
 };

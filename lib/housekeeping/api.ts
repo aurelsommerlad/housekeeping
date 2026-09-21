@@ -11,10 +11,10 @@
  * lib/housekeeping/auth.ts.
  */
 import type {
-  ApaleoReservation, ApaleoUnit, AssignmentsState, DoubleupsState, Completion, BreakEntry, HousekeepingTeam, NfcTagStatusesState,
-  Property, ReservationSearchResult, ReservationsState, StaffUser, TaskAssignmentsState, TaskNotice, TaskNoticeAck,
-  TaskNoticeAcksState, TaskNoticesState, TaskStartSource, TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState,
-  TeamPropertyDefaultsState,
+  ApaleoReservation, ApaleoUnit, AssignmentsState, DoubleupsState, Completion, BreakEntry, HousekeepingIncident,
+  HousekeepingTeam, NfcTagStatusesState, Property, ReservationSearchResult, ReservationsState, StaffUser,
+  TaskAssignmentsState, TaskNotice, TaskNoticeAck, TaskNoticeAcksState, TaskNoticesState, TaskStartSource,
+  TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState, TeamPropertyDefaultsState,
 } from './types';
 
 // MINOR-Bump (2.5.0 -> 2.6.0): TaskCard-Redesign - klare Informationshierarchie (Apartment+Standort,
@@ -150,7 +150,23 @@ import type {
 // Admin (alle Teams, Property-Standardzuordnung) und Team Lead (nur eigenes Team) - reine
 // Aufsatz-Ansicht auf dem bestehenden Team-Screen/UserFormSheet.tsx (Team+Rolle als neue Felder
 // dort), keine zweite parallele Mitarbeiterverwaltung.
-export const APP_VERSION = '2.12.0';
+// MINOR-Bump (2.12.0 -> 2.13.0): "Vorfall melden" - neue, allen Housekeeping-Benutzern zugaengliche
+// Funktion, um einen bei der Reinigung festgestellten Vorfall (Foto + kurze Beschreibung) an
+// UNIQUE PLACES zu melden. Speicherung (Redis housekeeping:incidents) und Slack-Zustellung
+// (SLACK_INCIDENT_WEBHOOK_URL, api/_slack.js) sind bewusst getrennte Schritte - ein voruebergehend
+// nicht erreichbares Slack kostet nie einen bereits gespeicherten Vorfall (slackDeliveryStatus).
+// Fotos landen auf Vercel Blob (neue Abhaengigkeit @vercel/blob), NIE als Base64 in Redis, mit
+// unerratbaren Dateinamen. Alle sicherheitsrelevanten Felder (Property/Unit/Datum/Typ/
+// Buchungsnummer) werden serverseitig faelschungssicher aus der taskId geparst (siehe
+// api/_permissions.js), nie vom Client uebernommen.
+// Navigation: "Apartments"/"Statistik" sind jetzt an dieselbe "elevated"-Bedingung gebunden
+// (Admin/Standortverantwortlich/Team Lead, siehe permissions.ts#isElevatedHousekeepingUser) - ein
+// normaler Housekeeper sieht dafuer "Vorfall melden" an der frei gewordenen Position; fuer
+// "elevated" Benutzer bleibt die Bottom-Nav bei 4 Punkten, "Vorfall melden" ist dort stattdessen
+// ueber die Einstellungen erreichbar (kein fuenfter gleichwertiger Bottom-Nav-Punkt). Nebenbei
+// behoben: ein Team Lead (kein Admin) konnte den SettingsScreen zuvor gar nicht erreichen
+// (SettingsSheet/app/page.tsx pruefte hart auf role==='admin').
+export const APP_VERSION = '2.13.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -614,3 +630,24 @@ export async function searchReservations(query: string): Promise<ReservationSear
   const data = await backendPost<{ results?: ReservationSearchResult[] }>('reservation-search', { query });
   return data.results || [];
 }
+
+/** Housekeeping-Vorfaelle (Briefing "Vorfall melden") - zwei getrennte Aufrufe: erst je Foto ein
+ * Upload (liefert eine persistente Vercel-Blob-URL, siehe api/incident-photos.js), danach EIN
+ * `report()`-Aufruf mit den bereits hochgeladenen URLs (siehe api/incidents.js). `dataUrl` ist
+ * bereits die client-seitig komprimierte Aufnahme (siehe lib/housekeeping/image.ts). */
+export const incidentPhotosApi = {
+  upload: (taskId: string, dataUrl: string) => backendPost<{ url: string }>('incident-photos', { taskId, dataUrl }),
+};
+
+export interface ReportIncidentInput {
+  taskId: string;
+  description: string;
+  photoUrls: string[];
+  propertyName: string;
+  unitName: string;
+}
+
+export const incidentsApi = {
+  report: (input: ReportIncidentInput) =>
+    backendPost<{ incident: HousekeepingIncident; slackDelivered: boolean }>('incidents', input),
+};

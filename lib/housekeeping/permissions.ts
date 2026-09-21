@@ -65,6 +65,16 @@ export function canManageTeamAssignments(user: StaffUser | null, teamId: string 
   return isTeamLead(user) && user.housekeepingTeamId === teamId;
 }
 
+/** "Elevated" (Briefing "Vorfall melden"/Navigation): admin ODER Standortverantwortlich
+ * irgendwo ODER Team Lead - GENAU diese drei Gruppen behalten "Apartments" in der Bottom-
+ * Navigation (siehe StaffNavBar.tsx) und bekommen deshalb im Gegenzug "Vorfall melden" ueber die
+ * Einstellungen statt eines eigenen Bottom-Nav-Punkts (siehe SettingsScreen.tsx) - dieselbe
+ * Bedingung an einer einzigen Stelle, damit beide Seiten (wem die Funktion wo angeboten wird)
+ * niemals auseinanderlaufen koennen. */
+export function isElevatedHousekeepingUser(user: StaffUser | null, allPropertyCodes: string[]): boolean {
+  return isAdmin(user) || managedPropertyCodes(user, allPropertyCodes).length > 0 || isTeamLead(user);
+}
+
 /** managedProperties MUSS immer eine Teilmenge von properties sein (Punkt 13/17) - wird Zugriff
  * entfernt, faellt die Standortverantwortung fuer dieses Property automatisch mit weg. Rein
  * client- oder serverseitig identisch anwendbar (reine Funktion, keine Seiteneffekte). */

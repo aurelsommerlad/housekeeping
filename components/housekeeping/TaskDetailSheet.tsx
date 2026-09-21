@@ -714,6 +714,14 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
 
         <PrimaryAction app={app} task={task} isManager={isManager} mine={mine} />
 
+        {/* "Vorfall melden" (Briefing Punkt 4) - sekundaere Aktion, bevorzugter Workflow waehrend
+         * einer laufenden Reinigung: die Reinigung ist hier bereits bekannt, der Benutzer muss sie
+         * im Formular nicht nochmal auswaehlen (siehe useHousekeepingApp.ts#openIncidentReport). */}
+        <Button variant="ghost" className="w-full" onClick={() => app.openIncidentReport(task!.id)}>
+          <IconAlertCircle width={15} height={15} aria-hidden="true" />
+          {t('report_incident_title')}
+        </Button>
+
         {/* Reinigungsverlauf (Punkt 13: bei Bedarf aufklappbar statt immer sichtbar, reduziert
          * das Scrollen fuer den operativ wichtigeren Teil oberhalb). */}
         {task.history.length > 0 ? (

@@ -25,9 +25,11 @@ import { translate } from './i18n';
 import { fetchMe, login as loginRequest, logout as logoutRequest } from './auth';
 import {
   DOUBLEUP_TYPES, POLL_INTERVAL, assignmentsApi, breaksApi, completionsApi, doubleupsApi, getPropertyDisplayName,
-  housekeepingTeamsApi, loadBackendState, loadHousekeepingTeams, loadNfcTagStatuses, loadProperties, loadReservations,
-  loadReservationsRangeForProperties, loadTaskAssignments, loadTaskNotices, loadTaskTimeOverrides, loadUnits,
-  loadUnitsForProperties, nfcApi, setUnitCondition, taskAssignmentsApi, taskNoticesApi, taskTimeOverridesApi, usersApi,
+  housekeepingTeamsApi, incidentPhotosApi, incidentsApi, loadBackendState, loadHousekeepingTeams, loadNfcTagStatuses,
+  loadProperties, loadReservations, loadReservationsRangeForProperties, loadTaskAssignments, loadTaskNotices,
+  loadTaskTimeOverrides, loadUnits, loadUnitsForProperties, nfcApi, setUnitCondition, taskAssignmentsApi, taskNoticesApi,
+  taskTimeOverridesApi, usersApi,
+  type ReportIncidentInput,
 } from './api';
 import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './rooms';
 import { managedPropertyCodes } from './permissions';
@@ -37,9 +39,9 @@ import {
 } from './tasks';
 import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, BreakEntry, CapacityEntry, Completion, DaySummary, DoubleupsState,
-  HousekeepingTeam, NfcTagStatusesState, Property, ReservationsState, Room, RoomFilter, StaffUser, TaskAssignmentsState,
-  TaskNotice, TaskNoticeAcksState, TaskNoticesState, TaskStartSource, TaskTeamOverridesState, TaskTimeOverridesState,
-  TeamCapacityEntry, TeamPropertyDefaultsState,
+  HousekeepingIncident, HousekeepingTeam, NfcTagStatusesState, Property, ReservationsState, Room, RoomFilter, StaffUser,
+  TaskAssignmentsState, TaskNotice, TaskNoticeAcksState, TaskNoticesState, TaskStartSource, TaskTeamOverridesState,
+  TaskTimeOverridesState, TeamCapacityEntry, TeamPropertyDefaultsState,
 } from './types';
 
 /** Key-Schema exakt wie api/_nfc.js#unitKey - EINZIGE Stelle im Client, die dieses Format kennt. */
@@ -117,6 +119,13 @@ interface AppState {
   taskMultiSelect: boolean;
   selectedTasks: Set<string>;
   detailTaskId: string | null;
+
+  /** "Vorfall melden" (Briefing) - eigenes, von detailTaskId unabhaengiges Sheet: kann sowohl
+   * standalone (Nav/Einstellungen, ohne Vorauswahl) als auch aus der Task-Detailansicht heraus
+   * geoeffnet werden (dann mit `incidentPresetTaskId` vorbelegt, Punkt 4 "Apartment nicht
+   * nochmals auswaehlen"). */
+  incidentSheetOpen: boolean;
+  incidentPresetTaskId: string | null;
 }
 
 function readLang(): Lang {
@@ -175,6 +184,8 @@ function initialState(): AppState {
     taskMultiSelect: false,
     selectedTasks: new Set(),
     detailTaskId: null,
+    incidentSheetOpen: false,
+    incidentPresetTaskId: null,
   };
 }
 
@@ -626,6 +637,39 @@ export function useHousekeepingApp() {
     });
   }, [patch, runAction, showToast, t]);
 
+  // --- "Vorfall melden" (Briefing) - `openIncidentReport(taskId)` mit taskId wird aus der
+  // Task-Detailansicht aufgerufen (Reinigung bereits vorausgewaehlt, Punkt 4), ohne Argument aus
+  // Nav/Einstellungen (Reinigung muss im Formular selbst gewaehlt werden, Punkt 3).
+  const openIncidentReport = useCallback((taskId?: string) => {
+    patch({ incidentSheetOpen: true, incidentPresetTaskId: taskId || null });
+  }, [patch]);
+
+  const closeIncidentReport = useCallback(() => {
+    patch({ incidentSheetOpen: false, incidentPresetTaskId: null });
+  }, [patch]);
+
+  // Eigene Fehlerbehandlung statt runAction() (das Formular muss bei einem Fehler selbst
+  // reagieren koennen - z. B. den Upload-Button wieder aktivieren - statt nur einen Toast zu
+  // zeigen und stumm weiterzulaufen).
+  const uploadIncidentPhoto = useCallback(async (taskId: string, dataUrl: string): Promise<string | null> => {
+    try {
+      const { url } = await incidentPhotosApi.upload(taskId, dataUrl);
+      return url;
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err));
+      return null;
+    }
+  }, [showToast]);
+
+  const reportIncident = useCallback(async (input: ReportIncidentInput): Promise<{ incident: HousekeepingIncident; slackDelivered: boolean } | null> => {
+    try {
+      return await incidentsApi.report(input);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err));
+      return null;
+    }
+  }, [showToast]);
+
   // --- Reinigungsplanung: abgeleitete Auswahl + Aktionen ---
 
   // Liest bewusst `state` (nicht stateRef), siehe Begruendung bei rooms()/t() oben.
@@ -959,6 +1003,7 @@ export function useHousekeepingApp() {
     finishClean, completeInspection, toggleDoubleType, finishDoubleup, toggleBreak,
     saveUser, deleteUser,
     saveTeam, setTeamPropertyDefault, setTaskTeam,
+    openIncidentReport, closeIncidentReport, uploadIncidentPhoto, reportIncident,
 
     // Reinigungsplanung
     tasksForDay, tasksForDayAll, daySummaryFor, capacityFor, teamCapacityFor, workloadForPropertyDay, retryTasksLoad,

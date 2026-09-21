@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { APP_VERSION } from '@/lib/housekeeping/api';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
-import { isAdmin, isTeamLead } from '@/lib/housekeeping/permissions';
+import { isAdmin, isElevatedHousekeepingUser, isTeamLead } from '@/lib/housekeeping/permissions';
 import { RulesScreen } from './RulesScreen';
 import { NfcSettingsScreen } from './NfcSettingsScreen';
 import { StandardTimesScreen } from './StandardTimesScreen';
@@ -122,34 +122,54 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
     );
   }
 
+  const admin = isAdmin(state.user);
+  const lead = isTeamLead(state.user);
+  const elevated = isElevatedHousekeepingUser(state.user, state.properties.map((p) => p.code));
+
   return (
     <div className="flex flex-col gap-5 px-4 py-4">
       <h2 className="italic text-lg text-[#17160f]">{t('settings_title')}</h2>
 
-      <div className="flex flex-col gap-2">
-        <SectionLabel>{t('settings_section_housekeeping')}</SectionLabel>
-        <SettingsRow label={t('nav_rules')} onClick={() => setView('rules')} />
-        <SettingsRow label={t('standard_times_title')} onClick={() => setView('times')} />
-      </div>
+      {/* Regeln/Standardzeiten/NFC bleiben admin-only (unveraendertes bestehendes Verhalten) -
+       * ein Team Lead erreicht diesen Screen jetzt zwar ueberhaupt (Bugfix), bekommt hier aber
+       * ausschliesslich die fuer ihn vorgesehenen Abschnitte weiter unten zu sehen. */}
+      {admin ? (
+        <div className="flex flex-col gap-2">
+          <SectionLabel>{t('settings_section_housekeeping')}</SectionLabel>
+          <SettingsRow label={t('nav_rules')} onClick={() => setView('rules')} />
+          <SettingsRow label={t('standard_times_title')} onClick={() => setView('times')} />
+        </div>
+      ) : null}
 
-      <div className="flex flex-col gap-2">
-        <SectionLabel>{t('settings_section_apartments')}</SectionLabel>
-        <SettingsRow label={t('nfc_settings_title')} onClick={() => setView('nfc')} />
-      </div>
+      {admin ? (
+        <div className="flex flex-col gap-2">
+          <SectionLabel>{t('settings_section_apartments')}</SectionLabel>
+          <SettingsRow label={t('nfc_settings_title')} onClick={() => setView('nfc')} />
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-2">
         <SectionLabel>{t('settings_section_management')}</SectionLabel>
-        <SettingsRow label={t('settings_team_row')} onClick={() => setActiveNav('team')} />
-        {isAdmin(state.user) || isTeamLead(state.user) ? (
+        {admin ? <SettingsRow label={t('settings_team_row')} onClick={() => setActiveNav('team')} /> : null}
+        {admin || lead ? (
           <SettingsRow label={t('housekeeping_teams_row')} onClick={() => setView('teams')} />
+        ) : null}
+        {/* Fuer "elevated" Benutzer (Admin/Standortverantwortlich/Lead) ist "Vorfall melden"
+         * bewusst KEIN eigener Bottom-Nav-Punkt (siehe StaffNavBar.tsx - sonst 5 gleichwertige
+         * Punkte, dieselbe Bedingung wie dort) - hier ohne Vorauswahl erreichbar, bevorzugter Weg
+         * bleibt aber die sekundaere Aktion direkt in der Task-Detailansicht. */}
+        {elevated ? (
+          <SettingsRow label={t('report_incident_title')} onClick={() => app.openIncidentReport()} />
         ) : null}
       </div>
 
-      <div className="flex flex-col gap-2">
-        <SectionLabel>{t('settings_section_app')}</SectionLabel>
-        <SettingsRow label={t('language_label')} value={state.lang.toUpperCase()} onClick={() => setView('language')} />
-        <SettingsRow label={t('version_label')} value={`v${APP_VERSION}`} />
-      </div>
+      {admin ? (
+        <div className="flex flex-col gap-2">
+          <SectionLabel>{t('settings_section_app')}</SectionLabel>
+          <SettingsRow label={t('language_label')} value={state.lang.toUpperCase()} onClick={() => setView('language')} />
+          <SettingsRow label={t('version_label')} value={`v${APP_VERSION}`} />
+        </div>
+      ) : null}
     </div>
   );
 }

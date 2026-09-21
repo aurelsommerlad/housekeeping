@@ -105,6 +105,8 @@ wurden durch dieses Update nicht angefasst.
 | `APALEO_CLIENT_SECRET` | Apaleo API Client Secret |
 | `REDIS_URL` | Verbindungs-URL der Redis-Datenbank (i. d. R. automatisch gesetzt) |
 | `NFC_TOKEN_SECRET` | Schluessel zur Verschluesselung der NFC-Tag-Tokens (siehe unten) |
+| `BLOB_READ_WRITE_TOKEN` | Zugriff auf den Vercel-Blob-Store fuer Vorfall-Fotos (i. d. R. automatisch gesetzt) |
+| `SLACK_INCIDENT_WEBHOOK_URL` | Incoming-Webhook-URL fuer die Slack-Benachrichtigung bei "Vorfall melden" |
 
 Fuer Login/Session/Passwort-Hashing sind **keine neuen Environment Variables** noetig: Sessions
 sind zufaellige, in Redis gespeicherte Tokens (kein JWT-Secret erforderlich) und bcrypt braucht
@@ -121,6 +123,18 @@ muessten neu eingerichtet werden), daher einmal setzen und stabil halten.
 
 Der Apaleo API Client benoetigt Lese-/Schreibrechte (Scopes) fuer Inventory, Booking und
 Operations.
+
+`BLOB_READ_WRITE_TOKEN` wird fuer "Vorfall melden" (Foto-Upload) gebraucht: einmalig unter
+Vercel-Dashboard -> Storage -> Blob einen Store anlegen und an dieses Projekt anhaengen, danach
+ist die Variable automatisch gesetzt. Fotos landen NIE in Redis (nur die resultierende
+Blob-URL im Incident-Datensatz), Dateinamen sind zufaellig und nicht erratbar.
+
+`SLACK_INCIDENT_WEBHOOK_URL` wird ebenfalls fuer "Vorfall melden" gebraucht: in Slack einen
+Incoming Webhook fuer den gewuenschten Kanal einrichten (Slack-App -> Incoming Webhooks) und die
+resultierende URL hier eintragen. Ohne gesetzten Wert wird ein gemeldeter Vorfall weiterhin ganz
+normal gespeichert (siehe `housekeeping:incidents`), lediglich der Slack-Versand wird
+uebersprungen (`slackDeliveryStatus: 'skipped'`) - der Webhook wird ausschliesslich serverseitig
+aufgerufen, nie an den Client ausgeliefert.
 
 ## Backend-Routen
 

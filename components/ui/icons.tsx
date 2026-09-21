@@ -278,6 +278,7 @@ export const NAV_ICONS = {
   book: IconBook,
   checklist: IconChecklist,
   users: IconUsers,
+  alert: IconAlertCircle,
 };
 
 /** Loest komplett die frueheren Emojis (👶/🛏️/🐕/➕) auf den Zusatzausstattungs-Buttons/-Chips

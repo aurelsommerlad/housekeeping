@@ -1,13 +1,22 @@
 import { NAV_ICONS } from '@/components/ui/icons';
 import { allowedProperties } from '@/lib/housekeeping/rooms';
-import { managedPropertyCodes } from '@/lib/housekeeping/permissions';
+import { isElevatedHousekeepingUser, managedPropertyCodes } from '@/lib/housekeeping/permissions';
 import type { HousekeepingApp, NavId } from '@/lib/housekeeping/useHousekeepingApp';
 import type { I18nKey } from '@/lib/housekeeping/i18n';
 import { cn } from '@/lib/cn';
 
-const ITEMS: { id: NavId; icon: keyof typeof NAV_ICONS; labelKey: I18nKey; requires?: 'manager' | 'admin' }[] = [
+/** 'incident' ist bewusst KEIN eigener NavId/Screen (siehe useHousekeepingApp.ts#openIncidentReport)
+ * - ein Klick oeffnet direkt das Formular als Sheet ueber dem aktuell sichtbaren Screen, statt die
+ * Tab-Auswahl zu wechseln (analog zu anderen Sheets wie TaskDetailSheet). 'nonElevated' zeigt den
+ * Punkt deshalb nur denjenigen, die "Apartments" NICHT sowieso schon haben (siehe 'elevated'
+ * unten) - so wandert "Vorfall melden" fuer normale Housekeeper exakt in die frei gewordene
+ * Apartments-Position, ohne fuer Admin/Standortverantwortliche/Lead einen fuenften, gleichwertigen
+ * Bottom-Nav-Punkt zu erzeugen (die erreichen die Funktion stattdessen ueber Einstellungen oder
+ * direkt aus der Task-Detailansicht heraus, siehe TaskDetailSheet.tsx). */
+const ITEMS: { id: NavId | 'incident'; icon: keyof typeof NAV_ICONS; labelKey: I18nKey; requires?: 'manager' | 'admin' | 'elevated' | 'nonElevated' }[] = [
   { id: 'tasks', icon: 'checklist', labelKey: 'nav_tasks' },
-  { id: 'rooms', icon: 'bed', labelKey: 'nav_apartments' },
+  { id: 'rooms', icon: 'bed', labelKey: 'nav_apartments', requires: 'elevated' },
+  { id: 'incident', icon: 'alert', labelKey: 'nav_incident', requires: 'nonElevated' },
   { id: 'stats', icon: 'chart', labelKey: 'nav_stats', requires: 'manager' },
   { id: 'team', icon: 'users', labelKey: 'nav_team', requires: 'admin' },
 ];
@@ -15,10 +24,10 @@ const ITEMS: { id: NavId; icon: keyof typeof NAV_ICONS; labelKey: I18nKey; requi
 /**
  * Bottom-Navigation - EINE gemeinsame App fuer alle Rollen, Sichtbarkeit haengt ausschliesslich
  * von Rolle/Property-Berechtigung ab (kein separates Admin-Frontend, siehe app/admin/page.tsx):
- *  - normaler Housekeeper: Planung + Apartments
- *  - Standortverantwortlich (managedProperties nicht leer): zusaetzlich Statistik (relevante
- *    Standortstatistik - StatsScreen ist bereits auf state.activeProperty beschraenkt, das
- *    wiederum ueber PropertyChips nur aus den eigenen erlaubten Properties waehlbar ist)
+ *  - normaler Housekeeper: Planung + Vorfall melden (Apartments/Statistik ausgeblendet, siehe
+ *    "elevated" unten - Briefing "Vorfall melden")
+ *  - "elevated" (Admin ODER Standortverantwortlich ODER Team Lead): zusaetzlich Apartments,
+ *    Statistik bleibt zusaetzlich an managedProperties/Admin gebunden (unveraendert)
  *  - admin: zusaetzlich Team
  * "Regeln" ist bewusst KEIN gleichwertiger Hauptpunkt mehr (siehe SettingsSheet ueber den
  * Profil-Button im Header), "Extras" ist als Task-Typ/-Feld in die Aufgaben-Ansicht aufgegangen.
@@ -26,13 +35,16 @@ const ITEMS: { id: NavId; icon: keyof typeof NAV_ICONS; labelKey: I18nKey; requi
  * server-seitig ueber role/properties/managedProperties abgesichert (siehe api/*.js).
  */
 export function StaffNavBar({ app }: { app: HousekeepingApp }) {
-  const { state, t, setActiveNav } = app;
+  const { state, t, setActiveNav, openIncidentReport } = app;
   const isAdmin = state.user?.role === 'admin';
   const allowed = allowedProperties(state.user, state.properties.map((p) => p.code));
   const isManagerAnywhere = isAdmin || managedPropertyCodes(state.user, allowed).length > 0;
+  const elevated = isElevatedHousekeepingUser(state.user, state.properties.map((p) => p.code));
   const items = ITEMS.filter((i) => {
     if (i.requires === 'admin') return isAdmin;
     if (i.requires === 'manager') return isManagerAnywhere;
+    if (i.requires === 'elevated') return elevated;
+    if (i.requires === 'nonElevated') return !elevated;
     return true;
   });
 
@@ -43,12 +55,12 @@ export function StaffNavBar({ app }: { app: HousekeepingApp }) {
     >
       {items.map((item) => {
         const Icon = NAV_ICONS[item.icon];
-        const active = item.id === state.activeNav;
+        const active = item.id !== 'incident' && item.id === state.activeNav;
         return (
           <button
             key={item.id}
             type="button"
-            onClick={() => setActiveNav(item.id)}
+            onClick={() => (item.id === 'incident' ? openIncidentReport() : setActiveNav(item.id))}
             aria-current={active ? 'page' : undefined}
             className={cn(
               'flex min-h-11 flex-col items-center gap-1 pt-2.5 pb-1.5 text-[10.5px] font-medium transition-colors',

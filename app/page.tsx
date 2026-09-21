@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useHousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
+import { isElevatedHousekeepingUser } from '@/lib/housekeeping/permissions';
 import { StaffHeader } from '@/components/housekeeping/StaffHeader';
 import { PropertyChips } from '@/components/housekeeping/PropertyChips';
 import { StaffNavBar } from '@/components/housekeeping/StaffNavBar';
@@ -13,6 +14,7 @@ import { SettingsScreen } from '@/components/housekeeping/SettingsScreen';
 import { RoomDetailSheet } from '@/components/housekeeping/RoomDetailSheet';
 import { SettingsSheet } from '@/components/housekeeping/SettingsSheet';
 import { ReservationSearchSheet } from '@/components/housekeeping/ReservationSearchSheet';
+import { ReportIncidentSheet } from '@/components/housekeeping/ReportIncidentSheet';
 import { LoginScreen } from '@/components/housekeeping/LoginScreen';
 import { Toast } from '@/components/housekeeping/Toast';
 
@@ -72,13 +74,16 @@ export default function HousekeepingPage() {
         ) : null}
         {state.activeNav === 'stats' ? <StatsScreen app={app} /> : null}
         {state.activeNav === 'team' ? <TeamScreen app={app} /> : null}
-        {state.activeNav === 'settings' && state.user?.role === 'admin' ? <SettingsScreen app={app} /> : null}
+        {state.activeNav === 'settings' && isElevatedHousekeepingUser(state.user, state.properties.map((p) => p.code)) ? (
+          <SettingsScreen app={app} />
+        ) : null}
       </main>
 
       <StaffNavBar app={app} />
       <RoomDetailSheet app={app} room={detailRoom} />
       <SettingsSheet app={app} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ReservationSearchSheet app={app} open={searchOpen} onClose={() => setSearchOpen(false)} />
+      {state.incidentSheetOpen ? <ReportIncidentSheet app={app} /> : null}
       <Toast message={state.toast} />
     </div>
   );

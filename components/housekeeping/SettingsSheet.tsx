@@ -1,6 +1,7 @@
 'use client';
 
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
+import { isAdmin, isElevatedHousekeepingUser } from '@/lib/housekeeping/permissions';
 import { BottomSheet } from './BottomSheet';
 import { LanguagePicker } from './LanguagePicker';
 import { Button } from '@/components/ui/Button';
@@ -36,7 +37,14 @@ function MenuRow({ label, onClick }: MenuRowProps) {
  */
 export function SettingsSheet({ app, open, onClose }: SettingsSheetProps) {
   const { state, t, doLogout, setActiveNav } = app;
-  const isAdmin = state.user?.role === 'admin';
+  const admin = isAdmin(state.user);
+  // Punkt "Team-Lead-Zugriff reparieren": ein Team-Verantwortlicher (oder ein Standort-
+  // verantwortlicher wie im Briefing "Vorfall melden" - beide behalten Apartments in der Bottom-
+  // Nav, siehe StaffNavBar.tsx) ist kein Admin, braucht aber trotzdem Zugang zu SettingsScreen
+  // (dort liegen "Reinigungsfirmen & Teams" und der "Vorfall melden"-Einstieg ohne Vorauswahl) -
+  // vorher war dieser Einstieg hier hart auf role==='admin' beschraenkt. "Team & Berechtigungen"
+  // (die volle Mitarbeiterverwaltung) bleibt bewusst admin-only, siehe unten.
+  const elevated = isElevatedHousekeepingUser(state.user, state.properties.map((p) => p.code));
 
   function goTo(nav: 'settings' | 'team') {
     setActiveNav(nav);
@@ -49,13 +57,13 @@ export function SettingsSheet({ app, open, onClose }: SettingsSheetProps) {
 
       <div className="mt-3 flex flex-col gap-0.5">
         <p className="font-medium text-ink">{state.user?.name}</p>
-        {isAdmin ? <p className="text-[13px] text-muted">{t('role_admin_full')}</p> : null}
+        {admin ? <p className="text-[13px] text-muted">{t('role_admin_full')}</p> : null}
       </div>
 
-      {isAdmin ? (
+      {elevated ? (
         <div className="mt-4 flex flex-col divide-y divide-line border-y border-line">
           <MenuRow label={t('settings_title')} onClick={() => goTo('settings')} />
-          <MenuRow label={t('settings_team_row')} onClick={() => goTo('team')} />
+          {admin ? <MenuRow label={t('settings_team_row')} onClick={() => goTo('team')} /> : null}
         </div>
       ) : null}
 
