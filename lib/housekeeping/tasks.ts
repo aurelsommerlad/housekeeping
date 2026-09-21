@@ -394,9 +394,11 @@ export function capacityForDay(date: string, tasks: ResolvedTask[]): CapacityEnt
   return list;
 }
 
-/** Punkt 24: Inspektion bleibt fachlich unveraendert (immer erforderlich), aber zentral an einer
- * Stelle statt verstreut - eine spaetere Property-spezifische Konfiguration kann hier ansetzen,
- * ohne Aufrufstellen anzufassen. */
+/** Kein Inspektions-Schritt in diesem Betrieb (fachliche Klarstellung) - eine abgeschlossene
+ * Reinigung ist direkt fertig, der Apaleo-Unit-Status wird direkt auf "Clean" gesetzt statt ueber
+ * einen Zwischenzustand "CleanToBeInspected". Zentral an einer Stelle statt verstreut - eine
+ * spaetere Property-spezifische Wiedereinfuehrung koennte hier ansetzen, ohne Aufrufstellen
+ * anzufassen. */
 export function requiresInspection(_propertyCode: string): boolean {
-  return true;
+  return false;
 }

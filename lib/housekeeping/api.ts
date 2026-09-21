@@ -120,7 +120,18 @@ import type {
 // ss->ß wo orthografisch korrekt) - die Dateien sind UTF-8, eine ASCII-Umschreibung war nie
 // erforderlich. Reine Text-/Datenfilter-Korrektur, keine Aenderung an Business-Logik, IDs,
 // Variablennamen oder technischen Konstanten.
-export const APP_VERSION = '2.11.2';
+// PATCH-Bump (2.11.2 -> 2.11.3): Bugfix "Reinigung abschliessen" (Apaleo 422). setUnitCondition()
+// sendete bisher `{ unitIds: [...], condition }` an PUT /operations/v1/units-condition - das
+// entspricht nicht dem tatsaechlichen Apaleo-Schema (live verifiziert: `unitsConditions:
+// [{ id, condition }]`) und wurde deshalb zuverlaessig mit 422 abgelehnt, unabhaengig vom Wert.
+// Bestand unveraendert bereits im alten app.js. Fachliche Klarstellung dabei umgesetzt: dieser
+// Betrieb hat keinen Inspektions-Schritt (requiresInspection() liefert jetzt immer false) - eine
+// abgeschlossene Reinigung setzt die Apaleo-Unit direkt auf "Clean" statt auf den
+// Zwischenzustand "CleanToBeInspected". Betrifft sowohl den Aufgaben- als auch den
+// Apartments-Bildschirm (finishTask/finishClean). Ausserdem: "Housekeeping" im Header nutzt jetzt
+// dieselbe Marken-Typografie wie Login-/Admin-Einrichtungsseite (kraeftiges "UNIQUE PLACES",
+// Bereichsname darunter klein/tracked/grossgeschrieben).
+export const APP_VERSION = '2.11.3';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -400,8 +411,15 @@ export async function loadBackendState(): Promise<BackendState> {
   };
 }
 
+/** Bugfix: rief bisher mit `{ unitIds: [...], condition }` auf - das entspricht NICHT dem
+ * tatsaechlichen Apaleo-Schema fuer PUT /operations/v1/units-condition (live gegen den echten
+ * Account verifiziert) und wurde deshalb zuverlaessig mit 422 abgelehnt, unabhaengig vom
+ * uebergebenen `condition`-Wert. Apaleo erwartet stattdessen `unitsConditions: [{ id, condition }]`
+ * (ein Eintrag pro Unit, `condition` eines von 'Clean' | 'CleanToBeInspected' | 'Dirty'). Dieser
+ * Bug bestand unveraendert bereits im alten app.js und wurde bei der Migration 1:1 uebernommen,
+ * ohne dass er zuvor gegen den echten Account aufgefallen war. */
 export async function setUnitCondition(unitId: string, condition: string): Promise<void> {
-  await apaleo('/operations/v1/units-condition', 'PUT', { unitIds: [unitId], condition });
+  await apaleo('/operations/v1/units-condition', 'PUT', { unitsConditions: [{ id: unitId, condition }] });
 }
 
 export const assignmentsApi = {

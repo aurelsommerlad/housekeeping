@@ -34,12 +34,12 @@ export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderPr
     <header className="shrink-0 border-b border-line bg-warm-white pt-[max(env(safe-area-inset-top),0.5rem)] pl-[max(env(safe-area-inset-left),1rem)] pr-[max(env(safe-area-inset-right),1rem)]">
       <div className="flex items-center justify-between gap-2 py-2">
         <div className="min-w-0 leading-none">
-          <p className="brand-wordmark text-[10px] font-semibold tracking-[0.18em] text-muted">UNIQUE PLACES</p>
-          {/* Punkt 1: ca. 20% kleiner als zuvor (15px -> 12px, dieselbe bereits im Header
-           * verwendete Groesse wie die Sekundaerzeile darunter) - bleibt als App-/Bereichsname
-           * erkennbar (font-medium/text-ink), konkurriert aber nicht mehr mit dem operativen
-           * Inhalt darunter. Keine neue Schriftgroesse eingefuehrt. */}
-          <p className="mt-1 truncate text-[12px] font-medium text-ink">{t('app_name')}</p>
+          {/* Dieselbe Marken-Typografie wie auf Login-/Admin-Einrichtungsseite (siehe
+           * LoginScreen.tsx/app/admin/page.tsx): "UNIQUE PLACES" kraeftig/dunkel als eigentlicher
+           * Markenname, der Bereichsname darunter klein/tracked/grossgeschrieben als Unterzeile -
+           * statt umgekehrt (vorher war "UNIQUE PLACES" die kleine Zeile). */}
+          <p className="brand-wordmark truncate font-sans text-sm font-semibold tracking-[0.05em] text-ink">UNIQUE PLACES</p>
+          <p className="mt-0.5 truncate text-[10px] font-medium uppercase tracking-[0.18em] text-muted">{t('app_name')}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {state.user?.role !== 'admin' ? (

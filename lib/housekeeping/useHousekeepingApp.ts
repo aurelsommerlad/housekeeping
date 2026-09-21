@@ -504,7 +504,9 @@ export function useHousekeepingApp() {
     try {
       const user = stateRef.current.user;
       const activeProperty = stateRef.current.activeProperty;
-      await setUnitCondition(room.unitId, 'CleanToBeInspected');
+      // Keine Inspektion in diesem Betrieb - direkt auf "Clean" statt auf den Zwischenzustand
+      // "CleanToBeInspected" (siehe tasks.ts#requiresInspection).
+      await setUnitCondition(room.unitId, 'Clean');
       await completionsApi.add({
         property: activeProperty || '', room: room.number,
         housekeeperId: room.assignment ? room.assignment.housekeeperId : user?.id || '',
@@ -719,8 +721,10 @@ export function useHousekeepingApp() {
     try {
       const user = stateRef.current.user;
       // Punkt 23: unser Task-Status (unten) und der Apaleo Unit Condition Aufruf sind bewusst
-      // getrennt - dieselbe, unveraenderte Apaleo-Aktion wie zuvor bei finishClean().
-      await setUnitCondition(task.unitId, 'CleanToBeInspected');
+      // getrennt. Keine Inspektion in diesem Betrieb (siehe requiresInspection()) - eine
+      // abgeschlossene Reinigung setzt die Unit direkt auf "Clean" statt auf den
+      // Zwischenzustand "CleanToBeInspected".
+      await setUnitCondition(task.unitId, 'Clean');
       await completionsApi.add({
         property: task.propertyCode, room: task.unitName,
         housekeeperId: task.assignedUserId || user?.id || '',
