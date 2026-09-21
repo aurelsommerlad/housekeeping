@@ -336,7 +336,33 @@ import type {
 // Reinigung"/"1 Aufgabe" statt zuvor faelschlich "1 Reinigungen"/"1 Aufgaben". Filter,
 // Tagesnavigation, Task Cards, Detailansicht, Notice/Zuweisung/Timer/Workflows, INTERCLEAN und
 // Apaleo-Integration unveraendert.
-export const APP_VERSION = '2.17.2';
+//
+// 2.18.0 - Desktop-Optimierung des Housekeeping-Dashboards fuer Admin/grosse Bildschirme, rein
+// responsives Layout-Refactoring ab dem Breakpoint `xl:` (Tailwind-Standard, >= 1280px) -
+// unterhalb von 1280px bleibt jede bestehende Klasse unveraendert (mechanisch geprueft: an jeder
+// geaenderten Stelle wurden ausschliesslich neue, mit `xl:` praefixierte Utility-Klassen an die
+// bestehende Klassenliste ANGEHAENGT, nie eine bestehende Klasse entfernt/ersetzt), Mobile-
+// Struktur/Reihenfolge/Task-Ermittlung/Business-Logik unangetastet. (1) Header und TasksScreen
+// erhalten ab xl einen zentrierten Content-Container (max-width 1560px) statt endloser
+// Vollbreite auf sehr grossen Monitoren. (2) Header: aus dem bisherigen Such-Icon wird ab xl ein
+// kompaktes, wie ein Suchfeld aussehendes Element (oeffnet weiterhin dieselbe, bestehende
+// ReservationSearchSheet - keine zweite Suchimplementierung), das mobile Icon bleibt darunter
+// unveraendert sichtbar. (3) Standortfilter, Tagesnavigation, Kennzahlenzeile und Admin-Aktionen
+// (bisher vier separate, volle Breite nutzende Mobile-Bloecke) werden ab xl zu einer kompakten
+// Desktop-Steuerungszeile zusammengefasst (Standort-Select ~260px, Tagesnavigation als
+// ~560px breiter Segmented Control, Kennzahlen kompakt/inline rechts, Admin-Aktionen als eigene
+// rechtsbuendige Zeile darunter) - ausschliesslich per CSS Flex/`order`, keine Komponenten-
+// Duplizierung. (4) Team-Auslastung ist ab xl ein kompaktes, inhaltsbreites Element statt eines
+// fast bildschirmbreiten Balkens. (5) Reinigungen-/Aufgaben-/Fertig-Kartenraster nutzen ab xl
+// eine minmax(340px,1fr)-Grid-Regel statt fester 3-Spalten, damit Cards auf sehr breiten
+// Monitoren nicht unnoetig auseinandergezogen werden (Task Card selbst unveraendert). Punkt
+// "Gruppierung nach Mitarbeiter auf Desktop" wurde geprueft, aber NICHT umgesetzt: eine echte,
+// responsive Gruppierung (flache Liste auf Mobile, gruppiert nach Zuweisung auf Desktop) liesse
+// sich mit der bestehenden Datenstruktur zwar fachlich berechnen, erfordert aber entweder eine
+// zusaetzliche, per CSS ein-/ausgeblendete zweite Rendering-Variante der Reinigungskarten oder
+// clientseitige Breakpoint-Erkennung per JS - beides ein groesserer struktureller Eingriff, der
+// laut Vorgabe zunaechst nur berichtet, nicht implementiert werden sollte.
+export const APP_VERSION = '2.18.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

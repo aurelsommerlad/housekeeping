@@ -46,12 +46,12 @@ function countLabel(t: (key: I18nKey) => string, n: number, oneKey: I18nKey, man
  * entlehnten Akzent (nie eine farbige Flaeche hinter der ganzen Kennzahl). */
 function SummaryStat({ value, label, icon: Icon, toneClass }: { value: number; label: string; icon: typeof IconCheck; toneClass: string }) {
   return (
-    <div className="flex flex-col items-center gap-0.5">
+    <div className="flex flex-col items-center gap-0.5 xl:flex-row xl:items-baseline xl:gap-1.5">
       <span className="flex items-center gap-1.5">
         <Icon width={16} height={16} className={cn('shrink-0', toneClass)} aria-hidden="true" />
-        <span className="text-[19px] font-semibold tabular-nums text-ink">{value}</span>
+        <span className="text-[19px] font-semibold tabular-nums text-ink xl:text-[15px]">{value}</span>
       </span>
-      <span className="text-[11px] text-muted">{label}</span>
+      <span className="text-[11px] text-muted xl:text-[13px]">{label}</span>
     </div>
   );
 }
@@ -67,7 +67,10 @@ function TaskGroup({ text, icon: Icon, toneClass, children }: { text: string; ic
         {Icon ? <Icon width={14} height={14} className={cn('shrink-0', toneClass)} aria-hidden="true" /> : null}
         {text}
       </p>
-      <div className="grid grid-cols-1 gap-3 px-4 pt-1 sm:grid-cols-2 lg:grid-cols-3">{children}</div>
+      {/* Punkt 8 (Desktop): ab xl eine minmax()-basierte Grid-Regel statt fester 3-Spalten, damit
+       * Cards auf sehr breiten Monitoren nicht unnoetig auseinandergezogen werden (Karte selbst
+       * unveraendert) - unterhalb xl bleiben sm:/lg:grid-cols-* exakt wie bisher wirksam. */}
+      <div className="grid grid-cols-1 gap-3 px-4 pt-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]">{children}</div>
     </div>
   );
 }
@@ -162,11 +165,17 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const selectClass = 'h-9 w-full appearance-none rounded-full border border-line bg-warm-white pl-3.5 pr-8 text-[13px] font-medium text-ink';
 
   return (
-    <div className="pb-6">
+    <div className="pb-6 xl:mx-auto xl:max-w-[1560px]">
+      {/* Desktop-Optimierung (>= 1280px, siehe StaffHeader.tsx fuer denselben Breakpoint/dieselbe
+       * Max-Breite): rein struktureller Wrapper ohne eigene Mobile-Klassen - fasst Standortfilter/
+       * Tagesnavigation/Kennzahlen/Adminaktionen zu EINER kompakten Desktop-Steuerungszeile
+       * zusammen (Punkt 4-6), unterhalb von xl bleibt jeder der vier Bloecke exakt in seiner
+       * bisherigen Position/Groesse (kein `xl:`-Praefix = kein Effekt unterhalb 1280px). */}
+      <div className="xl:flex xl:flex-wrap xl:items-center xl:pt-2">
       {showScopeRow ? (
-        <div className="flex gap-2 px-4 py-2.5">
+        <div className="flex gap-2 px-4 py-2.5 xl:order-1 xl:flex-none">
           {!isManagerHere ? (
-            <div className="relative min-w-0 flex-1">
+            <div className="relative min-w-0 flex-1 xl:w-[260px] xl:flex-none">
               <select
                 value={state.myTasksOnly ? 'mine' : 'all'}
                 onChange={(e) => (e.target.value === 'mine' ? selectMine() : selectAllTasks())}
@@ -179,7 +188,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             </div>
           ) : null}
           {showPropertyChips ? (
-            <div className="relative min-w-0 flex-1">
+            <div className="relative min-w-0 flex-1 xl:w-[260px] xl:flex-none">
               <select
                 value={state.propertyScope}
                 onChange={(e) => selectScope(e.target.value)}
@@ -199,7 +208,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       {/* Punkt 5: Tagesnavigation bleibt, aber kompakter und als Grid gleichmaessig ueber die
        * Breite verteilt statt einer potenziell scrollenden Flex-Zeile - passt auf Mobile in eine
        * Zeile. */}
-      <div className="grid grid-cols-4 gap-1.5 px-4 pt-1">
+      <div className="grid grid-cols-4 gap-1.5 px-4 pt-1 xl:order-2 xl:w-[560px] xl:flex-none">
         {state.planningDays.map((d, i) => (
           <button
             key={d}
@@ -221,9 +230,11 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       {/* Punkt 6/7/8: genau drei Kennzahlen (Reinigungen/Aufgaben/Fertig) statt der frueheren
        * Statuszeile - beziehen sich auf `visible` (bereits nach Tag/Ansicht/Standort gefiltert,
        * siehe tasksForDay), Icon direkt neben der Zahl, dezente, dem Task-Typsystem entlehnte
-       * Farbakzente (nie eine farbige Flaeche hinter der ganzen Kennzahl). */}
+       * Farbakzente (nie eine farbige Flaeche hinter der ganzen Kennzahl). Auf Desktop (Punkt 5)
+       * rutscht dieselbe Kennzahlenzeile kompakt/inline an den rechten Rand derselben Steuerungs-
+       * zeile (xl:ml-auto), siehe SummaryStat fuer die dortige Inline-Darstellung. */}
       {visible.length > 0 ? (
-        <div className="grid grid-cols-3 gap-2 px-4 pt-3">
+        <div className="grid grid-cols-3 gap-2 px-4 pt-3 xl:order-3 xl:ml-auto xl:flex xl:w-auto xl:flex-none xl:gap-5">
           <SummaryStat
             value={cleaningTasks.length}
             label={t(cleaningTasks.length === 1 ? 'noun_cleaning_one' : 'noun_cleaning_many')}
@@ -244,9 +255,10 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
        * dauerhaft sichtbarer Einzelbuttons - fuer normale Housekeeper vollstaendig ausgeblendet.
        * "+ Aufgabe erstellen" (Punkt "Admin kann Aufgaben erstellen") ist bewusst NUR fuer Admin
        * sichtbar (serverseitig ebenso durchgesetzt, siehe api/manual-tasks.js) - Standort-
-       * verantwortliche/Team-Leads sehen weiterhin nur die bestehenden Aktionen. */}
+       * verantwortliche/Team-Leads sehen weiterhin nur die bestehenden Aktionen. Auf Desktop
+       * (Punkt 6) eigene, rechtsbuendige Zeile unter der Steuerungszeile (xl:basis-full). */}
       {isManagerHere ? (
-        <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-3 xl:order-4 xl:basis-full xl:justify-end">
           <Button variant={state.taskMultiSelect ? 'primary' : 'secondary'} size="sm" onClick={toggleTaskMultiSelect}>
             <IconCheckSquare width={14} height={14} aria-hidden="true" />
             {state.taskMultiSelect ? t('multiselect_on') : t('select_tasks_action')}
@@ -267,11 +279,13 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
           </button>
         </div>
       ) : null}
+      </div>
 
       {/* Punkt 11: eingeklappt per Default (kompakte Ein-Zeilen-Zusammenfassung), fuer normale
-       * Housekeeper (isManagerHere=false) komplett ausgeblendet. */}
+       * Housekeeper (isManagerHere=false) komplett ausgeblendet. Punkt 7 (Desktop): auf 1280px+
+       * kein fast bildschirmbreiter Balken mehr, sondern ein kompaktes, inhaltsbreites Element. */}
       {isManagerHere && capacity.length > 0 ? (
-        <div className="mx-4 mt-3 rounded-card-lg border border-line bg-warm-white">
+        <div className="mx-4 mt-3 rounded-card-lg border border-line bg-warm-white xl:inline-block xl:w-auto xl:min-w-[280px] xl:max-w-[520px]">
           <button
             type="button"
             onClick={() => setTeamOpen((v) => !v)}
@@ -322,7 +336,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       ) : state.taskMultiSelect ? (
         // Mehrfachauswahl (Bulk-Zuweisen) bleibt bewusst eine flache Liste ueber ALLE sichtbaren
         // Aufgaben statt der neuen Abschnitte - Punkt 12 "Assignment-Logik nicht veraendern".
-        <div className="grid grid-cols-1 gap-3 px-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 px-4 pt-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]">
           {visible.map((task) => (
             <TaskCard
               key={task.id}
@@ -402,7 +416,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                 <IconChevronDown width={14} height={14} className={cn('shrink-0 text-muted transition-transform', doneOpen && 'rotate-180')} aria-hidden="true" />
               </button>
               {doneOpen ? (
-                <div className="grid grid-cols-1 gap-3 px-4 pt-2 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 px-4 pt-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]">
                   {doneTasks.map((task) => (
                     <TaskCard
                       key={task.id}
