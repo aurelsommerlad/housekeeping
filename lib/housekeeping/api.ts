@@ -11,10 +11,11 @@
  * lib/housekeeping/auth.ts.
  */
 import type {
-  ApaleoReservation, ApaleoUnit, AssignmentsState, DoubleupsState, Completion, BreakEntry, HousekeepingIncident,
-  HousekeepingTeam, NfcTagStatusesState, Property, ReservationSearchResult, ReservationsState, StaffUser,
-  TaskAssignmentsState, TaskNotice, TaskNoticeAck, TaskNoticeAcksState, TaskNoticesState, TaskStartSource,
-  TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState, TeamPropertyDefaultsState,
+  ApaleoReservation, ApaleoUnit, AssignmentsState, DoubleupsState, Completion, BreakEntry, ConsumableItem,
+  ConsumableReport, HousekeepingIncident, HousekeepingTeam, LinenItem, NfcTagStatusesState, Property,
+  ReservationSearchResult, ReservationsState, StaffUser, TaskAssignmentsState, TaskNotice, TaskNoticeAck,
+  TaskNoticeAcksState, TaskNoticesState, TaskStartSource, TaskTeamOverridesState, TaskTimeOverride,
+  TaskTimeOverridesState, TeamPropertyDefaultsState,
 } from './types';
 
 // MINOR-Bump (2.5.0 -> 2.6.0): TaskCard-Redesign - klare Informationshierarchie (Apartment+Standort,
@@ -166,7 +167,38 @@ import type {
 // ueber die Einstellungen erreichbar (kein fuenfter gleichwertiger Bottom-Nav-Punkt). Nebenbei
 // behoben: ein Team Lead (kein Admin) konnte den SettingsScreen zuvor gar nicht erreichen
 // (SettingsSheet/app/page.tsx pruefte hart auf role==='admin').
-export const APP_VERSION = '2.13.0';
+// MINOR-Bump (2.13.0 -> 2.14.0): zwei bewusst getrennte neue Funktionen fuer Waesche/Bettsachen
+// einerseits und Verbrauchsmaterial andererseits - nie vermischt, weder in der UI noch im
+// Datenmodell. (1) "Reinigung abschliessen" oeffnet jetzt zwingend zuerst "Waescheverbrauch
+// erfassen" (LinenCompletionSheet.tsx): pro Property administrierbare Waeschepositionen
+// (housekeeping:linen_items, api/_linen.js/api/linen-items.js) mit optionaler, bewusst einfacher
+// Schaetzregel (none/perGuest/perAdult/fixed, siehe lib/housekeeping/linen.ts - ausdruecklich OHNE
+// Bettenzahl/Apartmenttyp, da dafuer keine verlaessliche Datenquelle existiert). Der Schaetzwert
+// ("Geschaetzt: n") wird nur dezent angezeigt und NIE automatisch in die Ist-Menge uebernommen
+// (QuantityStepper.tsx unterscheidet technisch zwischen null="noch nicht eingegeben" und 0="aktiv
+// als Null erfasst"). Die bestehende complete-Action in api/task-assignments.js wurde NICHT
+// dupliziert, sondern serverseitig um eine Vorab-Validierung erweitert: Task=completed ist jetzt
+// technisch nur erreichbar, wenn fuer jede aktuell aktive Waescheposition eine Ist-Menge vorliegt;
+// bei Ablehnung bleiben Status/Timer unveraendert (kein Teil-Fortschritt). Bei Erfolg wird
+// zusaetzlich ein unveraenderlicher CleaningCompletionReport-Snapshot gespeichert (u.a. itemName/
+// unit zum jeweiligen Zeitpunkt, damit spaetere Auswertungen auch nach Umbenennung eines Artikels
+// nachvollziehbar bleiben - eine Geschaetzt/Tatsaechlich-Auswertung ist bewusst noch nicht gebaut).
+// (2) Neue, komplett eigenstaendige Funktion "Verbrauch melden" (ReportConsumableSheet.tsx): rein
+// standortbezogen, OHNE Apartment-/Reinigungsbezug (kein unitId/taskId im ConsumableReport) - fuer
+// klassisches Verbrauchsmaterial (Toilettenpapier, Kaffeekapseln, etc.), ebenfalls pro Property
+// administrierbar (housekeeping:consumable_items, api/_consumables.js/api/consumables.js). Hat ein
+// Benutzer nur Zugriff auf einen Standort, wird dieser automatisch vorausgewaehlt; bei mehreren
+// muss aktiv ausgewaehlt werden. Version 1 bewusst ohne Bestandsfuehrung/Schwellenwerte - reine
+// Protokollierung (wer/welches Team/wann/welcher Standort/welche Menge). Beide neuen Meldewege
+// loesen ausdruecklich KEINE Slack-Nachricht aus (Slack bleibt "Vorfall melden" vorbehalten).
+// Navigation: um nicht weiter Bottom-Nav-Punkte anzuhaeufen, wurden "Vorfall melden" und
+// "Verbrauch melden" fuer normale Housekeeper unter einem gemeinsamen "Melden"-Sammelpunkt
+// (ReportMenuSheet.tsx) zusammengefasst statt als zwei gleichrangige Nav-Buttons. Admin-Verwaltung
+// beider neuer Kataloge teilt sich eine gemeinsame UI (ItemCatalogSettingsScreen.tsx/
+// ItemFormSheet.tsx) unter den neuen Einstellungen-Punkten "Waesche & Bettsachen"/
+// "Verbrauchsmaterial"; wie bei allen bisherigen Katalogen gilt: kein Hard-Delete, nur
+// Deaktivieren (active=false), damit historische Reports verstaendlich bleiben.
+export const APP_VERSION = '2.14.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -517,8 +549,8 @@ export const taskAssignmentsApi = {
   startTimer: (taskId: string, startSource?: TaskStartSource) =>
     backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'startTimer', taskId, startSource }),
   stopTimer: (taskId: string) => backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'stopTimer', taskId }),
-  complete: (taskId: string, requiresInspectionFlag: boolean) =>
-    backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'complete', taskId, requiresInspection: requiresInspectionFlag }),
+  complete: (taskId: string, requiresInspectionFlag: boolean, linenItems?: { itemId: string; estimatedQuantity: number | null; actualQuantity: number }[]) =>
+    backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'complete', taskId, requiresInspection: requiresInspectionFlag, linenItems }),
   completeInspection: (taskId: string) =>
     backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'completeInspection', taskId }),
 };
@@ -650,4 +682,35 @@ export interface ReportIncidentInput {
 export const incidentsApi = {
   report: (input: ReportIncidentInput) =>
     backendPost<{ incident: HousekeepingIncident; slackDelivered: boolean }>('incidents', input),
+};
+
+/** Waesche & Bettsachen (Briefing "Waescheverbrauch erfassen") - Artikelliste lesen darf jede
+ * angemeldete Person, die schreibenden Aktionen sind serverseitig admin-only (siehe
+ * api/linen-items.js). Der eigentliche Abschluss-Report entsteht NICHT hier separat, sondern
+ * ausschliesslich ueber taskAssignmentsApi.complete() (linenItems-Parameter oben) - keine zweite
+ * parallele Abschluss-Route. */
+export async function loadLinenItems(): Promise<LinenItem[]> {
+  const data = await backendGet<{ items?: LinenItem[] }>('linen-items');
+  return data.items || [];
+}
+
+export const linenItemsApi = {
+  saveItem: (item: Partial<LinenItem> & { name: string; unit: string }) =>
+    backendPost<{ items: LinenItem[]; item: LinenItem }>('linen-items', { action: 'setItem', item }),
+  reorder: (orderedIds: string[]) => backendPost<{ items: LinenItem[] }>('linen-items', { action: 'reorderItems', orderedIds }),
+};
+
+/** Verbrauchsmaterial (Briefing "Verbrauch melden") - komplett getrennt von Waesche/Bettsachen
+ * (eigene Liste, eigener Report-Typ, siehe api/consumables.js). */
+export async function loadConsumableItems(): Promise<ConsumableItem[]> {
+  const data = await backendGet<{ items?: ConsumableItem[] }>('consumables');
+  return data.items || [];
+}
+
+export const consumablesApi = {
+  saveItem: (item: Partial<ConsumableItem> & { name: string; unit: string }) =>
+    backendPost<{ items: ConsumableItem[]; item: ConsumableItem }>('consumables', { action: 'setItem', item }),
+  reorder: (orderedIds: string[]) => backendPost<{ items: ConsumableItem[] }>('consumables', { action: 'reorderItems', orderedIds }),
+  report: (propertyCode: string, items: { itemId: string; quantity: number }[]) =>
+    backendPost<{ report: ConsumableReport }>('consumables', { action: 'report', propertyCode, items }),
 };

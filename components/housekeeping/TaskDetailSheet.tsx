@@ -242,14 +242,17 @@ function CleaningAssignmentSection({
 
 /** Primaeraktion (Punkt "Primary Action") - EIN breiter, klar erkennbarer Button je Status statt
  * eines separaten Elapsed-Zeit-Blocks. Nutzt ausschliesslich die bereits vorhandenen Timer-/
- * Status-Funktionen (startTaskTimer/pauseTaskTimer/finishTask/claimTask/releaseTask/
- * completeTaskInspection) - kein zweiter Mechanismus. `canAct` = Admin/Standortverantwortlicher
+ * Status-Funktionen (startTaskTimer/pauseTaskTimer/claimTask/releaseTask/completeTaskInspection) -
+ * kein zweiter Mechanismus. Der "in_progress"-Button oeffnet ueber openLinenCompletion() zunaechst
+ * das verpflichtende Waescheformular (LinenCompletionSheet.tsx) statt direkt finishTask()
+ * aufzurufen - ist fuer das Property kein Waescheartikel konfiguriert, verhaelt sich das exakt wie
+ * zuvor (siehe useHousekeepingApp.ts#openLinenCompletion). `canAct` = Admin/Standortverantwortlicher
  * oder eigene Zuweisung (identisch zur bereits serverseitig erlaubten Selbstbedienungs-Regel fuer
  * startTimer/stopTimer/release, siehe api/task-assignments.js) - vorher konnten Admin/
  * Standortverantwortliche den Timer eines Tasks ueberhaupt nicht ueber die UI bedienen, obwohl der
  * Server es schon erlaubte. */
 function PrimaryAction({ app, task, isManager, mine }: { app: HousekeepingApp; task: ResolvedTask; isManager: boolean; mine: boolean }) {
-  const { t, claimTask, releaseTask, startTaskTimer, pauseTaskTimer, finishTask, completeTaskInspection, noticeForTask, state } = app;
+  const { t, claimTask, releaseTask, startTaskTimer, pauseTaskTimer, openLinenCompletion, completeTaskInspection, noticeForTask, state } = app;
   const canAct = isManager || mine;
   const notice = noticeForTask(task.id);
   const currentUserId = state.user?.id || null;
@@ -308,7 +311,7 @@ function PrimaryAction({ app, task, isManager, mine }: { app: HousekeepingApp; t
         <Button variant="secondary" className="w-full" onClick={() => pauseTaskTimer(task.id)}>
           {t('pause_clean')}
         </Button>
-        <Button variant="primary" className="w-full" onClick={() => finishTask(task)}>
+        <Button variant="primary" className="w-full" onClick={() => openLinenCompletion(task)}>
           {t('finish_clean')}
         </Button>
       </div>

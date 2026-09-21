@@ -12,9 +12,12 @@
 const { getRedis, parseJSON, migrateLegacyKey } = require('./_redis');
 const { requireSession } = require('./_auth');
 const { getUserRawById } = require('./_users');
-const { hasPropertyAccess, isPropertyManager, propertyCodeFromTaskId, dateFromTaskId } = require('./_permissions');
+const {
+  hasPropertyAccess, isPropertyManager, propertyCodeFromTaskId, dateFromTaskId, unitIdFromTaskId, reservationIdFromTaskId,
+} = require('./_permissions');
 const { isAcknowledged } = require('./_task-notices');
 const { resolveAssignedTeamId } = require('./_teams');
+const { getActiveItemsForProperty: getActiveLinenItemsForProperty, saveCompletionReport: saveLinenCompletionReport } = require('./_linen');
 
 // Housekeeping Teams (Reinigungsfirmen): darf `user` einen Task claimen/starten, der (laut
 // resolveAssignedTeamId) einem Team zugeordnet ist? Admin und Standortverantwortliche des
@@ -270,12 +273,40 @@ module.exports = async (req, res) => {
     } else if (action === 'complete') {
       // Punkt 23: unser Workflow-Status (hier) und der Apaleo Unit Condition Aufruf (separat vom
       // Client via dem bestehenden, unveraenderten setUnitCondition()) sind bewusst getrennt.
-      const { taskId, requiresInspection: needsInspection } = req.body;
+      //
+      // Waescheverbrauch (Briefing "Waescheverbrauch erfassen"): erweitert bewusst DIESE bestehende
+      // Aktion statt eines zweiten, parallelen Abschlussmechanismus. Sind fuer dieses Property
+      // aktive Waescheartikel konfiguriert, MUSS `linenItems` fuer jeden davon einen gueltigen
+      // `actualQuantity` enthalten (0 ist gueltig, fehlend/null/undefined nicht) - sonst wird die
+      // gesamte Aktion abgelehnt, BEVOR irgendetwas an Timer/Status veraendert wird (Punkt 9: kein
+      // "completed" ohne vollstaendigen Report, und ein abgebrochenes Formular darf den Timer nicht
+      // schon beendet haben). Properties ohne konfigurierte Artikel verhalten sich unveraendert wie
+      // zuvor (migration-light, kein Formular noetig).
+      const { taskId, requiresInspection: needsInspection, linenItems: submittedLinenItems } = req.body;
       if (!taskId) { res.status(400).json({ error: 'taskId ist erforderlich.' }); return; }
       if (!(await canTouchOwnAssignment(redis, user, taskId))) {
         res.status(403).json({ error: 'Diese Aufgabe gehört einer anderen Person.' });
         return;
       }
+      const propertyCode = propertyCodeFromTaskId(taskId);
+      const requiredLinenItems = await getActiveLinenItemsForProperty(redis, propertyCode);
+      const submitted = Array.isArray(submittedLinenItems) ? submittedLinenItems : [];
+      const submittedById = new Map(submitted.map((li) => [li.itemId, li]));
+      const linenReportLines = [];
+      for (const item of requiredLinenItems) {
+        const entry = submittedById.get(item.id);
+        const actual = entry ? entry.actualQuantity : undefined;
+        if (actual === null || actual === undefined || typeof actual !== 'number' || !Number.isFinite(actual) || actual < 0) {
+          res.status(400).json({ error: 'Bitte den tatsächlichen Wäscheverbrauch vollständig erfassen.' });
+          return;
+        }
+        linenReportLines.push({
+          itemId: item.id, itemName: item.name, unit: item.unit,
+          estimatedQuantity: entry && typeof entry.estimatedQuantity === 'number' ? entry.estimatedQuantity : null,
+          actualQuantity: actual,
+        });
+      }
+
       const existingRaw = await redis.hGet(HASH_KEY, taskId);
       const existing = existingRaw
         ? parseJSON(existingRaw, {})
@@ -288,6 +319,15 @@ module.exports = async (req, res) => {
       existing.completedAt = Date.now();
       appendHistory(existing, 'completed', user);
       await redis.hSet(HASH_KEY, taskId, JSON.stringify(existing));
+
+      if (linenReportLines.length > 0) {
+        const assignedTeamId = await resolveAssignedTeamId(redis, taskId);
+        await saveLinenCompletionReport(redis, {
+          taskId, propertyCode, unitId: unitIdFromTaskId(taskId), reservationId: reservationIdFromTaskId(taskId),
+          completedByUserId: user.id, completedByUserName: user.name || user.username,
+          housekeepingTeamId: assignedTeamId, linenItems: linenReportLines,
+        });
+      }
     } else if (action === 'completeInspection') {
       const { taskId } = req.body;
       if (!taskId) { res.status(400).json({ error: 'taskId ist erforderlich.' }); return; }

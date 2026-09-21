@@ -9,6 +9,7 @@ import { NfcSettingsScreen } from './NfcSettingsScreen';
 import { StandardTimesScreen } from './StandardTimesScreen';
 import { LanguagePicker } from './LanguagePicker';
 import { HousekeepingTeamsScreen } from './HousekeepingTeamsScreen';
+import { ItemCatalogSettingsScreen } from './ItemCatalogSettingsScreen';
 import { Card } from '@/components/ui/Card';
 import { IconChevronDown } from '@/components/ui/icons';
 
@@ -16,7 +17,7 @@ export interface SettingsScreenProps {
   app: HousekeepingApp;
 }
 
-type SettingsView = 'root' | 'rules' | 'times' | 'nfc' | 'language' | 'teams';
+type SettingsView = 'root' | 'rules' | 'times' | 'nfc' | 'language' | 'teams' | 'linen' | 'consumables';
 
 interface SettingsRowProps {
   label: string;
@@ -110,6 +111,24 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
     );
   }
 
+  if (view === 'linen') {
+    return (
+      <div className="flex flex-col gap-1">
+        <BackBar label={t('settings_back')} onBack={() => setView('root')} />
+        <ItemCatalogSettingsScreen app={app} kind="linen" />
+      </div>
+    );
+  }
+
+  if (view === 'consumables') {
+    return (
+      <div className="flex flex-col gap-1">
+        <BackBar label={t('settings_back')} onBack={() => setView('root')} />
+        <ItemCatalogSettingsScreen app={app} kind="consumable" />
+      </div>
+    );
+  }
+
   if (view === 'language') {
     return (
       <div className="flex flex-col gap-4">
@@ -138,6 +157,8 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
           <SectionLabel>{t('settings_section_housekeeping')}</SectionLabel>
           <SettingsRow label={t('nav_rules')} onClick={() => setView('rules')} />
           <SettingsRow label={t('standard_times_title')} onClick={() => setView('times')} />
+          <SettingsRow label={t('linen_settings_title')} onClick={() => setView('linen')} />
+          <SettingsRow label={t('consumable_settings_title')} onClick={() => setView('consumables')} />
         </div>
       ) : null}
 
@@ -160,6 +181,9 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
          * bleibt aber die sekundaere Aktion direkt in der Task-Detailansicht. */}
         {elevated ? (
           <SettingsRow label={t('report_incident_title')} onClick={() => app.openIncidentReport()} />
+        ) : null}
+        {elevated ? (
+          <SettingsRow label={t('report_consumable_title')} onClick={() => app.openConsumableReport()} />
         ) : null}
       </div>
 

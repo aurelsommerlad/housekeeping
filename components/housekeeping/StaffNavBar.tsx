@@ -5,18 +5,20 @@ import type { HousekeepingApp, NavId } from '@/lib/housekeeping/useHousekeepingA
 import type { I18nKey } from '@/lib/housekeeping/i18n';
 import { cn } from '@/lib/cn';
 
-/** 'incident' ist bewusst KEIN eigener NavId/Screen (siehe useHousekeepingApp.ts#openIncidentReport)
- * - ein Klick oeffnet direkt das Formular als Sheet ueber dem aktuell sichtbaren Screen, statt die
- * Tab-Auswahl zu wechseln (analog zu anderen Sheets wie TaskDetailSheet). 'nonElevated' zeigt den
- * Punkt deshalb nur denjenigen, die "Apartments" NICHT sowieso schon haben (siehe 'elevated'
- * unten) - so wandert "Vorfall melden" fuer normale Housekeeper exakt in die frei gewordene
+/** 'melden' ist bewusst KEIN eigener NavId/Screen (siehe useHousekeepingApp.ts#openReportMenu) -
+ * ein Klick oeffnet ein kleines Auswahl-Sheet (ReportMenuSheet.tsx: "Vorfall melden"/"Verbrauch
+ * melden") ueber dem aktuell sichtbaren Screen, statt die Tab-Auswahl zu wechseln (analog zu
+ * anderen Sheets wie TaskDetailSheet). Punkt 14 "nicht einfach weitere Bottom-Nav-Punkte
+ * hinzufuegen": beide Melde-Funktionen teilen sich diesen EINEN Punkt statt je einem eigenen.
+ * 'nonElevated' zeigt ihn nur denjenigen, die "Apartments" NICHT sowieso schon haben (siehe
+ * 'elevated' unten) - so wandert er fuer normale Housekeeper exakt in die frei gewordene
  * Apartments-Position, ohne fuer Admin/Standortverantwortliche/Lead einen fuenften, gleichwertigen
- * Bottom-Nav-Punkt zu erzeugen (die erreichen die Funktion stattdessen ueber Einstellungen oder
- * direkt aus der Task-Detailansicht heraus, siehe TaskDetailSheet.tsx). */
-const ITEMS: { id: NavId | 'incident'; icon: keyof typeof NAV_ICONS; labelKey: I18nKey; requires?: 'manager' | 'admin' | 'elevated' | 'nonElevated' }[] = [
+ * Bottom-Nav-Punkt zu erzeugen (die erreichen beide Funktionen stattdessen ueber Einstellungen
+ * oder - "Vorfall melden" - direkt aus der Task-Detailansicht heraus, siehe TaskDetailSheet.tsx). */
+const ITEMS: { id: NavId | 'melden'; icon: keyof typeof NAV_ICONS; labelKey: I18nKey; requires?: 'manager' | 'admin' | 'elevated' | 'nonElevated' }[] = [
   { id: 'tasks', icon: 'checklist', labelKey: 'nav_tasks' },
   { id: 'rooms', icon: 'bed', labelKey: 'nav_apartments', requires: 'elevated' },
-  { id: 'incident', icon: 'alert', labelKey: 'nav_incident', requires: 'nonElevated' },
+  { id: 'melden', icon: 'alert', labelKey: 'nav_report_menu', requires: 'nonElevated' },
   { id: 'stats', icon: 'chart', labelKey: 'nav_stats', requires: 'manager' },
   { id: 'team', icon: 'users', labelKey: 'nav_team', requires: 'admin' },
 ];
@@ -35,7 +37,7 @@ const ITEMS: { id: NavId | 'incident'; icon: keyof typeof NAV_ICONS; labelKey: I
  * server-seitig ueber role/properties/managedProperties abgesichert (siehe api/*.js).
  */
 export function StaffNavBar({ app }: { app: HousekeepingApp }) {
-  const { state, t, setActiveNav, openIncidentReport } = app;
+  const { state, t, setActiveNav, openReportMenu } = app;
   const isAdmin = state.user?.role === 'admin';
   const allowed = allowedProperties(state.user, state.properties.map((p) => p.code));
   const isManagerAnywhere = isAdmin || managedPropertyCodes(state.user, allowed).length > 0;
@@ -55,12 +57,12 @@ export function StaffNavBar({ app }: { app: HousekeepingApp }) {
     >
       {items.map((item) => {
         const Icon = NAV_ICONS[item.icon];
-        const active = item.id !== 'incident' && item.id === state.activeNav;
+        const active = item.id !== 'melden' && item.id === state.activeNav;
         return (
           <button
             key={item.id}
             type="button"
-            onClick={() => (item.id === 'incident' ? openIncidentReport() : setActiveNav(item.id))}
+            onClick={() => (item.id === 'melden' ? openReportMenu() : setActiveNav(item.id))}
             aria-current={active ? 'page' : undefined}
             className={cn(
               'flex min-h-11 flex-col items-center gap-1 pt-2.5 pb-1.5 text-[10.5px] font-medium transition-colors',

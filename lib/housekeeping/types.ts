@@ -523,3 +523,94 @@ export interface HousekeepingIncident {
   slackDeliveryStatus: SlackDeliveryStatus;
   slackError?: string | null;
 }
+
+/**
+ * Waeschverbrauch beim Reinigungsabschluss (Briefing "Waescheverbrauch erfassen") - bewusst
+ * GETRENNT von Verbrauchsmaterial (ConsumableItem unten): Waesche/Bettsachen sind an eine
+ * KONKRETE Reinigung/Apartment gebunden (Pflichtfeld beim Abschluss), Verbrauchsmaterial ist rein
+ * standortbezogen. Beide Konzepte duerfen sich laut Briefing nie vermischen.
+ *
+ * `estimationRule` ist absichtlich eine einfache, geschlossene Regelmenge (keine Verbrauchs-
+ * Engine) - siehe lib/housekeeping/linen.ts#estimateLinenQuantity. 'none' bzw. fehlende Daten
+ * fuehren zu "Geschaetzt: -", nie zu einem erfundenen Wert.
+ */
+export type LinenEstimationRule =
+  | { type: 'none' }
+  | { type: 'perGuest'; multiplier: number }
+  | { type: 'perAdult'; multiplier: number }
+  | { type: 'fixed'; quantity: number };
+
+export interface LinenItem {
+  id: string;
+  name: string;
+  unit: string;
+  active: boolean;
+  /** Bestimmt die Reihenfolge im Formular/in der Verwaltung - niedrigster Wert zuerst. */
+  sortOrder: number;
+  propertyIds: string[];
+  estimationRule?: LinenEstimationRule;
+}
+
+/** Verbrauchsmaterial (Briefing "Verbrauch melden") - KEIN estimationRule (dafuer gibt es beim
+ * standortbezogenen Verbrauch keine sinnvolle Gaeste-/Reservierungsbasis), sonst dieselbe Form
+ * wie LinenItem (eigene Liste, eigener Redis-Hash - siehe api/_consumables.js). */
+export interface ConsumableItem {
+  id: string;
+  name: string;
+  unit: string;
+  active: boolean;
+  sortOrder: number;
+  propertyIds: string[];
+}
+
+/** Eine Zeile im Completion Report - `itemName`/`unit` werden bewusst als Snapshot mitgespeichert
+ * (Briefing Punkt 8), damit ein spaeterer Bericht auch nach einer Umbenennung/Loeschung des
+ * Artikels noch verstaendlich bleibt. `actualQuantity` ist ausschliesslich `number` (nie null) -
+ * ein unvollstaendiger Report kann laut serverseitiger Validierung gar nicht erst entstehen. */
+export interface LinenReportLine {
+  itemId: string;
+  itemName: string;
+  unit: string;
+  estimatedQuantity: number | null;
+  actualQuantity: number;
+}
+
+/**
+ * Historischer Snapshot EINES Reinigungsabschlusses (Redis housekeeping:cleaning_completion_
+ * reports, Key = Report-Id) - wird ausschliesslich serverseitig UND ausschliesslich gemeinsam mit
+ * dem eigentlichen `status: 'completed'`-Uebergang erzeugt (siehe api/task-assignments.js#complete,
+ * "keinen zweiten parallelen Abschlussmechanismus"). `taskId` bleibt nach Ablauf des Heute+3-
+ * Fensters nicht mehr auflösbar - deshalb traegt dieser Datensatz propertyId/unitId/taskType
+ * bereits selbst, statt sie spaeter ueber die (dann verschwundene) Task nachzuschlagen.
+ */
+export interface CleaningCompletionReport {
+  id: string;
+  taskId: string;
+  propertyId: string;
+  unitId: string;
+  reservationId: string | null;
+  completedByUserId: string;
+  completedByUserName: string;
+  housekeepingTeamId: string | null;
+  completedAt: number;
+  linenItems: LinenReportLine[];
+}
+
+export interface ConsumableReportLine {
+  itemId: string;
+  itemName: string;
+  unit: string;
+  quantity: number;
+}
+
+/** Redis housekeeping:consumable_reports, Key = Report-Id - bewusst OHNE unitId/taskId (Briefing
+ * Punkt 13: Verbrauchsmaterial ist rein standortbezogen, nie apartment-/reinigungsbezogen). */
+export interface ConsumableReport {
+  id: string;
+  propertyId: string;
+  reportedByUserId: string;
+  reportedByUserName: string;
+  housekeepingTeamId: string | null;
+  createdAt: number;
+  items: ConsumableReportLine[];
+}

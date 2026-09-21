@@ -24,11 +24,11 @@ import type { Lang } from './i18n';
 import { translate } from './i18n';
 import { fetchMe, login as loginRequest, logout as logoutRequest } from './auth';
 import {
-  DOUBLEUP_TYPES, POLL_INTERVAL, assignmentsApi, breaksApi, completionsApi, doubleupsApi, getPropertyDisplayName,
-  housekeepingTeamsApi, incidentPhotosApi, incidentsApi, loadBackendState, loadHousekeepingTeams, loadNfcTagStatuses,
-  loadProperties, loadReservations, loadReservationsRangeForProperties, loadTaskAssignments, loadTaskNotices,
-  loadTaskTimeOverrides, loadUnits, loadUnitsForProperties, nfcApi, setUnitCondition, taskAssignmentsApi, taskNoticesApi,
-  taskTimeOverridesApi, usersApi,
+  DOUBLEUP_TYPES, POLL_INTERVAL, assignmentsApi, breaksApi, completionsApi, consumablesApi, doubleupsApi,
+  getPropertyDisplayName, housekeepingTeamsApi, incidentPhotosApi, incidentsApi, linenItemsApi, loadBackendState,
+  loadConsumableItems, loadHousekeepingTeams, loadLinenItems, loadNfcTagStatuses, loadProperties, loadReservations,
+  loadReservationsRangeForProperties, loadTaskAssignments, loadTaskNotices, loadTaskTimeOverrides, loadUnits,
+  loadUnitsForProperties, nfcApi, setUnitCondition, taskAssignmentsApi, taskNoticesApi, taskTimeOverridesApi, usersApi,
   type ReportIncidentInput,
 } from './api';
 import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './rooms';
@@ -38,10 +38,10 @@ import {
   type ResolvedTask, type TeamContext,
 } from './tasks';
 import type {
-  ApaleoReservation, ApaleoUnit, AssignmentsState, BreakEntry, CapacityEntry, Completion, DaySummary, DoubleupsState,
-  HousekeepingIncident, HousekeepingTeam, NfcTagStatusesState, Property, ReservationsState, Room, RoomFilter, StaffUser,
-  TaskAssignmentsState, TaskNotice, TaskNoticeAcksState, TaskNoticesState, TaskStartSource, TaskTeamOverridesState,
-  TaskTimeOverridesState, TeamCapacityEntry, TeamPropertyDefaultsState,
+  ApaleoReservation, ApaleoUnit, AssignmentsState, BreakEntry, CapacityEntry, Completion, ConsumableItem, DaySummary,
+  DoubleupsState, HousekeepingIncident, HousekeepingTeam, LinenItem, NfcTagStatusesState, Property, ReservationsState,
+  Room, RoomFilter, StaffUser, TaskAssignmentsState, TaskNotice, TaskNoticeAcksState, TaskNoticesState, TaskStartSource,
+  TaskTeamOverridesState, TaskTimeOverridesState, TeamCapacityEntry, TeamPropertyDefaultsState,
 } from './types';
 
 /** Key-Schema exakt wie api/_nfc.js#unitKey - EINZIGE Stelle im Client, die dieses Format kennt. */
@@ -126,6 +126,24 @@ interface AppState {
    * nochmals auswaehlen"). */
   incidentSheetOpen: boolean;
   incidentPresetTaskId: string | null;
+
+  /** "Melden"-Sammelpunkt (Briefing "Vorfall melden"/"Verbrauch melden" nicht als zwei eigene
+   * Bottom-Nav-Punkte) - oeffnet ein kleines Auswahl-Sheet, das seinerseits eines der beiden
+   * bestehenden Sheets oeffnet. */
+  reportMenuOpen: boolean;
+
+  /** Waesche & Bettsachen (Briefing "Waescheverbrauch erfassen") - je Standort konfigurierte
+   * Artikelliste, global geladen (wie teams) - siehe lib/housekeeping/linen.ts fuer die
+   * Schaetzregel-Anwendung. `linenCompletionTaskId` ersetzt den bisherigen SOFORTIGEN
+   * finishTask()-Aufruf: ist er gesetzt, zeigt die App das verpflichtende Formular VOR dem
+   * eigentlichen Abschluss (siehe openLinenCompletion in diesem Hook). */
+  linenItems: LinenItem[];
+  linenCompletionTaskId: string | null;
+
+  /** Verbrauchsmaterial (Briefing "Verbrauch melden") - bewusst getrennte Liste/Sheet, rein
+   * standortbezogen (kein Task-/Apartmentbezug, siehe ReportConsumableSheet.tsx). */
+  consumableItems: ConsumableItem[];
+  consumableReportOpen: boolean;
 }
 
 function readLang(): Lang {
@@ -186,6 +204,11 @@ function initialState(): AppState {
     detailTaskId: null,
     incidentSheetOpen: false,
     incidentPresetTaskId: null,
+    reportMenuOpen: false,
+    linenItems: [],
+    linenCompletionTaskId: null,
+    consumableItems: [],
+    consumableReportOpen: false,
   };
 }
 
@@ -265,27 +288,31 @@ export function useHousekeepingApp() {
     const today = todayISO();
     const days = [0, 1, 2, 3].map((n) => addDaysISO(today, n));
     if (scopeCodes.length === 0) {
-      const teamsData = await loadHousekeepingTeams();
+      const [teamsData, linenItems, consumableItems] = await Promise.all([loadHousekeepingTeams(), loadLinenItems(), loadConsumableItems()]);
       patch({
         planningUnits: [], planningReservations: [], taskAssignments: {}, taskNotices: {}, taskNoticeAcks: {},
         taskTimeOverrides: {}, planningDays: days,
         teams: teamsData.teams, teamPropertyDefaults: teamsData.propertyDefaults, taskTeamOverrides: teamsData.taskTeamOverrides,
+        linenItems, consumableItems,
       });
       return;
     }
-    const [units, reservations, taskAssignments, noticesData, taskTimeOverrides, teamsData] = await Promise.all([
+    const [units, reservations, taskAssignments, noticesData, taskTimeOverrides, teamsData, linenItems, consumableItems] = await Promise.all([
       loadUnitsForProperties(scopeCodes),
       loadReservationsRangeForProperties(scopeCodes, days[0], days[3]),
       loadTaskAssignments(),
       loadTaskNotices(),
       loadTaskTimeOverrides(),
       loadHousekeepingTeams(),
+      loadLinenItems(),
+      loadConsumableItems(),
       loadBackend(),
     ]);
     patch({
       planningUnits: units, planningReservations: reservations, taskAssignments,
       taskNotices: noticesData.notices, taskNoticeAcks: noticesData.acks, taskTimeOverrides, planningDays: days,
       teams: teamsData.teams, teamPropertyDefaults: teamsData.propertyDefaults, taskTeamOverrides: teamsData.taskTeamOverrides,
+      linenItems, consumableItems,
     });
   }, [loadBackend, patch]);
 
@@ -813,7 +840,17 @@ export function useHousekeepingApp() {
     });
   }, [patch, runAction]);
 
-  const finishTask = useCallback(async (task: ResolvedTask) => {
+  /**
+   * Reinigung abschliessen - erweitert um Waescheverbrauch (Briefing "Waescheverbrauch erfassen"):
+   * `linenItems` ist optional und leer, wenn fuer dieses Property keine Waescheartikel konfiguriert
+   * sind (siehe linenItemsForProperty/openLinenCompletion unten) - in dem Fall verhaelt sich diese
+   * Funktion exakt wie zuvor. Der eigentliche Abschluss bleibt EIN einziger Aufruf
+   * (taskAssignmentsApi.complete) - kein zweiter, paralleler Abschlussmechanismus.
+   */
+  const finishTask = useCallback(async (
+    task: ResolvedTask,
+    linenItems?: { itemId: string; estimatedQuantity: number | null; actualQuantity: number }[],
+  ) => {
     patch({ loading: true });
     try {
       const user = stateRef.current.user;
@@ -828,14 +865,87 @@ export function useHousekeepingApp() {
         housekeeperName: task.assignedUserName || user?.name || '',
         type: 'clean', durationSeconds: task.elapsedSeconds, finishedAt: Date.now(),
       });
-      const { taskAssignments } = await taskAssignmentsApi.complete(task.id, requiresInspection(task.propertyCode));
-      patch({ taskAssignments, detailTaskId: null });
+      const { taskAssignments } = await taskAssignmentsApi.complete(task.id, requiresInspection(task.propertyCode), linenItems);
+      patch({ taskAssignments, detailTaskId: null, linenCompletionTaskId: null });
       showToast(t('saved'));
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err));
     }
     patch({ loading: false });
   }, [patch, showToast, t]);
+
+  /** Aktive Waescheartikel fuer GENAU dieses Property, sortiert (siehe LinenItem#sortOrder). */
+  const linenItemsForProperty = useCallback((propertyCode: string): LinenItem[] => {
+    return state.linenItems.filter((item) => item.active && item.propertyIds.includes(propertyCode)).sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [state.linenItems]);
+
+  /** Punkt "Reinigung beenden": ist fuer dieses Property KEIN Waescheartikel konfiguriert, bleibt
+   * das Verhalten unveraendert (sofortiger Abschluss, migration-light) - sonst oeffnet sich das
+   * verpflichtende Formular (LinenCompletionSheet.tsx), das seinerseits finishTask() MIT den
+   * erfassten Mengen aufruft. Wird das Formular abgebrochen, bleibt der Timer unangetastet, da
+   * finishTask() in diesem Fall schlicht nie aufgerufen wird. */
+  const openLinenCompletion = useCallback((task: ResolvedTask) => {
+    if (linenItemsForProperty(task.propertyCode).length === 0) {
+      finishTask(task);
+      return;
+    }
+    patch({ linenCompletionTaskId: task.id });
+  }, [finishTask, linenItemsForProperty, patch]);
+
+  const closeLinenCompletion = useCallback(() => patch({ linenCompletionTaskId: null }), [patch]);
+
+  const saveLinenItem = useCallback(async (item: Partial<LinenItem> & { name: string; unit: string }) => {
+    await runAction(async () => {
+      const { items } = await linenItemsApi.saveItem(item);
+      patch({ linenItems: items });
+      showToast(t('saved'));
+    });
+  }, [patch, runAction, showToast, t]);
+
+  const reorderLinenItems = useCallback(async (orderedIds: string[]) => {
+    await runAction(async () => {
+      const { items } = await linenItemsApi.reorder(orderedIds);
+      patch({ linenItems: items });
+    });
+  }, [patch, runAction]);
+
+  // --- Verbrauchsmaterial (Briefing "Verbrauch melden") - bewusst getrennt von Waesche/
+  // Bettsachen: eigene Liste, eigenes Sheet, kein Task-/Apartmentbezug.
+  const consumableItemsForProperty = useCallback((propertyCode: string): ConsumableItem[] => {
+    return state.consumableItems.filter((item) => item.active && item.propertyIds.includes(propertyCode)).sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [state.consumableItems]);
+
+  const openConsumableReport = useCallback(() => patch({ consumableReportOpen: true, reportMenuOpen: false }), [patch]);
+  const closeConsumableReport = useCallback(() => patch({ consumableReportOpen: false }), [patch]);
+
+  const submitConsumableReport = useCallback(async (propertyCode: string, items: { itemId: string; quantity: number }[]) => {
+    try {
+      const { report } = await consumablesApi.report(propertyCode, items);
+      return report;
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err));
+      return null;
+    }
+  }, [showToast]);
+
+  const saveConsumableItem = useCallback(async (item: Partial<ConsumableItem> & { name: string; unit: string }) => {
+    await runAction(async () => {
+      const { items } = await consumablesApi.saveItem(item);
+      patch({ consumableItems: items });
+      showToast(t('saved'));
+    });
+  }, [patch, runAction, showToast, t]);
+
+  const reorderConsumableItems = useCallback(async (orderedIds: string[]) => {
+    await runAction(async () => {
+      const { items } = await consumablesApi.reorder(orderedIds);
+      patch({ consumableItems: items });
+    });
+  }, [patch, runAction]);
+
+  // --- "Melden"-Sammelpunkt (Punkt 14) - siehe StaffNavBar.tsx/ReportMenuSheet.tsx.
+  const openReportMenu = useCallback(() => patch({ reportMenuOpen: true }), [patch]);
+  const closeReportMenu = useCallback(() => patch({ reportMenuOpen: false }), [patch]);
 
   const completeTaskInspection = useCallback(async (task: ResolvedTask) => {
     patch({ loading: true });
@@ -1004,6 +1114,9 @@ export function useHousekeepingApp() {
     saveUser, deleteUser,
     saveTeam, setTeamPropertyDefault, setTaskTeam,
     openIncidentReport, closeIncidentReport, uploadIncidentPhoto, reportIncident,
+    linenItemsForProperty, openLinenCompletion, closeLinenCompletion, saveLinenItem, reorderLinenItems,
+    consumableItemsForProperty, openConsumableReport, closeConsumableReport, submitConsumableReport,
+    saveConsumableItem, reorderConsumableItems, openReportMenu, closeReportMenu,
 
     // Reinigungsplanung
     tasksForDay, tasksForDayAll, daySummaryFor, capacityFor, teamCapacityFor, workloadForPropertyDay, retryTasksLoad,

@@ -15,6 +15,9 @@ import { RoomDetailSheet } from '@/components/housekeeping/RoomDetailSheet';
 import { SettingsSheet } from '@/components/housekeeping/SettingsSheet';
 import { ReservationSearchSheet } from '@/components/housekeeping/ReservationSearchSheet';
 import { ReportIncidentSheet } from '@/components/housekeeping/ReportIncidentSheet';
+import { ReportConsumableSheet } from '@/components/housekeeping/ReportConsumableSheet';
+import { ReportMenuSheet } from '@/components/housekeeping/ReportMenuSheet';
+import { LinenCompletionSheet } from '@/components/housekeeping/LinenCompletionSheet';
 import { LoginScreen } from '@/components/housekeeping/LoginScreen';
 import { Toast } from '@/components/housekeeping/Toast';
 
@@ -84,6 +87,9 @@ export default function HousekeepingPage() {
       <SettingsSheet app={app} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ReservationSearchSheet app={app} open={searchOpen} onClose={() => setSearchOpen(false)} />
       {state.incidentSheetOpen ? <ReportIncidentSheet app={app} /> : null}
+      {state.consumableReportOpen ? <ReportConsumableSheet app={app} /> : null}
+      {state.linenCompletionTaskId ? <LinenCompletionSheet app={app} /> : null}
+      <ReportMenuSheet app={app} />
       <Toast message={state.toast} />
     </div>
   );
