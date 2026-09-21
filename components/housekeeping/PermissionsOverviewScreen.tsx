@@ -3,7 +3,7 @@
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { isAdmin, isTeamLead } from '@/lib/housekeeping/permissions';
 import { getPropertyDisplayName } from '@/lib/housekeeping/api';
-import { Card } from '@/components/ui/Card';
+import { AdminRow, AdminRowList, AdminSection } from './admin';
 
 export interface PermissionsOverviewScreenProps {
   app: HousekeepingApp;
@@ -14,7 +14,7 @@ export interface PermissionsOverviewScreenProps {
  * bereits geladenem state.users/state.properties/state.teams abgeleitet (kein neuer API-Aufruf,
  * keine neue Mutationslogik). Bearbeiten bleibt ausschliesslich ueber "Mitarbeiter" (TeamScreen.tsx
  * -> UserFormSheet.tsx) moeglich - hier gibt es bewusst keine zweite, konkurrierende Bearbeitungs-
- * oberflaeche fuer Rolle/managedProperties/teamRole (Punkt 10: keine neue Rollenlogik).
+ * oberflaeche fuer Rolle/managedProperties/teamRole (keine neue Rollenlogik).
  */
 export function PermissionsOverviewScreen({ app }: PermissionsOverviewScreenProps) {
   const { state, t } = app;
@@ -28,63 +28,47 @@ export function PermissionsOverviewScreen({ app }: PermissionsOverviewScreenProp
     .filter((entry) => entry.managers.length > 0);
 
   return (
-    <div className="flex flex-col gap-4 px-4 py-4">
-      <h2 className="italic text-lg text-[#17160f]">{t('permissions_overview_title')}</h2>
-      <p className="text-[13px] leading-relaxed text-muted">{t('permissions_overview_note')}</p>
+    <div className="flex flex-col gap-6">
+      <p className="text-sm text-muted">{t('permissions_overview_note')}</p>
 
-      <div className="flex flex-col gap-2">
-        <p className="px-1 text-[12px] font-medium uppercase tracking-wide text-muted">{t('permissions_admins_label')}</p>
-        <Card>
+      <AdminSection eyebrow={t('permissions_admins_label')}>
+        <AdminRowList>
           {admins.length === 0 ? (
-            <p className="text-[13px] text-muted">{t('permissions_none')}</p>
+            <AdminRow title={t('permissions_none')} />
           ) : (
-            <div className="flex flex-col gap-1.5">
-              {admins.map((u) => (
-                <p key={u.id} className="text-[14px] text-ink">{u.name}</p>
-              ))}
-            </div>
+            admins.map((u) => <AdminRow key={u.id} title={u.name} />)
           )}
-        </Card>
-      </div>
+        </AdminRowList>
+      </AdminSection>
 
-      <div className="flex flex-col gap-2">
-        <p className="px-1 text-[12px] font-medium uppercase tracking-wide text-muted">{t('permissions_managers_label')}</p>
-        {managersByProperty.length === 0 ? (
-          <Card><p className="text-[13px] text-muted">{t('permissions_none')}</p></Card>
-        ) : (
-          managersByProperty.map(({ property, managers }) => (
-            <Card key={property.code}>
-              <p className="font-medium text-ink">{getPropertyDisplayName(property)}</p>
-              <div className="mt-1.5 flex flex-col gap-1">
-                {managers.map((u) => (
-                  <p key={u.id} className="text-[13px] text-muted">{u.name}</p>
-                ))}
-              </div>
-            </Card>
-          ))
-        )}
-      </div>
+      <AdminSection eyebrow={t('permissions_managers_label')}>
+        <AdminRowList>
+          {managersByProperty.length === 0 ? (
+            <AdminRow title={t('permissions_none')} />
+          ) : (
+            managersByProperty.map(({ property, managers }) => (
+              <AdminRow
+                key={property.code}
+                title={getPropertyDisplayName(property)}
+                description={managers.map((u) => u.name).join(', ')}
+              />
+            ))
+          )}
+        </AdminRowList>
+      </AdminSection>
 
-      <div className="flex flex-col gap-2">
-        <p className="px-1 text-[12px] font-medium uppercase tracking-wide text-muted">{t('permissions_leads_label')}</p>
-        <Card>
+      <AdminSection eyebrow={t('permissions_leads_label')}>
+        <AdminRowList>
           {leads.length === 0 ? (
-            <p className="text-[13px] text-muted">{t('permissions_none')}</p>
+            <AdminRow title={t('permissions_none')} />
           ) : (
-            <div className="flex flex-col gap-1.5">
-              {leads.map((u) => {
-                const team = state.teams.find((tm) => tm.id === u.housekeepingTeamId);
-                return (
-                  <p key={u.id} className="text-[14px] text-ink">
-                    {u.name}
-                    {team ? <span className="text-muted"> · {team.name}</span> : null}
-                  </p>
-                );
-              })}
-            </div>
+            leads.map((u) => {
+              const team = state.teams.find((tm) => tm.id === u.housekeepingTeamId);
+              return <AdminRow key={u.id} title={u.name} description={team?.name} />;
+            })
           )}
-        </Card>
-      </div>
+        </AdminRowList>
+      </AdminSection>
     </div>
   );
 }

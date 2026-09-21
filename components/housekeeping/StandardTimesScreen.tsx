@@ -1,6 +1,6 @@
 import { STANDARD_DEPARTURE_TIME, STANDARD_ARRIVAL_TIME, EXTRA_TIME } from '@/lib/housekeeping/tasks';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
-import { Card } from '@/components/ui/Card';
+import { AdminField, AdminFieldGrid, AdminSection } from './admin';
 
 export interface StandardTimesScreenProps {
   app: HousekeepingApp;
@@ -15,33 +15,14 @@ export function StandardTimesScreen({ app }: StandardTimesScreenProps) {
   const { t } = app;
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-4">
-      <h2 className="italic text-lg text-[#17160f]">{t('standard_times_title')}</h2>
-      <Card>
-        <div className="flex flex-col gap-2.5">
-          <div className="flex items-center justify-between">
-            <p className="text-ink">{t('standard_departure_label')}</p>
-            <p className="font-medium text-ink">{STANDARD_DEPARTURE_TIME}</p>
-          </div>
-          <div className="flex items-center justify-between">
-            <p className="text-ink">{t('standard_arrival_label')}</p>
-            <p className="font-medium text-ink">{STANDARD_ARRIVAL_TIME}</p>
-          </div>
-        </div>
-      </Card>
-      <Card>
-        <div className="flex flex-col gap-2.5">
-          <div className="flex items-center justify-between">
-            <p className="text-ink">{t('standard_lco_label')}</p>
-            <p className="font-medium text-ink">{EXTRA_TIME}</p>
-          </div>
-          <div className="flex items-center justify-between">
-            <p className="text-ink">{t('standard_eci_label')}</p>
-            <p className="font-medium text-ink">{EXTRA_TIME}</p>
-          </div>
-        </div>
-      </Card>
-      <p className="px-1 text-[13px] leading-relaxed text-muted">{t('standard_times_note')}</p>
-    </div>
+    <AdminSection>
+      <AdminFieldGrid>
+        <AdminField label={t('standard_departure_label')} value={STANDARD_DEPARTURE_TIME} />
+        <AdminField label={t('standard_arrival_label')} value={STANDARD_ARRIVAL_TIME} />
+        <AdminField label={t('standard_lco_label')} value={EXTRA_TIME} />
+        <AdminField label={t('standard_eci_label')} value={EXTRA_TIME} />
+      </AdminFieldGrid>
+      <p className="mt-5 border-t border-line pt-4 text-xs leading-relaxed text-muted">{t('standard_times_note')}</p>
+    </AdminSection>
   );
 }

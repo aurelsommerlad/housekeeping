@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
+import { AdminBadge } from './admin';
 
 export interface IncidentsOverviewScreenProps {
   app: HousekeepingApp;
@@ -25,38 +25,39 @@ export function IncidentsOverviewScreen({ app }: IncidentsOverviewScreenProps) {
   }, []);
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-4">
-      <h2 className="italic text-lg text-[#17160f]">{t('incidents_overview_title')}</h2>
-
+    <div className="flex flex-col gap-3">
       {state.incidentsLoading && state.incidents.length === 0 ? (
-        <p className="text-[13px] text-muted">{t('loading')}</p>
+        <p className="text-sm text-muted">{t('loading')}</p>
       ) : state.incidents.length === 0 ? (
-        <p className="text-[13px] text-muted">{t('incidents_overview_empty')}</p>
+        <p className="text-sm text-muted">{t('incidents_overview_empty')}</p>
       ) : (
         state.incidents.map((incident) => (
-          <Card key={incident.id}>
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-ink">{incident.propertyName} · {incident.unitName}</span>
-              <span className="text-[12px] text-muted">{new Date(incident.createdAt).toLocaleString(state.lang)}</span>
+          <Card key={incident.id} className="p-5 sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm font-medium text-ink">{incident.propertyName} · {incident.unitName}</span>
+              <span className="text-xs text-muted">{new Date(incident.createdAt).toLocaleString(state.lang)}</span>
             </div>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-ink">{incident.description}</p>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+            <p className="mt-2 text-sm leading-relaxed text-ink">{incident.description}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
               <span>{incident.reportedByUserName}</span>
               {incident.housekeepingTeamName ? <span>· {incident.housekeepingTeamName}</span> : null}
               <span>· {incident.taskTypeLabel}</span>
-              <Badge>
-                {incident.slackDeliveryStatus === 'sent'
-                  ? t('incidents_slack_sent')
-                  : incident.slackDeliveryStatus === 'skipped'
-                    ? t('incidents_slack_skipped')
-                    : t('incidents_slack_failed')}
-              </Badge>
+              <AdminBadge
+                label={
+                  incident.slackDeliveryStatus === 'sent'
+                    ? t('incidents_slack_sent')
+                    : incident.slackDeliveryStatus === 'skipped'
+                      ? t('incidents_slack_skipped')
+                      : t('incidents_slack_failed')
+                }
+                tone={incident.slackDeliveryStatus === 'sent' ? 'positive' : incident.slackDeliveryStatus === 'skipped' ? 'muted' : 'strong'}
+              />
             </div>
             {incident.photoUrls.length > 0 ? (
-              <div className="mt-2.5 flex gap-2 overflow-x-auto">
+              <div className="mt-3 flex gap-2 overflow-x-auto">
                 {incident.photoUrls.map((url) => (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img key={url} src={url} alt="" className="h-16 w-16 shrink-0 rounded-control border border-line object-cover" />
+                  <img key={url} src={url} alt="" className="h-16 w-16 shrink-0 rounded-xl border border-line object-cover" />
                 ))}
               </div>
             ) : null}

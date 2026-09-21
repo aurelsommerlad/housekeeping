@@ -5,8 +5,8 @@ import type { ApaleoUnit } from '@/lib/housekeeping/types';
 import { getPropertyDisplayName } from '@/lib/housekeeping/api';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { Button } from '@/components/ui/Button';
-import { IconCheck, IconNfc } from '@/components/ui/icons';
-import { cn } from '@/lib/cn';
+import { IconCheck } from '@/components/ui/icons';
+import { AdminSection } from './admin';
 
 export interface NfcSettingsScreenProps {
   app: HousekeepingApp;
@@ -201,35 +201,26 @@ export function NfcSettingsScreen({ app, propertyFilter }: NfcSettingsScreenProp
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <IconNfc width={18} height={18} className="text-muted" aria-hidden="true" />
-        <h4 className="italic text-lg text-[#17160f]">{t('nfc_settings_title')}</h4>
-      </div>
-      <p className="text-[13px] text-muted">{t('nfc_settings_description')}</p>
+      <p className="text-sm text-muted">{t('nfc_settings_description')}</p>
 
       {state.nfcTagsLoading && groups.length === 0 ? (
-        <p className="text-[13px] text-muted">{t('loading')}</p>
+        <p className="text-sm text-muted">{t('loading')}</p>
       ) : (
-        <div className="flex flex-col gap-5">
-          {groups.map(({ property, units }) => (
-            <div key={property.code}>
-              <h5 className={cn('mb-2 text-[12px] font-semibold uppercase tracking-wide text-muted')}>
-                {getPropertyDisplayName(property)}
-              </h5>
-              <div className="flex flex-col gap-2">
-                {units.map((unit) => (
-                  <NfcUnitRow
-                    key={unit.id}
-                    app={app}
-                    propertyCode={property.code}
-                    unitId={unit.id}
-                    unitName={String(unit.name || unit.id)}
-                  />
-                ))}
-              </div>
+        groups.map(({ property, units }) => (
+          <AdminSection key={property.code} eyebrow={propertyFilter ? undefined : getPropertyDisplayName(property)}>
+            <div className="flex flex-col gap-2">
+              {units.map((unit) => (
+                <NfcUnitRow
+                  key={unit.id}
+                  app={app}
+                  propertyCode={property.code}
+                  unitId={unit.id}
+                  unitName={String(unit.name || unit.id)}
+                />
+              ))}
             </div>
-          ))}
-        </div>
+          </AdminSection>
+        ))
       )}
     </div>
   );

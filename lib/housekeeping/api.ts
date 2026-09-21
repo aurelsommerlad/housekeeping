@@ -227,7 +227,25 @@ import type {
 // anderen Property-Zeilen waeren) - beides waere eine leere Fantasie-Einstellung gewesen. Alle
 // bestehenden serverseitigen role/property-Pruefungen je API-Route bleiben unveraendert; diese
 // Navigation ist ausschliesslich Client-UX.
-export const APP_VERSION = '2.15.0';
+// PATCH-Bump (2.15.0 -> 2.15.1): Visuelles Redesign des gesamten Einstellungs-/Adminbereichs nach
+// dem tatsaechlichen UNIQUE-PLACES-Owner-Center-Designsystem (https://github.com/aurelsommerlad/
+// owner-center, Source of Truth per Repository-Analyse, nicht geschaetzt) - keine Aenderung an
+// Informationsarchitektur, Routing oder Berechtigungen (siehe vorheriger Bump), ausschliesslich
+// Markup/Styling. Neues, wiederverwendbares Layoutsystem in components/housekeeping/admin/
+// (AdminPage/AdminSection/AdminField/AdminBadge/AdminRow/AdminTable/adminFormStyles), 1:1 von den
+// tatsaechlichen Owner-Center-Komponenten uebertragen (u. a. src/app/admin/(protected)/
+// properties/[id]/page.tsx als Vorlage fuer Seitenkopf/Card-Aufbau, AdminStatusBadge fuer
+// Status-Pillen). Basis-Design-Tokens (Farben/Radien/Schatten/Inter als einziger Font) waren
+// bereits aus einer frueheren Runde 1:1 uebernommen - das Owner-Center-eigene Admin-Pattern
+// verwendet bewusst KEINE kursive Serifenschrift (Fraunces bleibt dem eigentuemerseitigen Bereich
+// dort vorbehalten), daher bekommen auch die Housekeeping-Einstellungen jetzt durchgaengig
+// Sans-Ueberschriften (`text-2xl font-semibold`) statt der bisherigen kursiven Titelzeile. Die
+// Einstellungsstartseite zeigt jetzt 3 gruppierte Cards mit Zeilen (HOUSEKEEPING/VERWALTUNG/
+// SYSTEM) statt 6 Einzelkacheln; jede Unterseite traegt einen Zurueck-Link mit dem TATSAECHLICHEN
+// Namen der Elternseite (Owner-Center-Pattern "← Objekte") statt eines generischen "Zurueck",
+// auf Desktop zusaetzlich eine dezente volle Breadcrumb-Zeile. Mobile bleibt bewusst einspaltig
+// mit kompakten Zeilen statt horizontal gequetschter Desktop-Layouts.
+export const APP_VERSION = '2.15.1';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

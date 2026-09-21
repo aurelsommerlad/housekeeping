@@ -6,29 +6,27 @@ import type { StaffUser } from '@/lib/housekeeping/types';
 import { isAdmin, isTeamLead } from '@/lib/housekeeping/permissions';
 import { getPropertyDisplayName } from '@/lib/housekeeping/api';
 import { todayISO } from '@/lib/housekeeping/rooms';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
+import { ADMIN_INPUT_CLASS, ADMIN_SELECT_CLASS, AdminBadge, AdminSection } from './admin';
 import { cn } from '@/lib/cn';
 
 export interface HousekeepingTeamsScreenProps {
   app: HousekeepingApp;
-  /** Einstellungen > Standorte & Apartments > <Property> (Punkt 2) - zeigt fuer einen Admin nur
-   * das aktuell fuer dieses Property zustaendige Team und die Standardzuordnung ausschliesslich
-   * fuer dieses eine Property (statt der Liste aller Properties). Fuer einen Team Lead aendert sich
-   * nichts (er sieht ohnehin nur sein eigenes Team). */
+  /** Einstellungen > Standorte & Apartments > <Property> - zeigt fuer einen Admin nur das
+   * aktuell fuer dieses Property zustaendige Team und die Standardzuordnung ausschliesslich
+   * fuer dieses eine Property (statt der Liste aller Properties). Fuer einen Team Lead aendert
+   * sich nichts (er sieht ohnehin nur sein eigenes Team). */
   propertyFilter?: string;
 }
 
 /**
- * Reinigungsfirmen & Teams (Briefing "Housekeeping Teams") - reine EINSTELLUNGEN-Unterseite,
- * KEIN zweites Admin-Backend und KEINE zweite Mitarbeiterverwaltung: Mitgliedschaft/Rolle eines
- * Users wird ausschliesslich ueber das bestehende Formular gepflegt (UserFormSheet.tsx, ueber den
- * bestehenden Team-Screen erreichbar) - hier nur gelesen/gruppiert dargestellt, plus die neuen,
- * ausschliesslich hier lebenden Konzepte: Team-Stammdaten anlegen und Standard-Team je Property
- * (Punkt "wird NIE nach Apaleo geschrieben"). Admin sieht/verwaltet alles teamuebergreifend; ein
- * Team-Lead sieht ausschliesslich die eigene Reinigungsfirma, rein lesend (Zuweisung einzelner
- * Reinigungen bleibt Sache der Task-Detailansicht, siehe TaskDetailSheet.tsx).
+ * Reinigungsfirmen & Teams - reine EINSTELLUNGEN-Unterseite, KEIN zweites Admin-Backend und
+ * KEINE zweite Mitarbeiterverwaltung: Mitgliedschaft/Rolle eines Users wird ausschliesslich
+ * ueber das bestehende Formular gepflegt (UserFormSheet.tsx, ueber "Mitarbeiter" erreichbar) -
+ * hier nur gelesen/gruppiert dargestellt, plus die neuen, ausschliesslich hier lebenden
+ * Konzepte: Team-Stammdaten anlegen und Standard-Team je Property (wird NIE nach Apaleo
+ * geschrieben). Admin sieht/verwaltet alles teamuebergreifend; ein Team-Lead sieht
+ * ausschliesslich die eigene Reinigungsfirma, rein lesend.
  */
 export function HousekeepingTeamsScreen({ app, propertyFilter }: HousekeepingTeamsScreenProps) {
   const { state, t, saveTeam, setTeamPropertyDefault, saveUser, teamCapacityFor } = app;
@@ -64,24 +62,20 @@ export function HousekeepingTeamsScreen({ app, propertyFilter }: HousekeepingTea
   }
 
   return (
-    <div className="flex flex-col gap-4 px-4 py-4">
-      <h2 className="italic text-lg text-[#17160f]">{t('housekeeping_teams_title')}</h2>
-
+    <div className="flex flex-col gap-4">
       {visibleTeams.map((team) => {
         const members = membersOf(team.id);
         const leads = members.filter((m) => m.teamRole === 'lead');
         const teamWorkload = workload.find((w) => w.teamId === team.id);
         return (
-          <Card key={team.id}>
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-ink">{team.name}</span>
-              {!team.active ? <Badge>{t('team_inactive_label')}</Badge> : null}
-            </div>
-            <p className="mt-1 text-[12.5px] text-muted">
-              {t('team_member_count', { n: members.length })} · {t('team_lead_count', { n: leads.length })}
-            </p>
+          <AdminSection
+            key={team.id}
+            title={team.name}
+            description={`${t('team_member_count', { n: members.length })} · ${t('team_lead_count', { n: leads.length })}`}
+            actions={!team.active ? <AdminBadge label={t('team_inactive_label')} tone="muted" /> : undefined}
+          >
             {propertiesOf(team.id).length > 0 ? (
-              <p className="mt-1 text-[12.5px] text-muted">
+              <p className="text-xs text-muted">
                 {t('team_responsible_for')}: {propertiesOf(team.id).map((code) => {
                   const prop = state.properties.find((p) => p.code === code);
                   return prop ? getPropertyDisplayName(prop) : code;
@@ -89,9 +83,9 @@ export function HousekeepingTeamsScreen({ app, propertyFilter }: HousekeepingTea
               </p>
             ) : null}
 
-            <div className="mt-2.5 flex flex-col gap-1.5">
+            <div className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3">
               {members.map((member) => (
-                <div key={member.id} className="flex items-center justify-between gap-2 text-[13px]">
+                <div key={member.id} className="flex items-center justify-between gap-2 text-sm">
                   <span className={cn('truncate', member.active === false ? 'text-muted line-through' : 'text-ink')}>
                     {member.name}
                     {member.teamRole === 'lead' ? ` (${t('team_role_lead')})` : ` (${t('team_role_member')})`}
@@ -103,11 +97,11 @@ export function HousekeepingTeamsScreen({ app, propertyFilter }: HousekeepingTea
                   ) : null}
                 </div>
               ))}
-              {members.length === 0 ? <p className="text-[12.5px] text-muted">{t('team_no_members')}</p> : null}
+              {members.length === 0 ? <p className="text-xs text-muted">{t('team_no_members')}</p> : null}
             </div>
 
             {teamWorkload ? (
-              <div className="mt-2.5 border-t border-line/70 pt-2 text-[12.5px] text-muted">
+              <div className="mt-3 border-t border-line pt-3 text-xs text-muted">
                 <p className="font-medium text-ink">{t('team_workload_today', { n: teamWorkload.total })}</p>
                 {teamWorkload.perPerson.map((p) => (
                   <p key={p.housekeeperId || 'unassigned'}>
@@ -116,39 +110,37 @@ export function HousekeepingTeamsScreen({ app, propertyFilter }: HousekeepingTea
                 ))}
               </div>
             ) : null}
-          </Card>
+          </AdminSection>
         );
       })}
 
-      {!admin && !lead ? <p className="text-[13px] text-muted">{t('team_no_access')}</p> : null}
+      {!admin && !lead ? <p className="text-sm text-muted">{t('team_no_access')}</p> : null}
 
       {admin ? (
         <>
-          <div className="flex flex-col gap-2">
-            <p className="text-[12px] font-medium uppercase tracking-wide text-muted">{t('team_new_title')}</p>
+          <AdminSection eyebrow={t('team_new_title')}>
             <div className="flex gap-2">
               <input
                 value={newTeamName}
                 onChange={(e) => setNewTeamName(e.target.value)}
                 placeholder={t('team_name_placeholder')}
-                className="h-11 flex-1 rounded-control border border-line bg-warm-white px-3 text-[15px] text-ink"
+                className={ADMIN_INPUT_CLASS}
               />
               <Button variant="primary" onClick={handleCreateTeam}>{t('team_create')}</Button>
             </div>
-          </div>
+          </AdminSection>
 
-          <div className="flex flex-col gap-2">
-            <p className="text-[12px] font-medium uppercase tracking-wide text-muted">{t('team_property_defaults_title')}</p>
-            <div className="flex flex-col gap-1 rounded-control border border-line">
+          <AdminSection eyebrow={t('team_property_defaults_title')}>
+            <div className="flex flex-col divide-y divide-line">
               {visibleProperties.map((p) => {
                 const currentTeamId = state.teamPropertyDefaults[p.code] || '';
                 return (
-                  <div key={p.code} className="flex items-center justify-between gap-2 border-b border-line px-3 py-2 text-[13px] last:border-b-0">
-                    <span className="truncate text-ink">{getPropertyDisplayName(p)}</span>
+                  <div key={p.code} className="flex items-center justify-between gap-3 py-3 text-sm first:pt-0 last:pb-0">
+                    <span className="truncate text-sm text-ink">{getPropertyDisplayName(p)}</span>
                     <select
                       value={currentTeamId}
                       onChange={(e) => setTeamPropertyDefault(p.code, e.target.value || null)}
-                      className="rounded-control border border-line bg-warm-white px-2 py-1.5 text-[13px] text-ink"
+                      className={cn(ADMIN_SELECT_CLASS, 'w-auto')}
                     >
                       <option value="">{t('no_team_label')}</option>
                       {state.teams.filter((tm) => tm.active).map((tm) => (
@@ -159,7 +151,7 @@ export function HousekeepingTeamsScreen({ app, propertyFilter }: HousekeepingTea
                 );
               })}
             </div>
-          </div>
+          </AdminSection>
         </>
       ) : null}
     </div>

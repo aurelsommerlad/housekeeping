@@ -2,26 +2,17 @@
 
 import { useEffect } from 'react';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
-import { Card } from '@/components/ui/Card';
+import { AdminBadge, AdminRow, AdminRowList, AdminSection } from './admin';
 
 export interface IntegrationsScreenProps {
   app: HousekeepingApp;
 }
 
-function StatusDot({ configured }: { configured: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={`inline-block h-2 w-2 rounded-full ${configured ? 'bg-sage' : 'bg-status-blocked'}`}
-    />
-  );
-}
-
 /**
- * Einstellungen > Integrationen (Punkt 5) - zeigt AUSSCHLIESSLICH boolesche "konfiguriert"-
+ * Einstellungen > Integrationen - zeigt AUSSCHLIESSLICH boolesche "konfiguriert"-
  * Statusinformationen (api/integrations-status.js), NIE Secrets/Tokens/Webhook-URLs selbst -
  * die bleiben ausschliesslich serverseitig in den jeweiligen env vars (siehe README.md). Weitere
- * Integrationen koennen spaeter einfach als weitere Zeilen ergaenzt werden.
+ * Integrationen koennen spaeter einfach als weitere Rows ergaenzt werden.
  */
 export function IntegrationsScreen({ app }: IntegrationsScreenProps) {
   const { state, t, loadIntegrationsStatusInfo } = app;
@@ -32,36 +23,37 @@ export function IntegrationsScreen({ app }: IntegrationsScreenProps) {
   }, []);
 
   const status = state.integrationsStatus;
+  const loading = state.integrationsStatusLoading && !status;
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-4">
-      <h2 className="italic text-lg text-[#17160f]">{t('settings_cat_integrations_title')}</h2>
-      <p className="text-[13px] leading-relaxed text-muted">{t('integrations_note')}</p>
-
-      {state.integrationsStatusLoading && !status ? (
-        <p className="text-[13px] text-muted">{t('loading')}</p>
-      ) : (
-        <>
-          <Card>
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-ink">{t('integrations_apaleo_label')}</span>
-              <span className="flex items-center gap-1.5 text-[13px] text-muted">
-                <StatusDot configured={!!status?.apaleo.configured} />
-                {status?.apaleo.configured ? t('integrations_connected') : t('integrations_not_configured')}
-              </span>
-            </div>
-          </Card>
-          <Card>
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-ink">{t('integrations_slack_label')}</span>
-              <span className="flex items-center gap-1.5 text-[13px] text-muted">
-                <StatusDot configured={!!status?.slack.configured} />
-                {status?.slack.configured ? t('integrations_connected') : t('integrations_not_configured')}
-              </span>
-            </div>
-          </Card>
-        </>
-      )}
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted">{t('integrations_note')}</p>
+      <AdminSection>
+        {loading ? (
+          <p className="py-4 text-sm text-muted">{t('loading')}</p>
+        ) : (
+          <AdminRowList>
+            <AdminRow
+              title={t('integrations_apaleo_label')}
+              badge={
+                <AdminBadge
+                  label={status?.apaleo.configured ? t('integrations_connected') : t('integrations_not_configured')}
+                  tone={status?.apaleo.configured ? 'positive' : 'muted'}
+                />
+              }
+            />
+            <AdminRow
+              title={t('integrations_slack_label')}
+              badge={
+                <AdminBadge
+                  label={status?.slack.configured ? t('integrations_connected') : t('integrations_not_configured')}
+                  tone={status?.slack.configured ? 'positive' : 'muted'}
+                />
+              }
+            />
+          </AdminRowList>
+        )}
+      </AdminSection>
     </div>
   );
 }
