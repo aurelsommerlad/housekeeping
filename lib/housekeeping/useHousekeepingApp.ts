@@ -1085,6 +1085,22 @@ export function useHousekeepingApp() {
     });
   }, [patch, runAction, showToast, t]);
 
+  /** Wiederhergestellt (UX-Feinschliff-Korrektur): ermittelt GENAU die eine laufende/pausierte
+   * Reinigung des eingeloggten Nutzers - Grundlage fuer den kontextabhaengigen Pause/Fortsetzen-
+   * Hinweis rechts oben im Header (StaffHeader.tsx#CleaningPauseButton). Niemals eine manuelle
+   * Aufgabe (die hat keinen Reinigungs-Timer, siehe tasks.ts#manualTaskToResolvedTask). */
+  const activeCleaningTask = useCallback((): ResolvedTask | null => {
+    const user = state.user;
+    if (!user) return null;
+    const candidates = resolvedTasksAll().filter((t) =>
+      t.type !== 'manual' && t.assignedUserId === user.id && (t.status === 'in_progress' || t.status === 'paused'));
+    if (candidates.length === 0) return null;
+    const running = candidates.filter((t) => t.status === 'in_progress');
+    const pool = running.length > 0 ? running : candidates;
+    const lastActivityAt = (t: ResolvedTask) => (t.history.length > 0 ? t.history[t.history.length - 1].at : (t.cleaningStartedAt || 0));
+    return pool.slice().sort((a, b) => lastActivityAt(b) - lastActivityAt(a))[0];
+  }, [state.user, resolvedTasksAll]);
+
   // --- "Wichtiger Hinweis" (Punkt 3-8): eigene, vom Apaleo-Reservierungskommentar getrennte
   // Datenquelle. noticeAckKey() spiegelt exakt api/_task-notices.js#ackKey ("<taskId>|<userId>").
   function noticeAckKey(taskId: string, userId: string): string {
@@ -1264,6 +1280,9 @@ export function useHousekeepingApp() {
 
     // Manuell erstellte Aufgaben
     openManualTaskForm, closeManualTaskForm, createManualTask, completeManualTask,
+
+    // Kontextabhaengiger Pause/Fortsetzen-Hinweis im Header (StaffHeader.tsx)
+    activeCleaningTask,
 
     // Wichtiger Hinweis
     noticeForTask, isNoticeAcknowledgedBy, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice,

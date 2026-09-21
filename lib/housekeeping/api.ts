@@ -305,7 +305,20 @@ import type {
 // Reservierungsdaten, ECI/LCO, NFC, Zuweisungslogik, Timer und Notice-Bestaetigungslogik wurden
 // dabei nicht angefasst - reine Darstellungs-/Kompaktheitsaenderung, die weiterhin exakt Tag/
 // Ansicht/Standort/Berechtigungen respektiert.
-export const APP_VERSION = '2.17.0';
+//
+// 2.17.1 - Korrektur zweier Regressionen aus 2.17.0, sonst unveraendert: (1) beim Entfernen des
+// GLOBALEN/permanenten Header-Pause-Buttons wurde versehentlich auch der davon zu unterscheidende,
+// rein KONTEXTABHAENGIGE Reinigungsstatus rechts oben mit ausgebaut - dieser existiert wieder
+// exakt dann, wenn der eingeloggte Mitarbeiter eine laufende ("Pause") oder pausierte
+// ("Fortsetzen") eigene Reinigung hat (app.activeCleaningTask(), StaffHeader.tsx#
+// CleaningPauseButton), sonst weiterhin nichts - nutzt dieselben startTaskTimer/pauseTaskTimer-
+// Aktionen wie zuvor, kein zweiter Timer-Mechanismus. (2) die farbigen Grossbuchstaben-Section-
+// Header "REINIGUNGEN"/"AUFGABEN"/"FERTIG" ueber den Kartenlisten sind einer ruhigen Anzahl-Zeile
+// in normaler Textfarbe gewichen ("3 Reinigungen"/"1 Aufgabe"/"Fertig · 2", mit korrekter
+// Singular-/Pluralform), hoechstens begleitet vom kleinen, bereits bestehenden Kennzahl-Icon im
+// dezenten Akzent der jeweiligen Kategorie. Filter, Tagesnavigation, Kennzahlen-Zeile, Task Cards
+// und Fachlogik unveraendert.
+export const APP_VERSION = '2.17.1';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

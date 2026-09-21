@@ -47,13 +47,17 @@ function SummaryStat({ value, label, icon: Icon, toneClass }: { value: number; l
   );
 }
 
-/** Punkt 10: kleiner, ruhiger Abschnitts-Header mit demselben dezenten Farbakzent wie die
- * zugehoerige Kennzahl oben - erzeugt eine erkennbare visuelle Verbindung, ohne die Task Cards
- * selbst anzufassen. */
-function TaskGroup({ title, toneClass, children }: { title: string; toneClass: string; children: ReactNode }) {
+/** Korrektur (UX-Feinschliff Runde 3): keine farbige Grossbuchstaben-Ueberschrift mehr - nur
+ * noch die Anzahl in normaler Textfarbe ("3 Reinigungen"), optional mit demselben kleinen
+ * Outline-Icon wie die zugehoerige Kennzahl oben (in deren dezentem Akzent) fuer den visuellen
+ * Bezug. Text selbst bleibt in `text-ink`, nie vollstaendig eingefaerbt. */
+function TaskGroup({ text, icon: Icon, toneClass, children }: { text: string; icon?: typeof IconCheck; toneClass?: string; children: ReactNode }) {
   return (
     <div>
-      <p className={cn('px-4 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide', toneClass)}>{title}</p>
+      <p className="flex items-center gap-1.5 px-4 pt-4 pb-1 text-[13px] font-medium text-ink">
+        {Icon ? <Icon width={14} height={14} className={cn('shrink-0', toneClass)} aria-hidden="true" /> : null}
+        {text}
+      </p>
       <div className="grid grid-cols-1 gap-3 px-4 pt-1 sm:grid-cols-2 lg:grid-cols-3">{children}</div>
     </div>
   );
@@ -320,7 +324,11 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         // weggelassen (kein grosser Empty-State).
         <>
           {cleaningTasks.length > 0 ? (
-            <TaskGroup title={t('summary_cleanings_label')} toneClass="text-type-stayover">
+            <TaskGroup
+              text={t(cleaningTasks.length === 1 ? 'section_cleanings_one' : 'section_cleanings_many', { n: cleaningTasks.length })}
+              icon={IconLayers}
+              toneClass="text-type-stayover"
+            >
               {cleaningTasks.map((task) => (
                 <TaskCard
                   key={task.id}
@@ -337,7 +345,11 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
           ) : null}
 
           {openManualTasks.length > 0 ? (
-            <TaskGroup title={t('filter_group_manual_tasks')} toneClass="text-type-departure">
+            <TaskGroup
+              text={t(openManualTasks.length === 1 ? 'section_tasks_one' : 'section_tasks_many', { n: openManualTasks.length })}
+              icon={IconTask}
+              toneClass="text-type-departure"
+            >
               {openManualTasks.map((task) => (
                 <TaskCard
                   key={task.id}
@@ -360,8 +372,9 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                 onClick={() => setDoneOpen((v) => !v)}
                 className="flex w-full items-center gap-1.5 px-4 pt-4 pb-1 text-left"
               >
-                <IconChevronDown width={12} height={12} className={cn('shrink-0 text-status-clean transition-transform', doneOpen && 'rotate-180')} aria-hidden="true" />
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-status-clean">
+                <IconChevronDown width={12} height={12} className={cn('shrink-0 text-muted transition-transform', doneOpen && 'rotate-180')} aria-hidden="true" />
+                <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
+                  <IconCheck width={14} height={14} className="shrink-0 text-status-clean" aria-hidden="true" />
                   {t('wf_done')} · {doneTasks.length}
                 </span>
               </button>

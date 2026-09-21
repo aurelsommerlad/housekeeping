@@ -4,14 +4,52 @@ import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { IconPause, IconPlay, IconSearch, IconUser } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
-// Punkt 1 (UX-Feinschliff-Anpassungen): der globale "Pause"-Button fuer eine aktive Reinigung
-// (frueher hier als CleaningPauseButton) wurde VOLLSTAENDIG entfernt, nicht nur ausgeblendet -
-// Pause/Fortsetzen gehoert ausschliesslich zur jeweils gestarteten Reinigung und wird
-// ausschliesslich in deren Detailansicht gesteuert (siehe TaskDetailSheet.tsx#PrimaryAction,
-// unveraendert: pause_clean/resume_clean nutzen weiterhin dieselben pauseTaskTimer/
-// startTaskTimer-Aktionen). Damit ist auch app.activeCleaningTask() (nur von dieser Komponente
-// genutzt) entfallen. Der davon komplett unabhaengige "Pause von der Arbeit"-Button
-// (toggleBreak/onBreak) bleibt unveraendert bestehen.
+// Korrektur (UX-Feinschliff Runde 3): der PERMANENTE/global verfuegbare "Pause starten"-Button
+// bleibt entfernt - aber die kontextabhaengige Anzeige rechts oben, die NUR erscheint, wenn der
+// eingeloggte Mitarbeiter tatsaechlich eine aktive (laufende/pausierte) Reinigung hat, wurde bei
+// dieser Entfernung versehentlich mit ausgebaut und wird hier gezielt wiederhergestellt
+// (CleaningPauseButton, nutzt weiterhin dieselben pauseTaskTimer/startTaskTimer-Aktionen auf
+// GENAU den Task, den app.activeCleaningTask() liefert - niemals eine manuelle Aufgabe). Der
+// davon komplett unabhaengige "Pause von der Arbeit"-Button (toggleBreak/onBreak) ist unveraendert.
+
+/**
+ * Kontextabhaengiger Reinigungsstatus rechts oben: existiert NUR, wenn app.activeCleaningTask()
+ * fuer den eingeloggten Nutzer tatsaechlich eine laufende/pausierte Reinigung liefert - sonst
+ * null (offene/zugewiesene/abgeschlossene Reinigungen und jede manuelle Aufgabe zeigen also
+ * nichts). Kompakte Labels ("Pause"/"Fortsetzen" statt ganzer Saetze), damit der Header schmal
+ * bleibt; Antippen pausiert/setzt GENAU diese eine Reinigung fort - keine zweite, parallele
+ * Timer-Implementierung, sondern dieselben startTaskTimer/pauseTaskTimer-Aktionen wie im
+ * TaskDetailSheet.
+ */
+function CleaningPauseButton({ app }: { app: HousekeepingApp }) {
+  const { t, activeCleaningTask, startTaskTimer, pauseTaskTimer } = app;
+  const task = activeCleaningTask();
+  if (!task) return null;
+
+  if (task.status === 'paused') {
+    return (
+      <button
+        type="button"
+        onClick={() => startTaskTimer(task.id)}
+        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-warm-white px-3 text-[12px] font-medium text-muted transition-colors"
+      >
+        <IconPlay width={13} height={13} aria-hidden="true" />
+        {t('header_cleaning_resume')}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => pauseTaskTimer(task.id)}
+      className="inline-flex h-8 items-center gap-1.5 rounded-full border border-status-progress/30 bg-status-progress-bg px-3 text-[12px] font-medium text-status-progress transition-colors"
+    >
+      <IconPause width={13} height={13} aria-hidden="true" />
+      {t('header_cleaning_pause')}
+    </button>
+  );
+}
 
 const LOCALES: Record<string, string> = { de: 'de-DE', en: 'en-GB', pl: 'pl-PL', ro: 'ro-RO' };
 
@@ -68,6 +106,7 @@ export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderPr
               {state.onBreak ? t('on_break') : t('break_toggle_label')}
             </button>
           ) : null}
+          <CleaningPauseButton app={app} />
           {state.user?.role === 'admin' ? (
             <button
               type="button"
