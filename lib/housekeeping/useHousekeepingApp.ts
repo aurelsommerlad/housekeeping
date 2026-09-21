@@ -19,9 +19,10 @@
  * (state.planningUnits/planningReservations/taskAssignments/tasks()) ist ein eigener,
  * standortuebergreifender Datenfluss daneben.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Lang } from './i18n';
 import { translate } from './i18n';
+import { buildShortNameMap } from './names';
 import { fetchMe, login as loginRequest, logout as logoutRequest } from './auth';
 import {
   DOUBLEUP_TYPES, POLL_INTERVAL, assignmentsApi, breaksApi, completionsApi, consumablesApi, doubleupsApi,
@@ -124,10 +125,11 @@ interface AppState {
 
   /** Manuell von Admin erstellte Aufgaben (Punkt "Admin kann Aufgaben erstellen") - Key = eigene
    * stabile ID (siehe api/manual-tasks.js), NICHT Teil von taskAssignments (kein Reinigungs-
-   * Workflow). `manualTaskFilter` steuert nur die Sichtbarkeit dieser Aufgaben (Punkt "Offen/
-   * Erledigt-Filter fuer Admin") - Reinigungen bleiben davon vollstaendig unberuehrt. */
+   * Workflow). Offene UND erledigte Aufgaben werden immer beide geladen/aufgeloest - die
+   * Aufgabenliste (TasksScreen) gruppiert sie selbst in "Aufgaben"/"Fertig"-Abschnitte, statt sie
+   * hinter einem Filter zu verstecken (Punkt "Kennzahlen/Sections", loest den frueheren admin-
+   * only Offen/Erledigt-Toggle ab). */
   manualTasks: ManualTasksState;
-  manualTaskFilter: 'open' | 'completed';
   manualTaskFormOpen: boolean;
   /** Bekannte housekeeping-relevante Buchungsaenderungen je reservationId (Punkt "Buchungs-
    * aenderung sichtbar machen") - siehe api/booking-changes.js. */
@@ -228,7 +230,6 @@ function initialState(): AppState {
     selectedTasks: new Set(),
     detailTaskId: null,
     manualTasks: {},
-    manualTaskFilter: 'open',
     manualTaskFormOpen: false,
     bookingChanges: {},
     incidentSheetOpen: false,
@@ -275,6 +276,18 @@ export function useHousekeepingApp() {
       if (stateRef.current.toast === msg) patch({ toast: null });
     }, 2200);
   }, [patch]);
+
+  /** Punkt "Reinigungskräfte standardmäßig nur mit Vornamen anzeigen" - reine Darstellungsschicht
+   * (siehe lib/housekeeping/names.ts), der gespeicherte volle Name bleibt unveraendert. Die
+   * Kurzname-Zuordnung wird einmal ueber ALLE geladenen Benutzer gebildet (nicht pro Aufruf neu),
+   * damit eine Kollision (z. B. zwei "Anna") ueberall konsistent gleich aufgeloest wird - admin-
+   * only Bereiche (Teamverwaltung/Benutzerprofil) rufen diese Funktion bewusst nicht auf und
+   * zeigen weiterhin den vollen Namen. */
+  const shortNameMap = useMemo(() => buildShortNameMap(state.users.map((u) => u.name)), [state.users]);
+  const shortStaffName = useCallback((name: string | null | undefined): string => {
+    if (!name) return '';
+    return shortNameMap.get(name) || name.trim().split(/\s+/)[0] || name;
+  }, [shortNameMap]);
 
   const loadBackend = useCallback(async () => {
     const backend = await loadBackendState();
@@ -764,17 +777,17 @@ export function useHousekeepingApp() {
     const teamContext: TeamContext = { overrides: state.taskTeamOverrides, propertyDefaults: state.teamPropertyDefaults, teamsById };
     const resolved = resolveTasks(raw, state.taskAssignments, state.taskTimeOverrides, state.now, teamContext);
     // Manuelle Aufgaben (Punkt "Admin kann Aufgaben erstellen") - eigener Merge-Pfad statt durch
-    // resolveTasks()/TaskAssignmentsState, siehe tasks.ts#manualTaskToResolvedTask. Der Offen/
-    // Erledigt-Filter betrifft AUSSCHLIESSLICH diese Aufgaben, nie die Reinigungen oben.
+    // resolveTasks()/TaskAssignmentsState, siehe tasks.ts#manualTaskToResolvedTask. IMMER alle
+    // (offen UND erledigt) - die Aufgabenliste (TasksScreen) gruppiert Reinigungen/Aufgaben/Fertig
+    // selbst in eigene Abschnitte, statt erledigte Aufgaben hinter einem Filter zu verstecken.
     const manual = Object.values(state.manualTasks)
       .filter((mt): mt is ManualTask => !!mt)
-      .filter((mt) => mt.status === state.manualTaskFilter)
       .map(manualTaskToResolvedTask);
     return [...resolved, ...manual];
   }, [
     state.properties, state.planningUnits, state.planningReservations, state.doubleups, state.planningDays,
     state.taskAssignments, state.taskTimeOverrides, state.now, state.teams, state.taskTeamOverrides, state.teamPropertyDefaults,
-    state.bookingChanges, state.manualTasks, state.manualTaskFilter,
+    state.bookingChanges, state.manualTasks,
   ]);
 
   /** Aufgaben eines Tages, ungefiltert von "Meine Aufgaben" - fuer Tageszusammenfassung/
@@ -1072,28 +1085,6 @@ export function useHousekeepingApp() {
     });
   }, [patch, runAction, showToast, t]);
 
-  const setManualTaskFilter = useCallback((filter: 'open' | 'completed') => patch({ manualTaskFilter: filter }), [patch]);
-
-  /** Punkt 11 (Pause-Button oben rechts nur bei aktiver Reinigung): liefert die aktive
-   * Reinigung DIESES Users, niemals eine manuelle Aufgabe (die hat keinen Timer/Pause-Zustand).
-   * Der Server erlaubt technisch mehrere gleichzeitig laufende/pausierte Zuweisungen pro Person
-   * (kein globales "nur ein aktiver Timer"-Limit in api/task-assignments.js) - dieser globale
-   * Header-Button ist eine reine Bequemlichkeit fuer den HAEUFIGEN Fall genau einer aktiven
-   * Reinigung und bevorzugt bei mehreren die zuletzt gestartete/fortgesetzte (laufend vor
-   * pausiert); jede einzelne bleibt unveraendert ueber die Task-Detailansicht bedienbar - es
-   * geht dadurch keine bestehende Faehigkeit verloren. */
-  const activeCleaningTask = useCallback((): ResolvedTask | null => {
-    const user = state.user;
-    if (!user) return null;
-    const candidates = resolvedTasksAll().filter((t) =>
-      t.type !== 'manual' && t.assignedUserId === user.id && (t.status === 'in_progress' || t.status === 'paused'));
-    if (candidates.length === 0) return null;
-    const running = candidates.filter((t) => t.status === 'in_progress');
-    const pool = running.length > 0 ? running : candidates;
-    const lastActivityAt = (t: ResolvedTask) => (t.history.length > 0 ? t.history[t.history.length - 1].at : (t.cleaningStartedAt || 0));
-    return pool.slice().sort((a, b) => lastActivityAt(b) - lastActivityAt(a))[0];
-  }, [state.user, resolvedTasksAll]);
-
   // --- "Wichtiger Hinweis" (Punkt 3-8): eigene, vom Apaleo-Reservierungskommentar getrennte
   // Datenquelle. noticeAckKey() spiegelt exakt api/_task-notices.js#ackKey ("<taskId>|<userId>").
   function noticeAckKey(taskId: string, userId: string): string {
@@ -1250,7 +1241,7 @@ export function useHousekeepingApp() {
   }, [patch, showToast]);
 
   return {
-    state, t, roomKey,
+    state, t, roomKey, shortStaffName,
     rooms, DOUBLEUP_TYPES,
     setLang, doLogin, doLogout, selectProperty, retryLoad, setActiveNav, setFilter, toggleMyRooms,
     toggleMultiSelect, toggleRoomSelection, openRoom, closeModal, showToast,
@@ -1272,7 +1263,7 @@ export function useHousekeepingApp() {
     toggleTaskDoubleType, finishTaskDoubleup,
 
     // Manuell erstellte Aufgaben
-    openManualTaskForm, closeManualTaskForm, createManualTask, completeManualTask, setManualTaskFilter, activeCleaningTask,
+    openManualTaskForm, closeManualTaskForm, createManualTask, completeManualTask,
 
     // Wichtiger Hinweis
     noticeForTask, isNoticeAcknowledgedBy, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice,

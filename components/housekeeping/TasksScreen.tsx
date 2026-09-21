@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
+import type { ResolvedTask } from '@/lib/housekeeping/tasks';
 import type { StaffUser } from '@/lib/housekeeping/types';
 import { allowedProperties } from '@/lib/housekeeping/rooms';
 import { getPropertyDisplayName } from '@/lib/housekeeping/api';
@@ -13,9 +15,7 @@ import { MultiSelectBar } from './MultiSelectBar';
 import { BulkAssignSheet } from './BulkAssignSheet';
 import { BottomSheet } from './BottomSheet';
 import { Button } from '@/components/ui/Button';
-import {
-  IconChecklist, IconCheck, IconCheckSquare, IconChevronDown, IconCircle, IconLayers, IconPause, IconPlay, IconPlus, IconUsers,
-} from '@/components/ui/icons';
+import { IconCheck, IconCheckSquare, IconChevronDown, IconLayers, IconPlus, IconTask, IconUsers } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
 const DAY_LABEL_KEYS = ['day_today', 'day_tomorrow'] as const;
@@ -30,18 +30,31 @@ function shortDayLabel(iso: string, locale: string): string {
   return `${weekday} ${d.getDate()}.`;
 }
 
-/** Kompakte Kennzahl (Punkt 8) statt eines langen, mobil schlecht scanbaren Aufzaehlungssatzes -
- * dasselbe monochrome Outline-Icon-System (currentColor, Strichstaerke 1.6) wie ueberall sonst in
- * der App statt farbiger Statuspunkte - die Zahl bleibt das optisch dominante Element, das Icon
- * ist klein/sekundaer und traegt Bedeutung nie allein ueber Farbe. */
-function DayStatItem({ value, label, icon: Icon }: { value: number; label: string; icon?: typeof IconCircle }) {
+/** Punkt 6/7 (UX-Feinschliff): Icon DIREKT neben der Zahl (statt darunter beim Label) - eine
+ * visuelle Einheit statt zweier gestapelter Zeilen. Alle drei Kennzahlen teilen sich dieselbe
+ * Breite/Ausrichtung/Icon-/Zahlengroesse und sind innerhalb ihres Drittels zentriert; der
+ * `toneClass` traegt einen sehr zurueckhaltenden, dem bestehenden Task-Typ-/Status-Farbsystem
+ * entlehnten Akzent (nie eine farbige Flaeche hinter der ganzen Kennzahl). */
+function SummaryStat({ value, label, icon: Icon, toneClass }: { value: number; label: string; icon: typeof IconCheck; toneClass: string }) {
   return (
-    <div className="flex flex-col items-start gap-0.5">
-      <span className="text-[17px] font-semibold tabular-nums text-ink">{value}</span>
-      <span className="inline-flex items-center gap-1 whitespace-nowrap text-[11px] text-muted">
-        {Icon ? <Icon width={12} height={12} className="shrink-0" aria-hidden="true" /> : null}
-        {label}
+    <div className="flex flex-col items-center gap-0.5">
+      <span className="flex items-center gap-1.5">
+        <Icon width={16} height={16} className={cn('shrink-0', toneClass)} aria-hidden="true" />
+        <span className="text-[19px] font-semibold tabular-nums text-ink">{value}</span>
       </span>
+      <span className="text-[11px] text-muted">{label}</span>
+    </div>
+  );
+}
+
+/** Punkt 10: kleiner, ruhiger Abschnitts-Header mit demselben dezenten Farbakzent wie die
+ * zugehoerige Kennzahl oben - erzeugt eine erkennbare visuelle Verbindung, ohne die Task Cards
+ * selbst anzufassen. */
+function TaskGroup({ title, toneClass, children }: { title: string; toneClass: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className={cn('px-4 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide', toneClass)}>{title}</p>
+      <div className="grid grid-cols-1 gap-3 px-4 pt-1 sm:grid-cols-2 lg:grid-cols-3">{children}</div>
     </div>
   );
 }
@@ -58,13 +71,14 @@ function DayStatItem({ value, label, icon: Icon }: { value: number; label: strin
  */
 export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const {
-    state, t, tasksForDay, daySummaryFor, capacityFor, selectDay, selectPropertyScope, toggleMyTasksOnly,
+    state, t, tasksForDay, capacityFor, selectDay, selectPropertyScope, toggleMyTasksOnly,
     toggleTaskMultiSelect, toggleTaskSelection, openTask, bulkAssignTasks, clearDayAssignments, retryTasksLoad,
-    noticeForTask, isNoticeAcknowledgedBy, openManualTaskForm, setManualTaskFilter,
+    noticeForTask, isNoticeAcknowledgedBy, openManualTaskForm, shortStaffName,
   } = app;
   const [bulkOpen, setBulkOpen] = useState(false);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
+  const [doneOpen, setDoneOpen] = useState(false);
 
   const isAdmin = state.user?.role === 'admin';
   const allowed = allowedProperties(state.user, state.properties.map((p) => p.code));
@@ -74,21 +88,20 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
 
   const date = state.selectedDay || state.planningDays[0];
   const visible = date ? tasksForDay(date) : [];
-  const summary = date ? daySummaryFor(date) : null;
+  // Punkt 8 (UX-Feinschliff): fachliche Definition der drei Kennzahlen/Abschnitte - rein aus den
+  // bereits nach Tag/Ansicht/Standort gefilterten `visible`-Daten abgeleitet (Punkt 11: Rollen/
+  // Filter/Berechtigungen bleiben exakt dieselben wie fuer die Kartenliste selbst), keine
+  // Aenderung an der Task-/Zwischenreinigungs-/INTERCLEAN-Ableitung selbst.
+  // - Reinigungen: alle noch nicht abgeschlossenen Reinigungen (turnover/departure/stayover,
+  //   stayover schliesst eine gebuchte INTERCLEAN-Zwischenreinigung automatisch mit ein).
+  // - Aufgaben: offene manuelle Aufgaben.
+  // - Fertig: abgeschlossene Reinigungen PLUS erledigte manuelle Aufgaben.
+  const cleaningTasks = visible.filter((task) => task.type !== 'manual' && task.status !== 'completed');
+  const openManualTasks = visible.filter((task) => task.type === 'manual' && task.status !== 'completed');
+  const doneTasks = visible.filter((task) => task.status === 'completed');
   const capacity = date && isManagerHere ? capacityFor(date) : [];
   const topCapacityEntry = capacity.find((e) => e.housekeeperId);
   const unassignedCapacityEntry = capacity.find((e) => e.housekeeperId === null);
-  // Punkt 4: in der eingeklappten Team-Zusammenfassung darf der Vorname verwendet werden, sofern
-  // er unter den aktuell in der Kapazitaetsliste sichtbaren Mitarbeitenden eindeutig bleibt - bei
-  // einer Namenskollision (zwei Vornamen gleich) faellt NUR der betroffene Eintrag auf den
-  // vollstaendigen Namen zurueck. Die aufgeklappte Ansicht zeigt weiterhin ausnahmslos den
-  // vollstaendigen Namen (unveraendert, siehe capacity.map() unten).
-  const firstName = (name: string) => name.split(' ')[0] || name;
-  const topDisplayName = topCapacityEntry
-    ? (capacity.filter((e) => e.housekeeperId).filter((e) => firstName(e.housekeeperName) === firstName(topCapacityEntry.housekeeperName)).length > 1
-      ? topCapacityEntry.housekeeperName
-      : firstName(topCapacityEntry.housekeeperName))
-    : '';
 
   const scopedHousekeepers: StaffUser[] = state.users.filter((u) => {
     if (u.role === 'admin') return false;
@@ -119,64 +132,61 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const showPropertyChips = allowedProps.length > 1;
   const showScopeRow = !isManagerHere || showPropertyChips;
 
-  const chipClass = (active: boolean) => cn(
-    'inline-flex h-9 shrink-0 items-center rounded-full border px-4 text-[13px] font-medium transition-colors',
-    active ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
-  );
+  // Wichtiger-Hinweis-Badge auf der Task Card (Punkt 3, unveraendert aus der bisherigen
+  // Detailsheet-Logik hierher gezogen): "unread" bezieht sich auf den AKTUELL EINGELOGGTEN
+  // Nutzer (state.user), nicht auf task.assignedUserId - dieselbe Semantik wie in
+  // TaskDetailSheet.tsx#PrimaryAction (currentUserId/currentUserAckCurrent).
+  function cardNoticeState(task: ResolvedTask): 'none' | 'unread' | 'read' {
+    const notice = noticeForTask(task.id);
+    if (!notice) return 'none';
+    return isNoticeAcknowledgedBy(task.id, state.user?.id) ? 'read' : 'unread';
+  }
+
+  // Punkt 4 (UX-Feinschliff): Ansicht/Standort nicht mehr als zwei grosse Chip-Gruppen, sondern
+  // zwei kompakte Picker (native <select>, mit ueberlagertem Chevron-Icon) in EINER Zeile - die
+  // fachliche Trennung der beiden Filterdimensionen (siehe selectMine/selectAllTasks/selectScope
+  // oben) bleibt unveraendert, es aendert sich ausschliesslich die Darstellung.
+  const selectClass = 'h-9 w-full appearance-none rounded-full border border-line bg-warm-white pl-3.5 pr-8 text-[13px] font-medium text-ink';
 
   return (
     <div className="pb-6">
       {showScopeRow ? (
-        <div className="flex flex-col gap-2 border-b border-line px-4 py-2.5">
-          {/* "Ansicht" (Zuweisungsfilter) - entfaellt fuer Admin/Standortverantwortliche (sie
-           * starten ohnehin auf "Alle Aufgaben", siehe afterLogin()), analog zum bisherigen
-           * Verhalten, nur jetzt als eigene, klein beschriftete Gruppe statt Teil einer gemischten
-           * Chip-Zeile. */}
+        <div className="flex gap-2 px-4 py-2.5">
           {!isManagerHere ? (
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[10.5px] font-medium uppercase tracking-wide text-muted">{t('filter_group_view')}</span>
-              <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <button type="button" onClick={selectMine} aria-pressed={state.myTasksOnly} className={chipClass(state.myTasksOnly)}>
-                  {t('my_tasks_only')}
-                </button>
-                <button type="button" onClick={selectAllTasks} aria-pressed={!state.myTasksOnly} className={chipClass(!state.myTasksOnly)}>
-                  {t('scope_all_tasks')}
-                </button>
-              </div>
+            <div className="relative min-w-0 flex-1">
+              <select
+                value={state.myTasksOnly ? 'mine' : 'all'}
+                onChange={(e) => (e.target.value === 'mine' ? selectMine() : selectAllTasks())}
+                className={selectClass}
+              >
+                <option value="mine">{t('my_tasks_only')}</option>
+                <option value="all">{t('scope_all_tasks')}</option>
+              </select>
+              <IconChevronDown width={13} height={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
             </div>
           ) : null}
-          {/* "Standort" (Property-Filter) - unabhaengig von der Ansicht oben, startet bei "Alle"
-           * (Punkt 10 Default), sofern der Kontext nicht bereits etwas anderes vorausgewaehlt hat. */}
           {showPropertyChips ? (
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[10.5px] font-medium uppercase tracking-wide text-muted">{t('filter_group_property')}</span>
-              <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <button
-                  type="button"
-                  onClick={() => selectScope('all')}
-                  aria-pressed={state.propertyScope === 'all'}
-                  className={chipClass(state.propertyScope === 'all')}
-                >
-                  {t('scope_all')}
-                </button>
+            <div className="relative min-w-0 flex-1">
+              <select
+                value={state.propertyScope}
+                onChange={(e) => selectScope(e.target.value)}
+                className={selectClass}
+              >
+                <option value="all">{t('scope_all_properties')}</option>
                 {allowedProps.map((p) => (
-                  <button
-                    key={p.code}
-                    type="button"
-                    onClick={() => selectScope(p.code)}
-                    aria-pressed={state.propertyScope === p.code}
-                    className={chipClass(state.propertyScope === p.code)}
-                  >
-                    {getPropertyDisplayName(p)}
-                  </button>
+                  <option key={p.code} value={p.code}>{getPropertyDisplayName(p)}</option>
                 ))}
-              </div>
+              </select>
+              <IconChevronDown width={13} height={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
             </div>
           ) : null}
         </div>
       ) : null}
 
-      <div className="flex gap-2 overflow-x-auto px-4 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Punkt 5: Tagesnavigation bleibt, aber kompakter und als Grid gleichmaessig ueber die
+       * Breite verteilt statt einer potenziell scrollenden Flex-Zeile - passt auf Mobile in eine
+       * Zeile. */}
+      <div className="grid grid-cols-4 gap-1.5 px-4 pt-1">
         {state.planningDays.map((d, i) => (
           <button
             key={d}
@@ -184,42 +194,26 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             onClick={() => selectDay(d)}
             aria-pressed={date === d}
             className={cn(
-              'flex shrink-0 flex-col items-center rounded-control border px-4 py-2 text-center transition-colors',
+              'flex flex-col items-center rounded-control border px-2 py-1.5 text-center transition-colors',
               date === d ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
             )}
           >
-            <span className="text-[13px] font-medium">
+            <span className="truncate text-[12.5px] font-medium">
               {i < DAY_LABEL_KEYS.length ? t(DAY_LABEL_KEYS[i]) : shortDayLabel(d, LOCALES[state.lang] || 'de-DE')}
             </span>
           </button>
         ))}
       </div>
 
-      {summary ? (
-        <div className="px-4 pt-3">
-          {/* Punkt 8: kompakte Kennzahlenzeile statt eines langen Aufzaehlungssatzes - Werte mit 0
-           * werden ausgeblendet, sofern das Verstaendnis dadurch nicht verloren geht (Gesamtzahl
-           * bleibt immer sichtbar). Der vollstaendige Satz bleibt fuer Screenreader erhalten. */}
-          <p className="sr-only">
-            {t('tasks_count', { n: summary.total })}
-            {summary.total > 0 ? (
-              <>
-                {' · '}{t('summary_open', { n: summary.open })}
-                {' · '}{t('summary_in_progress', { n: summary.inProgress })}
-                {summary.paused > 0 ? <> · {t('summary_paused', { n: summary.paused })}</> : null}
-                {' · '}{t('summary_completed', { n: summary.completed })}
-                {summary.turnover > 0 ? <> · {t('summary_turnover', { n: summary.turnover })}</> : null}
-              </>
-            ) : null}
-          </p>
-          <div className="flex flex-wrap items-start gap-x-5 gap-y-2" aria-hidden="true">
-            <DayStatItem value={summary.total} label={t('task_count_suffix')} icon={IconChecklist} />
-            {summary.open > 0 ? <DayStatItem value={summary.open} label={t('kpi_open')} icon={IconCircle} /> : null}
-            {summary.inProgress > 0 ? <DayStatItem value={summary.inProgress} label={t('kpi_in_progress')} icon={IconPlay} /> : null}
-            {summary.paused > 0 ? <DayStatItem value={summary.paused} label={t('kpi_paused')} icon={IconPause} /> : null}
-            {summary.completed > 0 ? <DayStatItem value={summary.completed} label={t('kpi_completed')} icon={IconCheck} /> : null}
-            {summary.turnover > 0 ? <DayStatItem value={summary.turnover} label={t('kpi_turnover')} icon={IconLayers} /> : null}
-          </div>
+      {/* Punkt 6/7/8: genau drei Kennzahlen (Reinigungen/Aufgaben/Fertig) statt der frueheren
+       * Statuszeile - beziehen sich auf `visible` (bereits nach Tag/Ansicht/Standort gefiltert,
+       * siehe tasksForDay), Icon direkt neben der Zahl, dezente, dem Task-Typsystem entlehnte
+       * Farbakzente (nie eine farbige Flaeche hinter der ganzen Kennzahl). */}
+      {visible.length > 0 ? (
+        <div className="grid grid-cols-3 gap-2 px-4 pt-3">
+          <SummaryStat value={cleaningTasks.length} label={t('summary_cleanings_label')} icon={IconLayers} toneClass="text-type-stayover" />
+          <SummaryStat value={openManualTasks.length} label={t('filter_group_manual_tasks')} icon={IconTask} toneClass="text-type-departure" />
+          <SummaryStat value={doneTasks.length} label={t('wf_done')} icon={IconCheck} toneClass="text-status-clean" />
         </div>
       ) : null}
 
@@ -251,40 +245,6 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         </div>
       ) : null}
 
-      {/* Offen/Erledigt-Filter fuer manuelle Aufgaben (Punkt "erledigte Aufgaben bleiben fuer Admin
-       * sichtbar") - betrifft AUSSCHLIESSLICH manuelle Aufgaben (siehe useHousekeepingApp.ts#
-       * resolvedTasksAll), Reinigungen bleiben von diesem Filter vollstaendig unberuehrt. Nur fuer
-       * Admin sichtbar/aenderbar - alle anderen Rollen sehen implizit immer nur "Offen". */}
-      {isAdmin ? (
-        <div className="flex flex-col gap-1.5 px-4 pt-3">
-          <span className="text-[10.5px] font-medium uppercase tracking-wide text-muted">{t('filter_group_manual_tasks')}</span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setManualTaskFilter('open')}
-              aria-pressed={state.manualTaskFilter === 'open'}
-              className={cn(
-                'inline-flex h-8 items-center rounded-full border px-3.5 text-[12.5px] font-medium transition-colors',
-                state.manualTaskFilter === 'open' ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
-              )}
-            >
-              {t('manual_tasks_open')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setManualTaskFilter('completed')}
-              aria-pressed={state.manualTaskFilter === 'completed'}
-              className={cn(
-                'inline-flex h-8 items-center rounded-full border px-3.5 text-[12.5px] font-medium transition-colors',
-                state.manualTaskFilter === 'completed' ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
-              )}
-            >
-              {t('manual_tasks_completed')}
-            </button>
-          </div>
-        </div>
-      ) : null}
-
       {/* Punkt 11: eingeklappt per Default (kompakte Ein-Zeilen-Zusammenfassung), fuer normale
        * Housekeeper (isManagerHere=false) komplett ausgeblendet. */}
       {isManagerHere && capacity.length > 0 ? (
@@ -303,7 +263,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                   <span className="font-medium">{t('capacity_title_short')}</span>
                   {topCapacityEntry ? (
                     <span className="ml-2 text-muted">
-                      {topDisplayName} {topCapacityEntry.count}
+                      {shortStaffName(topCapacityEntry.housekeeperName)} {topCapacityEntry.count}
                       {unassignedCapacityEntry ? ` · ${unassignedCapacityEntry.count} ${t('capacity_unassigned_short')}` : ''}
                     </span>
                   ) : null}
@@ -316,7 +276,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             <div className="flex flex-col gap-1.5 px-4 pb-3">
               {capacity.map((entry) => (
                 <div key={entry.housekeeperId || 'unassigned'} className="flex items-center justify-between text-[13px]">
-                  <span className="text-ink">{entry.housekeeperId ? entry.housekeeperName : t('unassigned')}</span>
+                  <span className="text-ink">{entry.housekeeperId ? shortStaffName(entry.housekeeperName) : t('unassigned')}</span>
                   <span className="text-muted">{entry.count} {t('task_count_suffix')}</span>
                 </div>
               ))}
@@ -336,29 +296,94 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         </div>
       ) : visible.length === 0 ? (
         <div className="px-4 py-10 text-center text-sm text-muted">{t('no_tasks')}</div>
-      ) : (
+      ) : state.taskMultiSelect ? (
+        // Mehrfachauswahl (Bulk-Zuweisen) bleibt bewusst eine flache Liste ueber ALLE sichtbaren
+        // Aufgaben statt der neuen Abschnitte - Punkt 12 "Assignment-Logik nicht veraendern".
         <div className="grid grid-cols-1 gap-3 px-4 pt-4 sm:grid-cols-2 lg:grid-cols-3">
-          {visible.map((task) => {
-            // Punkt 9: dezente Warnkennzeichnung nur, wenn ein Hinweis existiert UND jemand
-            // zugewiesen ist UND GENAU diese Person ihn noch nicht bestaetigt hat - kein Hinweis
-            // ohne Zuweisung, kein Zustand ohne echte Bestaetigungspruefung.
-            const notice = noticeForTask(task.id);
-            const noticeState: 'none' | 'unread' | 'read' = !notice || !task.assignedUserId
-              ? 'none'
-              : isNoticeAcknowledgedBy(task.id, task.assignedUserId) ? 'read' : 'unread';
-            return (
-              <TaskCard
-                key={task.id}
-                task={task}
-                lang={state.lang}
-                selected={state.selectedTasks.has(task.id)}
-                selectable={state.taskMultiSelect}
-                noticeState={noticeState}
-                onOpen={() => openTask(task.id)}
-              />
-            );
-          })}
+          {visible.map((task) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              lang={state.lang}
+              selected={state.selectedTasks.has(task.id)}
+              selectable
+              shortName={shortStaffName}
+              noticeState={cardNoticeState(task)}
+              onOpen={() => openTask(task.id)}
+            />
+          ))}
         </div>
+      ) : (
+        // Punkt 10: Reinigungen/Aufgaben/Fertig als eigene, klein beschriftete Abschnitte statt
+        // einer einzigen gemischten Liste - "Fertig" per Default eingeklappt, damit erledigte
+        // Elemente die noch offene Arbeit nicht verdraengen. Eine leere Kategorie wird komplett
+        // weggelassen (kein grosser Empty-State).
+        <>
+          {cleaningTasks.length > 0 ? (
+            <TaskGroup title={t('summary_cleanings_label')} toneClass="text-type-stayover">
+              {cleaningTasks.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  lang={state.lang}
+                  selected={false}
+                  selectable={false}
+                  shortName={shortStaffName}
+                  noticeState={cardNoticeState(task)}
+                  onOpen={() => openTask(task.id)}
+                />
+              ))}
+            </TaskGroup>
+          ) : null}
+
+          {openManualTasks.length > 0 ? (
+            <TaskGroup title={t('filter_group_manual_tasks')} toneClass="text-type-departure">
+              {openManualTasks.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  lang={state.lang}
+                  selected={false}
+                  selectable={false}
+                  shortName={shortStaffName}
+                  noticeState="none"
+                  onOpen={() => openTask(task.id)}
+                />
+              ))}
+            </TaskGroup>
+          ) : null}
+
+          {doneTasks.length > 0 ? (
+            <div className="mt-1">
+              <button
+                type="button"
+                onClick={() => setDoneOpen((v) => !v)}
+                className="flex w-full items-center gap-1.5 px-4 pt-4 pb-1 text-left"
+              >
+                <IconChevronDown width={12} height={12} className={cn('shrink-0 text-status-clean transition-transform', doneOpen && 'rotate-180')} aria-hidden="true" />
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-status-clean">
+                  {t('wf_done')} · {doneTasks.length}
+                </span>
+              </button>
+              {doneOpen ? (
+                <div className="grid grid-cols-1 gap-3 px-4 pt-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {doneTasks.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      lang={state.lang}
+                      selected={false}
+                      selectable={false}
+                      shortName={shortStaffName}
+                      noticeState="none"
+                      onOpen={() => openTask(task.id)}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </>
       )}
 
       {state.taskMultiSelect ? (
@@ -375,6 +400,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         lang={state.lang}
         housekeepers={scopedHousekeepers}
         count={state.selectedTasks.size}
+        shortName={shortStaffName}
         onClose={() => setBulkOpen(false)}
         onPick={(hk) => {
           bulkAssignTasks(Array.from(state.selectedTasks), { id: hk.id, name: hk.name });

@@ -8,6 +8,7 @@ export interface BulkAssignSheetProps {
   lang: Lang;
   housekeepers: StaffUser[];
   count: number;
+  shortName: (name: string | null | undefined) => string;
   onPick: (hk: StaffUser) => void;
   onClose: () => void;
 }
@@ -15,8 +16,11 @@ export interface BulkAssignSheetProps {
 /**
  * Ersetzt den frueheren `prompt()`-Dialog fuer die Mehrfachzuweisung durch ein hochwertiges
  * Bottom Sheet - dieselbe Aktion (assignmentsApi.bulkSet), nur eine passende Oberflaeche dafuer.
+ * Punkt 2 (UX-Feinschliff): Picker-Liste zeigt wie ueberall im operativen Bereich nur den
+ * Vornamen (mit Kollisions-Disambiguierung) - der gespeicherte Name (`hk.name`) bleibt
+ * unveraendert, es aendert sich ausschliesslich die Darstellung hier.
  */
-export function BulkAssignSheet({ open, lang, housekeepers, count, onPick, onClose }: BulkAssignSheetProps) {
+export function BulkAssignSheet({ open, lang, housekeepers, count, shortName, onPick, onClose }: BulkAssignSheetProps) {
   return (
     <BottomSheet open={open} onClose={onClose}>
       <h3 className="italic text-lg text-[#17160f]">
@@ -33,7 +37,7 @@ export function BulkAssignSheet({ open, lang, housekeepers, count, onPick, onClo
               onClick={() => onPick(hk)}
               className="flex items-center justify-between rounded-control px-3 py-3 text-left text-sm font-medium text-ink transition-colors hover:bg-surface"
             >
-              {hk.name}
+              {shortName(hk.name)}
             </button>
           ))
         )}

@@ -21,7 +21,7 @@ export interface ManualTaskFormSheetProps {
  * mehreren Stellen (aktuell TasksScreen) geoeffnet werden kann.
  */
 export function ManualTaskFormSheet({ app }: ManualTaskFormSheetProps) {
-  const { state, t, closeManualTaskForm, createManualTask } = app;
+  const { state, t, closeManualTaskForm, createManualTask, shortStaffName } = app;
   const open = state.manualTaskFormOpen;
   const allowed = allowedProperties(state.user, state.properties.map((p) => p.code));
   const properties = state.properties.filter((p) => allowed.includes(p.code));
@@ -162,7 +162,7 @@ export function ManualTaskFormSheet({ app }: ManualTaskFormSheetProps) {
             >
               <option value="">{t('unassigned')}</option>
               {assignableUsers.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
+                <option key={u.id} value={u.id}>{shortStaffName(u.name)}</option>
               ))}
             </select>
           </label>

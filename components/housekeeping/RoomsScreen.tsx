@@ -103,6 +103,7 @@ export function RoomsScreen({ app }: { app: HousekeepingApp }) {
         lang={state.lang}
         housekeepers={propHks}
         count={state.selectedRooms.size}
+        shortName={app.shortStaffName}
         onClose={() => setBulkOpen(false)}
         onPick={(hk) => {
           bulkAssign(Array.from(state.selectedRooms), { id: hk.id, name: hk.name });

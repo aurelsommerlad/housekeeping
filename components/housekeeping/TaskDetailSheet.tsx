@@ -160,7 +160,7 @@ function BookingChangeDetail({ change, t }: { change: NonNullable<ResolvedTask['
 function CleaningAssignmentSection({
   app, task, isManager, assignmentOpen, onToggleAssignment,
 }: { app: HousekeepingApp; task: ResolvedTask; isManager: boolean; assignmentOpen: boolean; onToggleAssignment: () => void }) {
-  const { t, state, assignTask, releaseTask, workloadForPropertyDay } = app;
+  const { t, state, assignTask, releaseTask, workloadForPropertyDay, shortStaffName } = app;
   const workload = workloadForPropertyDay(task.propertyCode, task.date);
   // Housekeeping Teams: der Team-Verantwortliche des GENAU diesem Task zugeordneten Teams darf
   // hier zusaetzlich zu Standortverantwortlichen Personen zuweisen/umverteilen/freigeben - aber
@@ -209,7 +209,7 @@ function CleaningAssignmentSection({
   // verteilt"), sonst wie zuvor "Nicht zugewiesen" - dieselbe Prioritaet wie WorkStatus auf der
   // Task Card (TaskCard.tsx), hier nur ausgeschrieben statt abgekuerzt.
   const assignmentLabel = task.assignedUserName
-    ? (task.assignedTeamName ? `${task.assignedUserName} · ${task.assignedTeamName}` : task.assignedUserName)
+    ? (task.assignedTeamName ? `${shortStaffName(task.assignedUserName)} · ${task.assignedTeamName}` : shortStaffName(task.assignedUserName))
     : (task.assignedTeamName ? `${task.assignedTeamName} · ${t('team_task_unclaimed')}` : t('unassigned'));
 
   const summaryRow = (
@@ -258,7 +258,7 @@ function CleaningAssignmentSection({
                   isAssigned ? 'font-medium text-ink' : 'text-muted hover:bg-surface',
                 )}
               >
-                <span>{hk.name} · {workload[hk.id] || 0} {t('task_count_suffix')}</span>
+                <span>{shortStaffName(hk.name)} · {workload[hk.id] || 0} {t('task_count_suffix')}</span>
                 {isAssigned ? <IconCheck width={15} height={15} aria-hidden="true" /> : null}
               </button>
             );
@@ -294,7 +294,7 @@ function PrimaryAction({
 }: { app: HousekeepingApp; task: ResolvedTask; isManager: boolean; mine: boolean; onNoticeBlocked: () => void }) {
   const {
     t, claimTask, releaseTask, startTaskTimer, pauseTaskTimer, openLinenCompletion, completeTaskInspection, noticeForTask,
-    completeManualTask, state,
+    completeManualTask, shortStaffName, state,
   } = app;
   const canAct = isManager || mine;
   const notice = noticeForTask(task.id);
@@ -316,7 +316,7 @@ function PrimaryAction({
           </Button>
           {doneEntry ? (
             <p className="text-center text-[12px] text-muted">
-              {doneEntry.byUserName}{doneEntry.byUserName ? ' · ' : ''}{formatDateShort(doneEntry.at)} {formatClock(doneEntry.at)}
+              {doneEntry.byUserName ? `${shortStaffName(doneEntry.byUserName)} · ` : ''}{formatDateShort(doneEntry.at)} {formatClock(doneEntry.at)}
             </p>
           ) : null}
         </div>
@@ -358,19 +358,28 @@ function PrimaryAction({
   }
 
   if (task.status === 'assigned' && canAct) {
-    // Punkt 7: keine dauerhaft sichtbare Erklaerung mehr ueber dem Button - stattdessen blockiert
-    // ein Klick den Start, zeigt EINMALIG (Toast) "Bitte bestaetige zuerst den wichtigen Hinweis."
-    // und hebt die Notice-Card selbst hervor (siehe onNoticeBlocked in der Elternkomponente).
+    // Punkt 3 (UX-Feinschliff): Button bleibt an seiner normalen Position, wirkt aber ECHT
+    // disabled (opacity/pointer-events ueber Button.tsx#disabled, kein konkurrierender Text
+    // daneben) statt eines dauerhaft sichtbaren Warnhinweises. Da ein natives disabled-Element
+    // selbst keinen Klick mehr feuert, faengt die umschliessende <div> den Tap trotzdem ab
+    // (pointer-events-none auf dem Button gibt den Treffer an sie weiter) und hebt die
+    // Notice-Card hervor/scrollt dorthin (siehe onNoticeBlocked in der Elternkomponente) - so
+    // bleibt "trotzdem tippen -> Hinweis hervorheben" moeglich, ohne auf einen echten Klick-
+    // Handler am (fuer Tastatur/Screenreader) tatsaechlich deaktivierten Button zu verzichten.
     const blocked = !isManager && !!notice && !currentUserAckCurrent;
     return (
       <div className="flex flex-col gap-2">
-        <Button
-          variant="primary"
-          className="w-full"
-          onClick={() => (blocked ? onNoticeBlocked() : startTaskTimer(task.id))}
-        >
-          {t('start_clean')}
-        </Button>
+        <div onClick={blocked ? onNoticeBlocked : undefined} className={blocked ? 'cursor-not-allowed' : undefined}>
+          <Button
+            variant="primary"
+            className="w-full"
+            disabled={blocked}
+            title={blocked ? t('notice_start_hint') : undefined}
+            onClick={() => startTaskTimer(task.id)}
+          >
+            {t('start_clean')}
+          </Button>
+        </div>
         <Button variant="ghost" className="w-full" onClick={() => releaseTask(task.id)}>
           {t('release_task')}
         </Button>
@@ -417,7 +426,7 @@ function PrimaryAction({
 export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   const {
     state, t, closeTaskModal, toggleTaskDoubleType,
-    finishTaskDoubleup, showToast,
+    finishTaskDoubleup, showToast, shortStaffName,
     noticeForTask, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice,
     saveTaskTimeOverride, removeTaskTimeOverride, setTaskTeam,
   } = app;
@@ -576,7 +585,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                 <TimeBadge
                   icon={IconEdit}
                   title={t('time_changed_detail', {
-                    name: task.timeOverride.changedByName,
+                    name: shortStaffName(task.timeOverride.changedByName),
                     date: formatDateShort(task.timeOverride.changedAt),
                     time: formatClock(task.timeOverride.changedAt),
                   })}
@@ -700,7 +709,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                   {currentUserAckCurrent && currentUserAck ? (
                     <span className="inline-flex items-center gap-1.5 text-[12.5px] text-muted">
                       <IconCheck width={14} height={14} className="text-sage" aria-hidden="true" />
-                      {t('notice_ack_done', { name: currentUserAck.userName, time: formatClock(currentUserAck.acknowledgedAt) })}
+                      {t('notice_ack_done', { name: shortStaffName(currentUserAck.userName), time: formatClock(currentUserAck.acknowledgedAt) })}
                     </span>
                   ) : (
                     <button
@@ -790,7 +799,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           <div className="flex items-center gap-1.5 text-[13px]">
             <IconUser width={15} height={15} className="shrink-0 text-muted" aria-hidden="true" />
             <span className={task.assignedUserName ? 'font-medium text-ink' : 'text-muted'}>
-              {task.assignedUserName || t('unassigned')}
+              {task.assignedUserName ? shortStaffName(task.assignedUserName) : t('unassigned')}
             </span>
           </div>
         )}
@@ -872,7 +881,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
               <div className="mt-2 flex flex-col gap-1">
                 {task.history.map((entry, i) => (
                   <p key={i} className="text-[12.5px] text-muted">
-                    {formatClock(entry.at)} · {t(HISTORY_LABEL_KEYS[entry.action])} · {entry.byUserName}
+                    {formatClock(entry.at)} · {t(HISTORY_LABEL_KEYS[entry.action])} · {shortStaffName(entry.byUserName)}
                     {entry.source ? <> · {t(entry.source === 'nfc' ? 'source_nfc' : 'source_manual')}</> : null}
                   </p>
                 ))}

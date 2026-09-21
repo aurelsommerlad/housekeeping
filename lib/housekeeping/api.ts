@@ -276,7 +276,36 @@ import type {
 // entfernt (FORCED_CLEAN_INTERVAL_NIGHTS-Nutzung in tasks.ts). Reine Additive/Refactoring-Aenderung
 // an der bestehenden Turnover-/Abreise-/Timer-/Zuweisungs-/Notice-/Team-Logik - nichts davon wurde
 // umgebaut.
-export const APP_VERSION = '2.16.0';
+//
+// 2.17.0 - UX-Feinschliff Runde 2 (kompakterer oberer Bereich, ohne Business-Logik/Berechtigungen
+// neu aufzubauen): (1) globaler Pause-Button im Header VOLLSTAENDIG entfernt (nicht nur
+// ausgeblendet) - Pause/Fortsetzen bleibt unveraendert Teil der Reinigungs-Detailansicht, manuelle
+// Aufgaben haben weiterhin keinerlei Pausenfunktion; der davon unabhaengige "Pause von der
+// Arbeit"-Button bleibt bestehen. (2) Mitarbeiter werden im gesamten operativen Bereich (Task
+// Cards, Zuweisung, Team-Kurzansicht, Reinigungsstatus, "erledigt von") standardmaessig nur mit
+// Vornamen angezeigt (z. B. "Aurel" statt "Aurel Sommerlad"), bei Vornamens-Kollisionen automatisch
+// als "Vorname N." disambiguiert (lib/housekeeping/names.ts) - der gespeicherte Name aendert sich
+// nicht, Admin-Bereiche (Teamverwaltung/Benutzerprofil) zeigen weiterhin den vollen Namen. (3)
+// Wichtiger-Hinweis-Karte konkurriert nicht mehr mit dem "Reinigung starten"-Button: die Karte
+// selbst zeigt Hinweistext + "Gelesen und verstanden", der Button bleibt an seiner Position,
+// ist bis zur Bestaetigung disabled (mit dezentem Tooltip/Hinweistext) und bleibt per
+// Klick-Guard weiterhin antippbar, um zur Notice-Card zu scrollen/sie hervorzuheben. (4) Filterzeile
+// "Ansicht"/"Standort" (zwei Chip-Gruppen) ersetzt durch eine kompakte Zeile mit zwei Auswahlfeldern
+// ("Meine Aufgaben ▾"/"Alle Standorte ▾") - beide Filterdimensionen bleiben technisch unabhaengig
+// voneinander. (5) Tagesnavigation kompakter, gleichmaessig ueber eine Zeile verteilt (unveraendert
+// vier Tage). (6)-(9) KPI-Zeile ersetzt durch genau drei Kennzahlen "Reinigungen"/"Aufgaben"/
+// "Fertig" (Icon direkt neben der Zahl, keine eigene Flaeche), rein aus den bereits nach Tag/
+// Ansicht/Standort gefilterten Daten abgeleitet - "pausiert"/"Turnover" sind keine eigenen
+// Top-Level-Kennzahlen mehr, bleiben aber auf der einzelnen Task Card sichtbar. (10) Aufgabenliste
+// in drei kleine, ruhige Abschnitte "REINIGUNGEN"/"AUFGABEN"/"FERTIG" gruppiert (dezenter Farbakzent
+// wie die zugehoerige Kennzahl), "FERTIG" per Default eingeklappt, leere Abschnitte werden komplett
+// weggelassen; der bisherige admin-only Offen/Erledigt-Umschalter fuer manuelle Aufgaben entfaellt
+// dadurch (manuelle Aufgaben werden serverseitig nie nach Status gefiltert, keine
+// Berechtigungsaenderung). (11)/(12) Task Cards, Apaleo-Mapping, Turnover-/INTERCLEAN-Ermittlung,
+// Reservierungsdaten, ECI/LCO, NFC, Zuweisungslogik, Timer und Notice-Bestaetigungslogik wurden
+// dabei nicht angefasst - reine Darstellungs-/Kompaktheitsaenderung, die weiterhin exakt Tag/
+// Ansicht/Standort/Berechtigungen respektiert.
+export const APP_VERSION = '2.17.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

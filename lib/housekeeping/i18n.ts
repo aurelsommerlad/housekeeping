@@ -217,6 +217,8 @@ export const I18N = {
     filter_group_manual_tasks: 'Aufgaben', manual_tasks_open: 'Offen', manual_tasks_completed: 'Erledigt',
     filter_group_view: 'Ansicht', filter_group_property: 'Standort', scope_all_tasks: 'Alle Aufgaben',
     booking_changed_badge: 'Buchung geändert', booking_changed_title: 'Buchung geändert',
+    scope_all_properties: 'Alle Standorte', summary_cleanings_label: 'Reinigungen',
+    notice_start_hint: 'Erst nach Bestätigung des Hinweises verfügbar',
   },
   en: {
     app_name: 'Housekeeping', login_title: 'Sign in', username: 'Username', password: 'Password',
@@ -406,6 +408,8 @@ export const I18N = {
     filter_group_manual_tasks: 'Tasks', manual_tasks_open: 'Open', manual_tasks_completed: 'Completed',
     filter_group_view: 'View', filter_group_property: 'Property', scope_all_tasks: 'All tasks',
     booking_changed_badge: 'Booking changed', booking_changed_title: 'Booking changed',
+    scope_all_properties: 'All properties', summary_cleanings_label: 'Cleanings',
+    notice_start_hint: 'Available only after confirming the notice',
   },
   pl: {
     app_name: 'Housekeeping', login_title: 'Zaloguj sie', username: 'Nazwa uzytkownika', password: 'Haslo',
@@ -595,6 +599,8 @@ export const I18N = {
     filter_group_manual_tasks: 'Zadania', manual_tasks_open: 'Otwarte', manual_tasks_completed: 'Zakonczone',
     filter_group_view: 'Widok', filter_group_property: 'Lokalizacja', scope_all_tasks: 'Wszystkie zadania',
     booking_changed_badge: 'Rezerwacja zmieniona', booking_changed_title: 'Rezerwacja zmieniona',
+    scope_all_properties: 'Wszystkie lokalizacje', summary_cleanings_label: 'Sprzatania',
+    notice_start_hint: 'Dostepne dopiero po potwierdzeniu informacji',
   },
   ro: {
     app_name: 'Housekeeping', login_title: 'Autentificare', username: 'Utilizator', password: 'Parola',
@@ -784,6 +790,8 @@ export const I18N = {
     filter_group_manual_tasks: 'Sarcini', manual_tasks_open: 'Deschise', manual_tasks_completed: 'Finalizate',
     filter_group_view: 'Vizualizare', filter_group_property: 'Locatie', scope_all_tasks: 'Toate sarcinile',
     booking_changed_badge: 'Rezervare modificata', booking_changed_title: 'Rezervare modificata',
+    scope_all_properties: 'Toate locatiile', summary_cleanings_label: 'Curatenii',
+    notice_start_hint: 'Disponibil doar dupa confirmarea instiintarii',
   },
 } as const;
 

@@ -19,6 +19,10 @@ export interface TaskCardProps {
   /** Punkt 9: 'unread' zeigt ein dezentes Outline-Warnsymbol (wichtiger, vom zugewiesenen
    * Mitarbeiter noch nicht bestaetigter Hinweis), 'read' ein dezentes Haekchen, 'none' nichts. */
   noticeState?: 'none' | 'unread' | 'read';
+  /** Punkt "Reinigungskräfte standardmäßig nur mit Vornamen anzeigen" - reine Darstellungsfunktion
+   * (siehe lib/housekeeping/names.ts/useHousekeepingApp.ts#shortStaffName), der gespeicherte
+   * volle Name bleibt unveraendert. */
+  shortName: (name: string | null | undefined) => string;
   onOpen: () => void;
 }
 
@@ -62,8 +66,8 @@ function lastHistoryAt(task: ResolvedTask, action: 'started' | 'resumed' | 'paus
  * zeigen "Fertig · HH:MM" statt einer nochmaligen Zuweisungsangabe (Punkt 10). Sonst schlicht die
  * Zuweisung selbst - der Name allein zeigt bereits eindeutig, dass zugewiesen ist.
  */
-function WorkStatus({ task, lang }: { task: ResolvedTask; lang: Lang }) {
-  const name = task.assignedUserName || translate(lang, 'unassigned');
+function WorkStatus({ task, lang, shortName }: { task: ResolvedTask; lang: Lang; shortName: (name: string | null | undefined) => string }) {
+  const name = task.assignedUserName ? shortName(task.assignedUserName) : translate(lang, 'unassigned');
 
   if (task.status === 'completed') {
     return (
@@ -105,7 +109,7 @@ function WorkStatus({ task, lang }: { task: ResolvedTask; lang: Lang }) {
   // ("Reinigungsfirma B · Noch nicht verteilt") oder wie zuvor "Nicht zugewiesen" - EINE Zeile,
   // keine zusaetzliche Kartenhoehe (Briefing "Task Card ... darf nicht hoeher werden").
   const label = task.assignedUserName
-    ? (task.assignedTeamName ? `${task.assignedUserName} · ${task.assignedTeamName}` : task.assignedUserName)
+    ? (task.assignedTeamName ? `${shortName(task.assignedUserName)} · ${task.assignedTeamName}` : shortName(task.assignedUserName))
     : (task.assignedTeamName ? `${task.assignedTeamName} · ${translate(lang, 'team_task_unclaimed')}` : name);
 
   return (
@@ -313,7 +317,7 @@ function OccupancyLine({ task, lang, doubleTypes }: { task: ResolvedTask; lang: 
  * Playwright-Hoehenvergleich vor/nach der Aenderung) - reine Darstellung, keine Aenderung an
  * Task-Ableitung/Zuweisung/Timer/Pausen/NFC/Notices/Zeiten-Overrides.
  */
-export function TaskCard({ task, lang, selected, selectable, noticeState = 'none', onOpen }: TaskCardProps) {
+export function TaskCard({ task, lang, selected, selectable, noticeState = 'none', shortName, onOpen }: TaskCardProps) {
   const typeConfig = TASK_TYPE_CONFIG[task.type];
   // Punkt "gebucht vs. manuell": ein Hund/Babybett, das bereits als gebuchtes Apaleo-Extra bei
   // Abreise oder Anreise angezeigt wird (siehe OccupancyLine/bookedExtraIcons), erscheint hier in
@@ -375,7 +379,7 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
           {task.type === 'manual' ? <IconTask width={14} height={14} className="shrink-0 text-type-manual" aria-hidden="true" /> : null}
           <TonePill config={typeConfig} lang={lang} size="sm" />
         </span>
-        <WorkStatus task={task} lang={lang} />
+        <WorkStatus task={task} lang={lang} shortName={shortName} />
       </div>
 
       <TimeLine task={task} lang={lang} />
