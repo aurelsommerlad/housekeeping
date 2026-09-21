@@ -19,6 +19,24 @@ function isPropertyManager(user, propertyCode) {
   return Array.isArray(user.managedProperties) && user.managedProperties.includes(propertyCode) && hasPropertyAccess(user, propertyCode);
 }
 
+// Housekeeping Teams (Reinigungsfirmen) - Server-Zwilling von lib/housekeeping/permissions.ts.
+// Bewusst getrennt von isPropertyManager/managedProperties (siehe dortiger Kommentar): eine
+// Standortverantwortung ist eine andere Zustaendigkeit als die interne Disposition einer
+// Reinigungsfirma innerhalb ihres eigenen Teams.
+function isTeamLead(user) {
+  return !!user && user.teamRole === 'lead' && !!user.housekeepingTeamId;
+}
+
+function isTeamMemberOf(user, teamId) {
+  return !!user && !!teamId && user.housekeepingTeamId === teamId;
+}
+
+function canManageTeamAssignments(user, teamId) {
+  if (!user || !teamId) return false;
+  if (user.role === 'admin') return true;
+  return isTeamLead(user) && user.housekeepingTeamId === teamId;
+}
+
 // Task-IDs sind bewusst deterministisch und strukturiert (siehe lib/housekeeping/tasks.ts#taskId:
 // "<propertyCode>|<unitId>|<date>|<type>|<sourceReservationId>") - die Property kann daher direkt
 // und faelschungssicher aus der ID selbst gelesen werden, statt einem vom Client separat
@@ -31,4 +49,7 @@ function dateFromTaskId(taskId) {
   return String(taskId).split('|')[2];
 }
 
-module.exports = { hasPropertyAccess, isPropertyManager, propertyCodeFromTaskId, dateFromTaskId };
+module.exports = {
+  hasPropertyAccess, isPropertyManager, propertyCodeFromTaskId, dateFromTaskId,
+  isTeamLead, isTeamMemberOf, canManageTeamAssignments,
+};

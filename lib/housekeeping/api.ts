@@ -11,9 +11,10 @@
  * lib/housekeeping/auth.ts.
  */
 import type {
-  ApaleoReservation, ApaleoUnit, AssignmentsState, DoubleupsState, Completion, BreakEntry, NfcTagStatusesState, Property,
-  ReservationSearchResult, ReservationsState, StaffUser, TaskAssignmentsState, TaskNotice, TaskNoticeAck, TaskNoticeAcksState,
-  TaskNoticesState, TaskStartSource, TaskTimeOverride, TaskTimeOverridesState,
+  ApaleoReservation, ApaleoUnit, AssignmentsState, DoubleupsState, Completion, BreakEntry, HousekeepingTeam, NfcTagStatusesState,
+  Property, ReservationSearchResult, ReservationsState, StaffUser, TaskAssignmentsState, TaskNotice, TaskNoticeAck,
+  TaskNoticeAcksState, TaskNoticesState, TaskStartSource, TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState,
+  TeamPropertyDefaultsState,
 } from './types';
 
 // MINOR-Bump (2.5.0 -> 2.6.0): TaskCard-Redesign - klare Informationshierarchie (Apartment+Standort,
@@ -131,7 +132,25 @@ import type {
 // Apartments-Bildschirm (finishTask/finishClean). Ausserdem: "Housekeeping" im Header nutzt jetzt
 // dieselbe Marken-Typografie wie Login-/Admin-Einrichtungsseite (kraeftiges "UNIQUE PLACES",
 // Bereichsname darunter klein/tracked/grossgeschrieben).
-export const APP_VERSION = '2.11.3';
+// MINOR-Bump (2.11.3 -> 2.12.0): Housekeeping Teams (Reinigungsfirmen) - neues, rein
+// housekeeping-internes Zwischenglied zwischen Property und Person: ein Task kann jetzt zusaetzlich
+// zu assignedUserId einem Team (HousekeepingTeam) zugeordnet sein - automatisch ueber ein
+// konfigurierbares Standard-Team je Property (housekeeping:team_property_defaults, NIE nach Apaleo
+// geschrieben), optional manuell ueberschrieben pro Task (housekeeping:task_team_overrides). Kein
+// neuer globaler Rollenwert (Role bleibt 'admin' | 'housekeeping') - stattdessen ein team-internes
+// `teamRole: 'member' | 'lead'` auf StaffUser, bewusst getrennt von managedProperties (siehe
+// types.ts#StaffUser). Der bestehende atomare Self-Claim (HSETNX, siehe api/task-assignments.js)
+// wurde NICHT dupliziert, sondern lediglich um eine Team-Gate-Pruefung ergaenzt: ein Team-Task kann
+// nur von Mitgliedern des zugeordneten Teams (oder Admin/Standortverantwortlichen) geclaimt werden,
+// ein Team Lead darf zusaetzlich freie Team-Cleanings an eigene Teammitglieder verteilen/umverteilen
+// und deren Zuweisung wieder freigeben - ausschliesslich innerhalb des eigenen Teams, serverseitig
+// erzwungen. Neu ausserdem: ein deaktivierter Benutzer (`active === false`) wird jetzt auch bei
+// bereits bestehender Session direkt in api/task-assignments.js gesperrt (vorher nur beim Login).
+// Neue Einstellungen-Unterseite "Reinigungsfirmen & Teams" (HousekeepingTeamsScreen.tsx) fuer
+// Admin (alle Teams, Property-Standardzuordnung) und Team Lead (nur eigenes Team) - reine
+// Aufsatz-Ansicht auf dem bestehenden Team-Screen/UserFormSheet.tsx (Team+Rolle als neue Felder
+// dort), keine zweite parallele Mitarbeiterverwaltung.
+export const APP_VERSION = '2.12.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -437,6 +456,30 @@ export const assignmentsApi = {
 export const doubleupsApi = {
   set: (key: string, types: string[], note?: string) => backendPost('doubleups', { action: 'set', key, types, note: note || '' }),
   clear: (key: string) => backendPost('doubleups', { action: 'clear', key }),
+};
+
+/** Housekeeping Teams (Reinigungsfirmen) - eigene, vom uebrigen Backend-Zustand getrennte
+ * Ressource (siehe api/housekeeping-teams.js), analog zu taskNoticesApi/taskTimeOverridesApi.
+ * Lesen ist fuer jede angemeldete Person moeglich (Task Cards muessen Team-Namen zeigen koennen),
+ * die schreibenden Aktionen sind serverseitig admin-only (siehe dortiger Kommentar). */
+export interface HousekeepingTeamsData {
+  teams: HousekeepingTeam[];
+  propertyDefaults: TeamPropertyDefaultsState;
+  taskTeamOverrides: TaskTeamOverridesState;
+}
+
+export async function loadHousekeepingTeams(): Promise<HousekeepingTeamsData> {
+  const data = await backendGet<Partial<HousekeepingTeamsData>>('housekeeping-teams');
+  return { teams: data.teams || [], propertyDefaults: data.propertyDefaults || {}, taskTeamOverrides: data.taskTeamOverrides || {} };
+}
+
+export const housekeepingTeamsApi = {
+  saveTeam: (team: { id?: string; name: string; active?: boolean }) =>
+    backendPost<{ teams: HousekeepingTeam[]; team: HousekeepingTeam }>('housekeeping-teams', { action: 'setTeam', team }),
+  setPropertyDefault: (propertyCode: string, teamId: string | null) =>
+    backendPost<{ propertyDefaults: TeamPropertyDefaultsState }>('housekeeping-teams', { action: 'setPropertyDefault', propertyCode, teamId }),
+  setTaskTeam: (taskId: string, teamId: string | null) =>
+    backendPost<{ taskTeamOverrides: TaskTeamOverridesState }>('housekeeping-teams', { action: 'setTaskTeam', taskId, teamId }),
 };
 
 export async function loadTaskAssignments(): Promise<TaskAssignmentsState> {

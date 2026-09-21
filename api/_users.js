@@ -23,6 +23,15 @@ function sanitizeManagedProperties(properties, managedProperties) {
   return Array.from(new Set(managedProperties.filter((p) => allowed.has(p))));
 }
 
+// Housekeeping Teams: `teamRole` ist nur gueltig, solange `housekeepingTeamId` gesetzt ist -
+// analog zur managedProperties-Teilmengenregel oben, hier aber "leeres Team -> keine Rolle"
+// statt einer gefilterten Liste. Ein User ohne Team wird beim Speichern automatisch von jeder
+// frueheren teamRole befreit, statt eine verwaiste Rolle ohne Team mitzuschleppen.
+function sanitizeTeamMembership(housekeepingTeamId, teamRole) {
+  if (!housekeepingTeamId) return { housekeepingTeamId: undefined, teamRole: undefined };
+  return { housekeepingTeamId, teamRole: teamRole === 'lead' ? 'lead' : 'member' };
+}
+
 const HASH_KEY = 'housekeeping:users';
 const LEGACY_HASH_KEY = 'hk:users';
 
@@ -139,6 +148,9 @@ async function upsertUser(redis, input) {
   };
   delete merged.password;
   merged.managedProperties = sanitizeManagedProperties(merged.properties, merged.managedProperties);
+  const team = sanitizeTeamMembership(merged.housekeepingTeamId, merged.teamRole);
+  if (team.housekeepingTeamId) { merged.housekeepingTeamId = team.housekeepingTeamId; merged.teamRole = team.teamRole; }
+  else { delete merged.housekeepingTeamId; delete merged.teamRole; }
 
   if (input.password) {
     merged.passwordHash = await hashPassword(input.password);
@@ -170,4 +182,5 @@ module.exports = {
   upsertUser,
   deleteUserByUsername,
   sanitizeManagedProperties,
+  sanitizeTeamMembership,
 };

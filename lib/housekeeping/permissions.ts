@@ -41,6 +41,30 @@ export function managedPropertyCodes(user: StaffUser | null, allPropertyCodes: s
   return (user.managedProperties || []).filter((p) => allPropertyCodes.includes(p));
 }
 
+/** Team-Verantwortlicher (Housekeeping Teams) - unabhaengig von isPropertyManager/
+ * managedProperties (siehe types.ts#StaffUser-Kommentar: beide Rechte duerfen sich nie
+ * vermischen). Admin zaehlt hier bewusst NICHT automatisch als "lead" - Admin-Rechte werden
+ * ueberall separat ueber isAdmin() geprueft, nie ueber teamRole. */
+export function isTeamLead(user: StaffUser | null): boolean {
+  return !!user && user.teamRole === 'lead' && !!user.housekeepingTeamId;
+}
+
+/** Ist dieser User Mitglied (irgendeiner Rolle) GENAU dieses Teams? `teamId` kann null sein
+ * (Task ohne Team-Zuordnung) - dann immer false, da niemand Mitglied von "keinem Team" ist. */
+export function isTeamMemberOf(user: StaffUser | null, teamId: string | null): boolean {
+  return !!user && !!teamId && user.housekeepingTeamId === teamId;
+}
+
+/** Darf dieser User Personen-Zuweisungen INNERHALB von `teamId` verwalten (zuweisen/umverteilen/
+ * freigeben)? Admin ueberall, sonst nur der Team-Verantwortliche GENAU dieses Teams - ein
+ * normales Mitglied oder der Lead eines ANDEREN Teams darf das nicht (Briefing: "Lead darf keine
+ * fremden Teams verwalten"). */
+export function canManageTeamAssignments(user: StaffUser | null, teamId: string | null): boolean {
+  if (!user || !teamId) return false;
+  if (isAdmin(user)) return true;
+  return isTeamLead(user) && user.housekeepingTeamId === teamId;
+}
+
 /** managedProperties MUSS immer eine Teilmenge von properties sein (Punkt 13/17) - wird Zugriff
  * entfernt, faellt die Standortverantwortung fuer dieses Property automatisch mit weg. Rein
  * client- oder serverseitig identisch anwendbar (reine Funktion, keine Seiteneffekte). */

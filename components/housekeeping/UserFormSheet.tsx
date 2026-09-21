@@ -40,6 +40,8 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
   const [allProperties, setAllProperties] = useState(isAllInitially);
   const [properties, setProperties] = useState<string[]>(isAllInitially ? [] : (user!.properties as string[]));
   const [managedProperties, setManagedProperties] = useState<string[]>(user?.managedProperties || []);
+  const [housekeepingTeamId, setHousekeepingTeamId] = useState<string>(user?.housekeepingTeamId || '');
+  const [teamRole, setTeamRole] = useState<'member' | 'lead'>(user?.teamRole === 'lead' ? 'lead' : 'member');
   const [password, setPassword] = useState('');
 
   // Punkt 17: Standortverantwortlich nur moeglich, wenn Zugriff aktiv ist; wird Zugriff
@@ -83,6 +85,8 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
       active,
       properties: allProperties ? 'alle' : properties,
       managedProperties: sanitizeManagedProperties(allProperties ? 'alle' : properties, managedProperties),
+      housekeepingTeamId: housekeepingTeamId || undefined,
+      teamRole: housekeepingTeamId ? teamRole : undefined,
       ...(password ? { password } : {}),
     });
     onClose();
@@ -148,6 +152,54 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
             ))}
           </div>
         </div>
+
+        {state.teams.length > 0 ? (
+          <div className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
+            {t('housekeeping_team_label')}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setHousekeepingTeamId('')}
+                className={cn(
+                  'rounded-control border px-3 py-2 text-[13px] font-medium transition-colors',
+                  !housekeepingTeamId ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted',
+                )}
+              >
+                {t('no_team_label')}
+              </button>
+              {state.teams.filter((tm) => tm.active).map((tm) => (
+                <button
+                  key={tm.id}
+                  type="button"
+                  onClick={() => setHousekeepingTeamId(tm.id)}
+                  className={cn(
+                    'rounded-control border px-3 py-2 text-[13px] font-medium transition-colors',
+                    housekeepingTeamId === tm.id ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted',
+                  )}
+                >
+                  {tm.name}
+                </button>
+              ))}
+            </div>
+            {housekeepingTeamId ? (
+              <div className="mt-1 flex gap-2">
+                {(['member', 'lead'] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setTeamRole(r)}
+                    className={cn(
+                      'flex-1 rounded-control border px-3 py-2.5 text-[13px] font-medium transition-colors',
+                      teamRole === r ? 'border-status-attention bg-status-attention-bg text-status-attention' : 'border-line bg-warm-white text-muted',
+                    )}
+                  >
+                    {r === 'lead' ? t('team_role_lead') : t('team_role_member')}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
           {t('language_label')}

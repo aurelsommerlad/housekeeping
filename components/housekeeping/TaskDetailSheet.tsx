@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
-import { isAdmin, isPropertyManager } from '@/lib/housekeeping/permissions';
+import { isAdmin, isPropertyManager, isTeamLead } from '@/lib/housekeeping/permissions';
 import { TASK_STATUS_CONFIG, TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
 import type { TaskReservationSummary } from '@/lib/housekeeping/types';
 import type { HousekeepingApp, ResolvedTask } from '@/lib/housekeeping/useHousekeepingApp';
@@ -124,10 +124,21 @@ function CleaningAssignmentSection({
 }: { app: HousekeepingApp; task: ResolvedTask; isManager: boolean; assignmentOpen: boolean; onToggleAssignment: () => void }) {
   const { t, state, assignTask, releaseTask, workloadForPropertyDay } = app;
   const workload = workloadForPropertyDay(task.propertyCode, task.date);
-  const propHks = state.users.filter(
+  // Housekeeping Teams: der Team-Verantwortliche des GENAU diesem Task zugeordneten Teams darf
+  // hier zusaetzlich zu Standortverantwortlichen Personen zuweisen/umverteilen/freigeben - aber
+  // ausschliesslich innerhalb des eigenen Teams (server-seitig identisch durchgesetzt, siehe
+  // api/task-assignments.js#assign/release). isManager bleibt unveraendert das bestehende Recht.
+  const isLeadHere = isTeamLead(state.user) && !!task.assignedTeamId && state.user?.housekeepingTeamId === task.assignedTeamId;
+  const canManage = isManager || isLeadHere;
+  const propHksAll = state.users.filter(
     (u) => u.role !== 'admin' &&
       (u.properties === 'alle' || u.properties === 'all' || (Array.isArray(u.properties) && u.properties.includes(task.propertyCode))),
   );
+  // Ein reiner Team-Lead (kein Standortverantwortlicher) sieht/verteilt ausschliesslich unter
+  // Mitgliedern des EIGENEN Teams - ein Standortverantwortlicher behaelt sein bestehendes,
+  // teamuebergreifendes Recht unveraendert (Briefing: managedProperties bleibt eine eigene,
+  // nicht mit teamRole vermischte Zustaendigkeit).
+  const propHks = isManager ? propHksAll : propHksAll.filter((u) => u.housekeepingTeamId === task.assignedTeamId);
   const assigneeWorkload = task.assignedUserId ? workload[task.assignedUserId] || 0 : null;
   const firstStartedAt = task.history.find((h) => h.action === 'started')?.at ?? task.cleaningStartedAt ?? null;
   const lastPausedAt = [...task.history].reverse().find((h) => h.action === 'paused')?.at ?? null;
@@ -156,17 +167,24 @@ function CleaningAssignmentSection({
     statusNode = <TonePill config={TASK_STATUS_CONFIG[task.status]} lang={state.lang} size="sm" className="shrink-0" />;
   }
 
+  // Housekeeping Teams: Person+Team wenn beides bekannt, sonst Team allein ("Noch nicht
+  // verteilt"), sonst wie zuvor "Nicht zugewiesen" - dieselbe Prioritaet wie WorkStatus auf der
+  // Task Card (TaskCard.tsx), hier nur ausgeschrieben statt abgekuerzt.
+  const assignmentLabel = task.assignedUserName
+    ? (task.assignedTeamName ? `${task.assignedUserName} · ${task.assignedTeamName}` : task.assignedUserName)
+    : (task.assignedTeamName ? `${task.assignedTeamName} · ${t('team_task_unclaimed')}` : t('unassigned'));
+
   const summaryRow = (
     <div className="flex items-center justify-between gap-2">
       <span className="flex min-w-0 items-center gap-1.5">
         <IconUser width={15} height={15} className="shrink-0 text-muted" aria-hidden="true" />
-        <span className={cn('truncate text-[13px]', task.assignedUserName ? 'font-medium text-ink' : 'text-muted')}>
-          {task.assignedUserName || t('unassigned')}
+        <span className={cn('truncate text-[13px]', (task.assignedUserName || task.assignedTeamName) ? 'font-medium text-ink' : 'text-muted')}>
+          {assignmentLabel}
         </span>
       </span>
       <span className="flex shrink-0 items-center gap-1.5">
         {statusNode}
-        {isManager ? (
+        {canManage ? (
           <IconChevronDown width={14} height={14} className={cn('text-muted transition-transform', assignmentOpen && 'rotate-180')} aria-hidden="true" />
         ) : null}
       </span>
@@ -176,7 +194,7 @@ function CleaningAssignmentSection({
   return (
     <div className="flex flex-col gap-1">
       <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('cleaning_status_title')}</p>
-      {isManager ? (
+      {canManage ? (
         <button type="button" onClick={onToggleAssignment} className="flex flex-col gap-0.5 rounded-control py-0.5 text-left transition-colors hover:bg-surface">
           {summaryRow}
           {assigneeWorkload != null ? <p className="pl-6 text-[11.5px] text-muted">{t('task_count_today', { n: assigneeWorkload })}</p> : null}
@@ -188,7 +206,7 @@ function CleaningAssignmentSection({
         </div>
       )}
 
-      {isManager && assignmentOpen ? (
+      {canManage && assignmentOpen ? (
         <div className="mt-1 flex flex-col">
           {propHks.map((hk) => {
             const isAssigned = task.assignedUserId === hk.id;
@@ -325,7 +343,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
     state, t, closeTaskModal, toggleTaskDoubleType,
     finishTaskDoubleup,
     noticeForTask, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice,
-    saveTaskTimeOverride, removeTaskTimeOverride,
+    saveTaskTimeOverride, removeTaskTimeOverride, setTaskTeam,
   } = app;
   const open = !!task;
   const [noticeFormOpen, setNoticeFormOpen] = useState(false);
@@ -521,8 +539,10 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
          * bleibt unten im Zuweisung-Abschnitt (Admin/Standortverantwortlich). */}
         <div className="flex items-center gap-1.5 border-y border-line/70 py-2 text-[13px]">
           <IconUser width={15} height={15} className="shrink-0 text-muted" aria-hidden="true" />
-          <span className={task.assignedUserName ? 'font-medium text-ink' : 'text-muted'}>
-            {task.assignedUserName || t('unassigned')}
+          <span className={(task.assignedUserName || task.assignedTeamName) ? 'font-medium text-ink' : 'text-muted'}>
+            {task.assignedUserName
+              ? (task.assignedTeamName ? `${task.assignedUserName} · ${task.assignedTeamName}` : task.assignedUserName)
+              : (task.assignedTeamName ? `${task.assignedTeamName} · ${t('team_task_unclaimed')}` : t('unassigned'))}
           </span>
         </div>
 
@@ -616,6 +636,26 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
               <Button variant="ghost" size="sm" onClick={() => setNoticeFormOpen(false)}>{t('cancel')}</Button>
               <Button variant="primary" size="sm" onClick={handleSaveNotice}>{t('save')}</Button>
             </div>
+          </div>
+        ) : null}
+
+        {/* Housekeeping Teams: Team-Zuordnung DIESES Tasks aendern - ausschliesslich Admin (Briefing
+         * "UNIQUE PLACES Admin kann ... einzelne Reinigungen einer anderen Reinigungsfirma
+         * zuordnen"), unabhaengig vom Standortverantwortlichen-Recht unten. Nur sichtbar, wenn
+         * ueberhaupt Teams existieren - vorher entstuende eine leere, sinnlose Auswahl. */}
+        {isAdmin(state.user) && state.teams.length > 0 ? (
+          <div className="flex items-center justify-between gap-2 text-[13px]">
+            <span className="text-muted">{t('team_label')}</span>
+            <select
+              value={task.assignedTeamId || ''}
+              onChange={(e) => setTaskTeam(task.id, e.target.value || null)}
+              className="rounded-control border border-line bg-warm-white px-2 py-1.5 text-[13px] text-ink"
+            >
+              <option value="">{t('no_team_label')}</option>
+              {state.teams.filter((tm) => tm.active).map((tm) => (
+                <option key={tm.id} value={tm.id}>{tm.name}</option>
+              ))}
+            </select>
           </div>
         ) : null}
 

@@ -3,10 +3,12 @@
 import { useState } from 'react';
 import { APP_VERSION } from '@/lib/housekeeping/api';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
+import { isAdmin, isTeamLead } from '@/lib/housekeeping/permissions';
 import { RulesScreen } from './RulesScreen';
 import { NfcSettingsScreen } from './NfcSettingsScreen';
 import { StandardTimesScreen } from './StandardTimesScreen';
 import { LanguagePicker } from './LanguagePicker';
+import { HousekeepingTeamsScreen } from './HousekeepingTeamsScreen';
 import { Card } from '@/components/ui/Card';
 import { IconChevronDown } from '@/components/ui/icons';
 
@@ -14,7 +16,7 @@ export interface SettingsScreenProps {
   app: HousekeepingApp;
 }
 
-type SettingsView = 'root' | 'rules' | 'times' | 'nfc' | 'language';
+type SettingsView = 'root' | 'rules' | 'times' | 'nfc' | 'language' | 'teams';
 
 interface SettingsRowProps {
   label: string;
@@ -99,6 +101,15 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
     );
   }
 
+  if (view === 'teams') {
+    return (
+      <div className="flex flex-col gap-1">
+        <BackBar label={t('settings_back')} onBack={() => setView('root')} />
+        <HousekeepingTeamsScreen app={app} />
+      </div>
+    );
+  }
+
   if (view === 'language') {
     return (
       <div className="flex flex-col gap-4">
@@ -129,6 +140,9 @@ export function SettingsScreen({ app }: SettingsScreenProps) {
       <div className="flex flex-col gap-2">
         <SectionLabel>{t('settings_section_management')}</SectionLabel>
         <SettingsRow label={t('settings_team_row')} onClick={() => setActiveNav('team')} />
+        {isAdmin(state.user) || isTeamLead(state.user) ? (
+          <SettingsRow label={t('housekeeping_teams_row')} onClick={() => setView('teams')} />
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-2">

@@ -97,10 +97,17 @@ function WorkStatus({ task, lang }: { task: ResolvedTask; lang: Lang }) {
     );
   }
 
+  // Housekeeping Teams: Person+Team ("Maria Keller · Reinigungsfirma B"), Team ohne Person
+  // ("Reinigungsfirma B · Noch nicht verteilt") oder wie zuvor "Nicht zugewiesen" - EINE Zeile,
+  // keine zusaetzliche Kartenhoehe (Briefing "Task Card ... darf nicht hoeher werden").
+  const label = task.assignedUserName
+    ? (task.assignedTeamName ? `${task.assignedUserName} · ${task.assignedTeamName}` : task.assignedUserName)
+    : (task.assignedTeamName ? `${task.assignedTeamName} · ${translate(lang, 'team_task_unclaimed')}` : name);
+
   return (
-    <span className={cn('flex min-w-0 items-center gap-1 truncate text-[12px]', task.assignedUserName ? 'font-medium text-ink' : 'text-muted')}>
+    <span className={cn('flex min-w-0 items-center gap-1 truncate text-[12px]', (task.assignedUserName || task.assignedTeamName) ? 'font-medium text-ink' : 'text-muted')}>
       <IconUser width={13} height={13} className="shrink-0" aria-hidden="true" />
-      <span className="truncate">{name}</span>
+      <span className="truncate">{label}</span>
     </span>
   );
 }

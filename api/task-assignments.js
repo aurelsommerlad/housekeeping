@@ -14,6 +14,21 @@ const { requireSession } = require('./_auth');
 const { getUserRawById } = require('./_users');
 const { hasPropertyAccess, isPropertyManager, propertyCodeFromTaskId, dateFromTaskId } = require('./_permissions');
 const { isAcknowledged } = require('./_task-notices');
+const { resolveAssignedTeamId } = require('./_teams');
+
+// Housekeeping Teams (Reinigungsfirmen): darf `user` einen Task claimen/starten, der (laut
+// resolveAssignedTeamId) einem Team zugeordnet ist? Admin und Standortverantwortliche des
+// betreffenden Property duerfen das immer (unveraendertes bestehendes Recht). Ist GAR KEIN Team
+// zugeordnet (Property ohne konfiguriertes Standard-Team - Migration-light: bestehende
+// Properties funktionieren unveraendert weiter), gilt weiterhin ausschliesslich der bisherige
+// hasPropertyAccess-Check. Ist ein Team zugeordnet, muss der Aufrufer GENAU diesem Team angehoeren
+// (Mitglied oder Lead - beide duerfen sich selbst einen freien Team-Task zuweisen).
+function canClaimTeamTask(user, propertyCode, assignedTeamId) {
+  if (user.role === 'admin') return true;
+  if (isPropertyManager(user, propertyCode)) return true;
+  if (!assignedTeamId) return true;
+  return user.housekeepingTeamId === assignedTeamId;
+}
 
 const HASH_KEY = 'housekeeping:task_assignments';
 const LEGACY_HASH_KEY = 'hk:task_assignments';
@@ -89,6 +104,14 @@ module.exports = async (req, res) => {
       res.status(401).json({ error: 'Nicht angemeldet.' });
       return;
     }
+    // Deaktivierte Benutzer koennen sich zwar (per verifyLogin) nicht mehr neu anmelden, eine
+    // zuvor ausgestellte Session blieb bisher aber bis zum Ablauf wirksam - diese Route ist der
+    // Ort, an dem tatsaechlich Zustand veraendert wird, deshalb hier zusaetzlich hart gesperrt
+    // (Briefing-Testfall "deaktivierter Mitarbeiter kann keine Reinigung uebernehmen").
+    if (user.active === false) {
+      res.status(403).json({ error: 'Dieses Benutzerkonto ist deaktiviert.' });
+      return;
+    }
 
     const { action } = req.body || {};
 
@@ -98,6 +121,11 @@ module.exports = async (req, res) => {
       const propertyCode = propertyCodeFromTaskId(taskId);
       if (!hasPropertyAccess(user, propertyCode)) {
         res.status(403).json({ error: 'Kein Zugriff auf dieses Property.' });
+        return;
+      }
+      const assignedTeamId = await resolveAssignedTeamId(redis, taskId);
+      if (!canClaimTeamTask(user, propertyCode, assignedTeamId)) {
+        res.status(403).json({ error: 'Diese Reinigung ist einem anderen Team zugewiesen.' });
         return;
       }
       const record = {
@@ -116,7 +144,13 @@ module.exports = async (req, res) => {
       const existing = raw ? parseJSON(raw, null) : null;
       const propertyCode = propertyCodeFromTaskId(taskId);
       const isOwn = existing && existing.housekeeperId === user.id;
-      const allowed = user.role === 'admin' || isPropertyManager(user, propertyCode) || isOwn;
+      // Team-Verantwortliche (Punkt "Lead darf Personen-Zuweisung freigeben") duerfen das
+      // ausschliesslich fuer Tasks des EIGENEN Teams - abgeleitet ueber resolveAssignedTeamId,
+      // nicht ueber eine (moeglicherweise inzwischen veraltete) Teamzugehoerigkeit der bereits
+      // zugewiesenen Person.
+      const isLeadOfTask = user.teamRole === 'lead' && !!user.housekeepingTeamId &&
+        user.housekeepingTeamId === (await resolveAssignedTeamId(redis, taskId));
+      const allowed = user.role === 'admin' || isPropertyManager(user, propertyCode) || isOwn || isLeadOfTask;
       if (!allowed) { res.status(403).json({ error: 'Diese Aufgabe gehört einer anderen Person.' }); return; }
       // Punkt 14: eigene Aufgabe nur freigeben, solange die Reinigung noch nicht begonnen wurde.
       if (isOwn && user.role !== 'admin' && existing && existing.status !== 'assigned') {
@@ -128,9 +162,23 @@ module.exports = async (req, res) => {
       const { taskId, housekeeperId, housekeeperName } = req.body;
       if (!taskId || !housekeeperId) { res.status(400).json({ error: 'taskId und housekeeperId sind erforderlich.' }); return; }
       const propertyCode = propertyCodeFromTaskId(taskId);
-      if (!isPropertyManager(user, propertyCode)) {
-        res.status(403).json({ error: 'Nur für Standortverantwortliche dieses Property.' });
+      const manager = isPropertyManager(user, propertyCode);
+      // Team-Verantwortliche duerfen zusaetzlich zu Standortverantwortlichen freie Tasks des
+      // EIGENEN Teams an eigene Teammitglieder verteilen/umverteilen (Briefing "Lead weist
+      // Aufgaben Team-Mitgliedern zu") - ausschliesslich innerhalb des eigenen Teams, nie fuer
+      // fremde Teams oder Personen ausserhalb des Teams.
+      const assignedTeamId = await resolveAssignedTeamId(redis, taskId);
+      const isLeadOfTask = user.teamRole === 'lead' && !!user.housekeepingTeamId && user.housekeepingTeamId === assignedTeamId;
+      if (!manager && !isLeadOfTask) {
+        res.status(403).json({ error: 'Nur für Standortverantwortliche oder den Team-Verantwortlichen dieses Teams.' });
         return;
+      }
+      if (!manager && isLeadOfTask) {
+        const target = await getUserRawById(redis, housekeeperId);
+        if (!target || target.housekeepingTeamId !== assignedTeamId || target.active === false || !hasPropertyAccess(target, propertyCode)) {
+          res.status(403).json({ error: 'Nur aktive Mitglieder des eigenen Teams mit Zugriff auf dieses Property.' });
+          return;
+        }
       }
       await redis.hSet(HASH_KEY, taskId, JSON.stringify({
         taskId, housekeeperId, housekeeperName: housekeeperName || '',

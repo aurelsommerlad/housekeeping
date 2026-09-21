@@ -23,6 +23,19 @@ export interface StaffUser {
    * unabhaengig von diesem Feld.
    */
   managedProperties?: string[];
+  /**
+   * Reinigungsfirmen-Zugehoerigkeit (Housekeeping Teams) - bewusst KEINE Erweiterung von `role`
+   * (bleibt exakt 'admin' | 'housekeeping') und bewusst getrennt von `managedProperties`
+   * (Standortverantwortung = operative UNIQUE-PLACES-Zustaendigkeit fuer ein Property; teamRole
+   * 'lead' = interne Disposition INNERHALB der eigenen Reinigungsfirma - beide Rechte duerfen
+   * sich nie vermischen, ein User kann beides, eins von beiden oder keins haben). Ein User ist zu
+   * jedem Zeitpunkt Mitglied HOECHSTENS EINES Teams. `teamRole` ist nur gueltig, wenn
+   * `housekeepingTeamId` gesetzt ist (serverseitig durchgesetzt, siehe api/_users.js).
+   */
+  housekeepingTeamId?: string;
+  /** 'member' = normales Teammitglied, 'lead' = Team-Verantwortlicher (bleibt global weiterhin
+   * `role: 'housekeeping'`, siehe housekeepingTeamId-Kommentar). */
+  teamRole?: 'member' | 'lead';
   /** Bevorzugte Sprache (Punkt 17, Team-Verwaltung) - wird bei erfolgreichem Login angewendet
    * (siehe useHousekeepingApp.ts#afterLogin), unabhaengig von der zuvor auf diesem Geraet per
    * Sprachauswahl-Pille gesetzten hk_lang. */
@@ -30,6 +43,54 @@ export interface StaffUser {
   /** Fuer Team-Verwaltung (Punkt 17) - deaktivierte Benutzer koennen sich nicht mehr anmelden
    * (siehe lib/server/auth.ts#loginUser/verifyLogin). */
   active?: boolean;
+}
+
+/**
+ * Reinigungsfirma/Team (Housekeeping Teams) - reine Stammdaten, lebt ausschliesslich in dieser
+ * App (Redis housekeeping:teams), NIE in Apaleo. Mitgliedschaft/Rolle liegt auf StaffUser
+ * (housekeepingTeamId/teamRole), NICHT hier - so bleibt die bestehende Mitarbeiterverwaltung
+ * (api/users.js/TeamScreen.tsx/UserFormSheet.tsx) die einzige Quelle der Wahrheit fuer Personen.
+ */
+export interface HousekeepingTeam {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
+/**
+ * Manuelle Ausnahme von der Standard-Team-Zuweisung EINES konkreten Tasks (Redis
+ * housekeeping:task_team_overrides, Key = Task-ID) - analog zu TaskTimeOverride. Fehlt ein
+ * Eintrag fuer eine Task-ID, gilt das ueber TeamPropertyDefaultsState konfigurierte Standard-Team
+ * der Property (siehe lib/housekeeping/tasks.ts#resolveTasks). `teamId: null` ist ein
+ * ausdruecklicher "kein Team"-Override (unterscheidet sich von "kein Override vorhanden" - dort
+ * greift weiterhin der Property-Standard). NIE nach Apaleo geschrieben.
+ */
+export interface TaskTeamOverride {
+  taskId: string;
+  teamId: string | null;
+  teamName: string;
+  changedBy: string;
+  changedByName: string;
+  changedAt: number;
+}
+
+export type TaskTeamOverridesState = Record<string, TaskTeamOverride | null>;
+
+/** Konfiguriertes Standard-Team je Property (Redis housekeeping:team_property_defaults, Key =
+ * Property-Code, Wert = Team-Id) - ausschliesslich housekeeping-intern, wird NIE nach Apaleo
+ * geschrieben (siehe Briefing "Housekeeping Teams"). Neue Reinigungsauftraege dieser Property
+ * werden ohne weiteres Zutun diesem Team zugeordnet (siehe resolveTasks). */
+export type TeamPropertyDefaultsState = Record<string, string>;
+
+/** Team-Ebene der Team-/Kapazitaetsuebersicht (Punkt "Team-Auslastung") - `perPerson` verwendet
+ * dieselbe CapacityEntry-Form wie die bestehende personenbezogene Uebersicht, nur je Team
+ * gruppiert statt property-/tagesweit ueber alle Personen hinweg. `teamId: null` buendelt alle
+ * Aufgaben ohne jede Team-Zuordnung (Properties ohne konfiguriertes Standard-Team). */
+export interface TeamCapacityEntry {
+  teamId: string | null;
+  teamName: string;
+  total: number;
+  perPerson: CapacityEntry[];
 }
 
 export interface Property {

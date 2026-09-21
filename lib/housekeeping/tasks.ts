@@ -15,8 +15,9 @@
 import { FORCED_CLEAN_INTERVAL_NIGHTS } from './api';
 import { addDaysISO, unitCondition } from './rooms';
 import type {
-  ApaleoReservation, ApaleoUnit, CapacityEntry, DaySummary, DoubleupsState, Task, TaskAssignmentsState, TaskHistoryEntry,
-  TaskReservationSummary, TaskStatus, TaskTimeOverride, TaskTimeOverridesState, TaskType,
+  ApaleoReservation, ApaleoUnit, CapacityEntry, DaySummary, DoubleupsState, HousekeepingTeam, Task, TaskAssignmentsState,
+  TaskHistoryEntry, TaskReservationSummary, TaskStatus, TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState,
+  TeamCapacityEntry, TeamPropertyDefaultsState, TaskType,
 } from './types';
 
 /** Standardzeiten (Prioritaet 3, ohne gebuchtes Extra/Override) - siehe Briefing Punkt 1.
@@ -262,6 +263,14 @@ export interface ResolvedTask extends Task {
   status: TaskStatus;
   assignedUserId: string | null;
   assignedUserName: string | null;
+  /** Housekeeping Team (Reinigungsfirma), dem dieser Task zugeordnet ist - berechnet aus einem
+   * evtl. vorhandenen Task-Override, sonst dem konfigurierten Property-Standard, sonst `null`
+   * (Property ohne Team-Konfiguration, siehe resolveTasks). Bewusst GETRENNT von
+   * assignedUserId/-Name (Punkt "Team- und Personen-Zuweisung nie vermischen") - ein
+   * `assignedUserId` MUSS, falls gesetzt, Mitglied dieses Teams sein (serverseitig durchgesetzt,
+   * siehe api/task-assignments.js#assign), wird hier aber nicht selbst noch einmal geprueft. */
+  assignedTeamId: string | null;
+  assignedTeamName: string | null;
   cleaningStartedAt: number | null;
   elapsedSeconds: number;
   completedAt: number | null;
@@ -288,6 +297,18 @@ export interface ResolvedTask extends Task {
   timeConflict: boolean;
 }
 
+/** Housekeeping Teams: Kontext fuer die Team-Ableitung in resolveTasks() - Override VOR
+ * Property-Standard, exakt dieselbe Prioritaet wie api/_teams.js#resolveAssignedTeamId
+ * serverseitig (beide muessen synchron gehalten werden). `teamsById` dient nur der
+ * Namensanzeige (Team-Id ist die alleinige Quelle der Wahrheit fuer "welches Team"). */
+export interface TeamContext {
+  overrides: TaskTeamOverridesState;
+  propertyDefaults: TeamPropertyDefaultsState;
+  teamsById: Record<string, HousekeepingTeam>;
+}
+
+const EMPTY_TEAM_CONTEXT: TeamContext = { overrides: {}, propertyDefaults: {}, teamsById: {} };
+
 /** Fuehrt die rein aus Apaleo abgeleiteten Tasks mit dem persistierten Zuweisungs-/
  * Fortschrittszustand UND dem manuellen Zeiten-Override aus Redis zusammen - analog zu
  * buildRooms(), das assignments[key] in jedes abgeleitete Room-Objekt mischt. */
@@ -296,6 +317,7 @@ export function resolveTasks(
   assignments: TaskAssignmentsState,
   overrides: TaskTimeOverridesState,
   now: number,
+  teamContext: TeamContext = EMPTY_TEAM_CONTEXT,
 ): ResolvedTask[] {
   return tasks.map((task) => {
     const a = assignments[task.id];
@@ -314,15 +336,19 @@ export function resolveTasks(
       cleaningWindowMinutes,
       timeConflict: cleaningWindowMinutes !== null && cleaningWindowMinutes <= 0,
     };
+    const teamOverride = teamContext.overrides[task.id];
+    const assignedTeamId = teamOverride ? teamOverride.teamId : (teamContext.propertyDefaults[task.propertyCode] || null);
+    const assignedTeamName = assignedTeamId ? (teamContext.teamsById[assignedTeamId]?.name || teamOverride?.teamName || null) : null;
+    const teamMeta = { assignedTeamId, assignedTeamName };
     if (!a) {
       return {
-        ...task, ...timeMeta, status: 'open', assignedUserId: null, assignedUserName: null,
+        ...task, ...timeMeta, ...teamMeta, status: 'open', assignedUserId: null, assignedUserName: null,
         cleaningStartedAt: null, elapsedSeconds: 0, completedAt: null, history: [],
       };
     }
     const elapsed = (a.elapsedSeconds || 0) + (a.cleaningStartedAt ? Math.round((now - a.cleaningStartedAt) / 1000) : 0);
     return {
-      ...task, ...timeMeta, status: a.status, assignedUserId: a.housekeeperId, assignedUserName: a.housekeeperName,
+      ...task, ...timeMeta, ...teamMeta, status: a.status, assignedUserId: a.housekeeperId, assignedUserName: a.housekeeperName,
       cleaningStartedAt: a.cleaningStartedAt, elapsedSeconds: elapsed, completedAt: a.completedAt || null,
       history: a.history || [],
     };
@@ -391,6 +417,34 @@ export function capacityForDay(date: string, tasks: ResolvedTask[]): CapacityEnt
   }
   const list = Array.from(map.values()).sort((a, b) => b.count - a.count);
   if (unassigned > 0) list.push({ housekeeperId: null, housekeeperName: '', count: unassigned });
+  return list;
+}
+
+/** Team-Ebene der Team-/Kapazitaetsuebersicht (Briefing "Team-Auslastung") - je Team die
+ * Gesamtzahl PLUS dieselbe personenbezogene Aufschluesselung wie capacityForDay(), nur auf die
+ * Aufgaben GENAU dieses Teams eingeschraenkt. Aufgaben ganz ohne Team-Zuordnung (Property ohne
+ * konfiguriertes Standard-Team) buendeln sich in einem abschliessenden `teamId: null`-Eintrag,
+ * analog zum "Nicht zugewiesen"-Eintrag von capacityForDay(). */
+export function teamCapacityForDay(date: string, tasks: ResolvedTask[]): TeamCapacityEntry[] {
+  const dayTasks = tasks.filter((t) => t.date === date);
+  const map = new Map<string, TeamCapacityEntry>();
+  const noTeamTasks: ResolvedTask[] = [];
+  for (const t of dayTasks) {
+    if (!t.assignedTeamId) { noTeamTasks.push(t); continue; }
+    let entry = map.get(t.assignedTeamId);
+    if (!entry) {
+      entry = { teamId: t.assignedTeamId, teamName: t.assignedTeamName || '', total: 0, perPerson: [] };
+      map.set(t.assignedTeamId, entry);
+    }
+    entry.total += 1;
+  }
+  for (const entry of map.values()) {
+    entry.perPerson = capacityForDay(date, dayTasks.filter((t) => t.assignedTeamId === entry.teamId));
+  }
+  const list = Array.from(map.values()).sort((a, b) => b.total - a.total);
+  if (noTeamTasks.length > 0) {
+    list.push({ teamId: null, teamName: '', total: noTeamTasks.length, perPerson: capacityForDay(date, noTeamTasks) });
+  }
   return list;
 }
 

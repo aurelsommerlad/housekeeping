@@ -25,20 +25,21 @@ import { translate } from './i18n';
 import { fetchMe, login as loginRequest, logout as logoutRequest } from './auth';
 import {
   DOUBLEUP_TYPES, POLL_INTERVAL, assignmentsApi, breaksApi, completionsApi, doubleupsApi, getPropertyDisplayName,
-  loadBackendState, loadNfcTagStatuses, loadProperties, loadReservations, loadReservationsRangeForProperties,
-  loadTaskAssignments, loadTaskNotices, loadTaskTimeOverrides, loadUnits, loadUnitsForProperties, nfcApi, setUnitCondition,
-  taskAssignmentsApi, taskNoticesApi, taskTimeOverridesApi, usersApi,
+  housekeepingTeamsApi, loadBackendState, loadHousekeepingTeams, loadNfcTagStatuses, loadProperties, loadReservations,
+  loadReservationsRangeForProperties, loadTaskAssignments, loadTaskNotices, loadTaskTimeOverrides, loadUnits,
+  loadUnitsForProperties, nfcApi, setUnitCondition, taskAssignmentsApi, taskNoticesApi, taskTimeOverridesApi, usersApi,
 } from './api';
 import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './rooms';
 import { managedPropertyCodes } from './permissions';
 import {
-  buildTasks, capacityForDay, daySummary, requiresInspection, resolveTasks, sortTasksForDay,
-  type ResolvedTask,
+  buildTasks, capacityForDay, daySummary, requiresInspection, resolveTasks, sortTasksForDay, teamCapacityForDay,
+  type ResolvedTask, type TeamContext,
 } from './tasks';
 import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, BreakEntry, CapacityEntry, Completion, DaySummary, DoubleupsState,
-  NfcTagStatusesState, Property, ReservationsState, Room, RoomFilter, StaffUser, TaskAssignmentsState, TaskNotice,
-  TaskNoticeAcksState, TaskNoticesState, TaskStartSource, TaskTimeOverridesState,
+  HousekeepingTeam, NfcTagStatusesState, Property, ReservationsState, Room, RoomFilter, StaffUser, TaskAssignmentsState,
+  TaskNotice, TaskNoticeAcksState, TaskNoticesState, TaskStartSource, TaskTeamOverridesState, TaskTimeOverridesState,
+  TeamCapacityEntry, TeamPropertyDefaultsState,
 } from './types';
 
 /** Key-Schema exakt wie api/_nfc.js#unitKey - EINZIGE Stelle im Client, die dieses Format kennt. */
@@ -93,6 +94,13 @@ interface AppState {
   planningUnits: ApaleoUnit[];
   planningReservations: ApaleoReservation[];
   taskAssignments: TaskAssignmentsState;
+  /** Housekeeping Teams (Reinigungsfirmen) - Stammdaten + Property-Standardzuordnung + evtl.
+   * Task-Overrides (siehe lib/housekeeping/tasks.ts#TeamContext/resolveTasks). Getrennt von
+   * taskAssignments geladen/gehalten, da Team- und Personen-Zuweisung zwei unabhaengige
+   * Datenquellen sind (siehe types.ts#StaffUser-Kommentar). */
+  teams: HousekeepingTeam[];
+  teamPropertyDefaults: TeamPropertyDefaultsState;
+  taskTeamOverrides: TaskTeamOverridesState;
   /** "Wichtiger Hinweis" pro Task + userbezogene Lesebestaetigungen (Key "<taskId>|<userId>") -
    * eigene, vom Apaleo-Reservierungskommentar getrennte Datenquelle (Punkt 3-8). */
   taskNotices: TaskNoticesState;
@@ -155,6 +163,9 @@ function initialState(): AppState {
     planningUnits: [],
     planningReservations: [],
     taskAssignments: {},
+    teams: [],
+    teamPropertyDefaults: {},
+    taskTeamOverrides: {},
     taskNotices: {},
     taskNoticeAcks: {},
     taskTimeOverrides: {},
@@ -243,23 +254,27 @@ export function useHousekeepingApp() {
     const today = todayISO();
     const days = [0, 1, 2, 3].map((n) => addDaysISO(today, n));
     if (scopeCodes.length === 0) {
+      const teamsData = await loadHousekeepingTeams();
       patch({
         planningUnits: [], planningReservations: [], taskAssignments: {}, taskNotices: {}, taskNoticeAcks: {},
         taskTimeOverrides: {}, planningDays: days,
+        teams: teamsData.teams, teamPropertyDefaults: teamsData.propertyDefaults, taskTeamOverrides: teamsData.taskTeamOverrides,
       });
       return;
     }
-    const [units, reservations, taskAssignments, noticesData, taskTimeOverrides] = await Promise.all([
+    const [units, reservations, taskAssignments, noticesData, taskTimeOverrides, teamsData] = await Promise.all([
       loadUnitsForProperties(scopeCodes),
       loadReservationsRangeForProperties(scopeCodes, days[0], days[3]),
       loadTaskAssignments(),
       loadTaskNotices(),
       loadTaskTimeOverrides(),
+      loadHousekeepingTeams(),
       loadBackend(),
     ]);
     patch({
       planningUnits: units, planningReservations: reservations, taskAssignments,
       taskNotices: noticesData.notices, taskNoticeAcks: noticesData.acks, taskTimeOverrides, planningDays: days,
+      teams: teamsData.teams, teamPropertyDefaults: teamsData.propertyDefaults, taskTeamOverrides: teamsData.taskTeamOverrides,
     });
   }, [loadBackend, patch]);
 
@@ -585,6 +600,32 @@ export function useHousekeepingApp() {
     });
   }, [loadBackend, runAction]);
 
+  // --- Housekeeping Teams (Reinigungsfirmen) - Admin-only Schreibaktionen, siehe
+  // api/housekeeping-teams.js. Laden erfolgt bereits gebuendelt in loadPlanningData().
+  const saveTeam = useCallback(async (team: { id?: string; name: string; active?: boolean }) => {
+    await runAction(async () => {
+      const { teams } = await housekeepingTeamsApi.saveTeam(team);
+      patch({ teams });
+      showToast(t('saved'));
+    });
+  }, [patch, runAction, showToast, t]);
+
+  const setTeamPropertyDefault = useCallback(async (propertyCode: string, teamId: string | null) => {
+    await runAction(async () => {
+      const { propertyDefaults } = await housekeepingTeamsApi.setPropertyDefault(propertyCode, teamId);
+      patch({ teamPropertyDefaults: propertyDefaults });
+      showToast(t('saved'));
+    });
+  }, [patch, runAction, showToast, t]);
+
+  const setTaskTeam = useCallback(async (taskId: string, teamId: string | null) => {
+    await runAction(async () => {
+      const { taskTeamOverrides } = await housekeepingTeamsApi.setTaskTeam(taskId, teamId);
+      patch({ taskTeamOverrides });
+      showToast(t('saved'));
+    });
+  }, [patch, runAction, showToast, t]);
+
   // --- Reinigungsplanung: abgeleitete Auswahl + Aktionen ---
 
   // Liest bewusst `state` (nicht stateRef), siehe Begruendung bei rooms()/t() oben.
@@ -595,10 +636,12 @@ export function useHousekeepingApp() {
       propertyNames, units: state.planningUnits, reservations: state.planningReservations,
       doubleups: state.doubleups, days: state.planningDays, today,
     });
-    return resolveTasks(raw, state.taskAssignments, state.taskTimeOverrides, state.now);
+    const teamsById = Object.fromEntries(state.teams.map((tm) => [tm.id, tm]));
+    const teamContext: TeamContext = { overrides: state.taskTeamOverrides, propertyDefaults: state.teamPropertyDefaults, teamsById };
+    return resolveTasks(raw, state.taskAssignments, state.taskTimeOverrides, state.now, teamContext);
   }, [
     state.properties, state.planningUnits, state.planningReservations, state.doubleups, state.planningDays,
-    state.taskAssignments, state.taskTimeOverrides, state.now,
+    state.taskAssignments, state.taskTimeOverrides, state.now, state.teams, state.taskTeamOverrides, state.teamPropertyDefaults,
   ]);
 
   /** Aufgaben eines Tages, ungefiltert von "Meine Aufgaben" - fuer Tageszusammenfassung/
@@ -617,6 +660,16 @@ export function useHousekeepingApp() {
 
   const daySummaryFor = useCallback((date: string): DaySummary => daySummary(date, tasksForDayAll(date)), [tasksForDayAll]);
   const capacityFor = useCallback((date: string): CapacityEntry[] => capacityForDay(date, tasksForDayAll(date)), [tasksForDayAll]);
+  /** Team-Ebene der Team-/Kapazitaetsuebersicht (Briefing "Team-Auslastung") - Admin sieht alle
+   * Teams, ein Team-Lead nur das eigene (Filterung hier statt in der UI, damit kein anderer
+   * Aufrufer versehentlich fremde Team-Zahlen sieht). */
+  const teamCapacityFor = useCallback((date: string): TeamCapacityEntry[] => {
+    const all = teamCapacityForDay(date, tasksForDayAll(date));
+    const user = state.user;
+    if (!user || user.role === 'admin') return all;
+    if (user.teamRole === 'lead' && user.housekeepingTeamId) return all.filter((e) => e.teamId === user.housekeepingTeamId);
+    return [];
+  }, [state.user, tasksForDayAll]);
 
   /** Aktuelle Tagesbelastung je Housekeeper fuer EIN konkretes Property (Punkt 20) - anders als
    * capacityFor() (ganzer Scope) auf genau das Property des gerade betrachteten Tasks
@@ -905,9 +958,10 @@ export function useHousekeepingApp() {
     assignRoom, unassignRoom, bulkAssign, clearAllAssignments, startTimer, pauseTimer,
     finishClean, completeInspection, toggleDoubleType, finishDoubleup, toggleBreak,
     saveUser, deleteUser,
+    saveTeam, setTeamPropertyDefault, setTaskTeam,
 
     // Reinigungsplanung
-    tasksForDay, tasksForDayAll, daySummaryFor, capacityFor, workloadForPropertyDay, retryTasksLoad,
+    tasksForDay, tasksForDayAll, daySummaryFor, capacityFor, teamCapacityFor, workloadForPropertyDay, retryTasksLoad,
     selectDay, selectPropertyScope, toggleMyTasksOnly,
     toggleTaskMultiSelect, toggleTaskSelection, openTask, closeTaskModal,
     claimTask, releaseTask, assignTask, bulkAssignTasks, clearDayAssignments,
