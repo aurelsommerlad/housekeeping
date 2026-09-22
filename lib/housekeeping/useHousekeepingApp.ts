@@ -1211,21 +1211,35 @@ export function useHousekeepingApp() {
     taskId: string, scheduledDate: string, nextArrivalDate?: string | null, hadAssignee?: boolean,
   ) => {
     await runAction(async () => {
-      const { override } = await taskScheduleOverridesApi.set(taskId, scheduledDate, nextArrivalDate);
-      patch((s) => ({ taskScheduleOverrides: { ...s.taskScheduleOverrides, [taskId]: override } }));
-      // Punkt 11: dezenter Hinweis, dass die bestehende Zuweisung die Verschiebung uebersteht -
-      // dieselbe Tagesbeschriftung ("Heute"/"Morgen"/"Mo 21.") wie die Tagesnavigation. Der Zusatz
-      // "Zuweisung bleibt bestehen" erscheint nur, wenn tatsaechlich jemand zugewiesen war (sonst
-      // waere er irrefuehrend).
+      const { override, taskAssignment, manualTask } = await taskScheduleOverridesApi.set(taskId, scheduledDate, nextArrivalDate);
+      // Briefing "Bei Verschiebung Zuweisung immer aufheben": der Server hebt eine bestehende
+      // Zuweisung bei einer tatsaechlichen Tagesaenderung IMMER auf und liefert den aktualisierten
+      // Datensatz gleich mit zurueck - hier direkt in den ohnehin schon vorhandenen State gepatcht
+      // (derselbe Mechanismus, den Timer-/Reopen-Aktionen bereits nutzen), Team-Auslastung/
+      // Tageszaehler aktualisieren sich dadurch automatisch (reine Ableitung aus diesem State,
+      // siehe lib/housekeeping/tasks.ts#resolveTasks/capacityForDay).
+      patch((s) => ({
+        taskScheduleOverrides: { ...s.taskScheduleOverrides, [taskId]: override },
+        taskAssignments: taskAssignment ? { ...s.taskAssignments, [taskId]: taskAssignment } : s.taskAssignments,
+        manualTasks: manualTask ? { ...s.manualTasks, [taskId]: manualTask } : s.manualTasks,
+      }));
+      // Punkt 11: dezenter Hinweis mit derselben Tagesbeschriftung ("Heute"/"Morgen"/"Mo 21.") wie
+      // die Tagesnavigation. Der Zusatz "Zuweisung aufgehoben" erscheint nur, wenn tatsaechlich
+      // jemand zugewiesen war (sonst waere er irrefuehrend) - eine bestehende Zuweisung gilt fuer
+      // die urspruengliche Tagesplanung und wird bei einer Verschiebung serverseitig IMMER entfernt.
       const label = dayHeadingLabel(t, stateRef.current.lang, scheduledDate, stateRef.current.planningDays);
-      showToast(t(hadAssignee ? 'schedule_change_saved_with_assignee' : 'schedule_change_saved', { date: label }));
+      showToast(t(hadAssignee ? 'schedule_change_saved_unassigned' : 'schedule_change_saved', { date: label }));
     });
   }, [patch, runAction, showToast, t]);
 
   const resetTaskSchedule = useCallback(async (taskId: string) => {
     await runAction(async () => {
-      await taskScheduleOverridesApi.remove(taskId);
-      patch((s) => ({ taskScheduleOverrides: { ...s.taskScheduleOverrides, [taskId]: null } }));
+      const { taskAssignment, manualTask } = await taskScheduleOverridesApi.remove(taskId);
+      patch((s) => ({
+        taskScheduleOverrides: { ...s.taskScheduleOverrides, [taskId]: null },
+        taskAssignments: taskAssignment ? { ...s.taskAssignments, [taskId]: taskAssignment } : s.taskAssignments,
+        manualTasks: manualTask ? { ...s.manualTasks, [taskId]: manualTask } : s.manualTasks,
+      }));
     });
   }, [patch, runAction]);
 

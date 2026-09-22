@@ -12,10 +12,10 @@
  */
 import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, BookingChangeRecordsState, DoubleupsState, Completion, BreakEntry,
-  ConsumableItem, ConsumableReport, HousekeepingIncident, HousekeepingTeam, LinenItem, ManualTasksState,
-  NfcTagStatusesState, Property, ReservationSearchResult, ReservationsState, StaffUser, TaskAssignmentsState, TaskNotice,
-  TaskNoticeAck, TaskNoticeAcksState, TaskNoticesState, TaskScheduleOverride, TaskScheduleOverridesState, TaskStartSource,
-  TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState, TeamPropertyDefaultsState,
+  ConsumableItem, ConsumableReport, HousekeepingIncident, HousekeepingTeam, LinenItem, ManualTask, ManualTasksState,
+  NfcTagStatusesState, Property, ReservationSearchResult, ReservationsState, StaffUser, TaskAssignment, TaskAssignmentsState,
+  TaskNotice, TaskNoticeAck, TaskNoticeAcksState, TaskNoticesState, TaskScheduleOverride, TaskScheduleOverridesState,
+  TaskStartSource, TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState, TeamPropertyDefaultsState,
 } from './types';
 
 // MINOR-Bump (2.5.0 -> 2.6.0): TaskCard-Redesign - klare Informationshierarchie (Apartment+Standort,
@@ -611,7 +611,57 @@ import type {
 // Anmelden-Button/Sprachpillen zeigt durchgehend den duennen salbeifarbenen Fokusring, keine
 // Konsolenfehler. Ein voller Login-/Redis-/Apaleo-Rundlauf durch Toolbar/Task-Card selbst ist in
 // dieser Sandbox mangels Zugangsdaten weiterhin nicht moeglich (bestehende Einschraenkung).
-export const APP_VERSION = '2.24.0';
+// v2.25.0 - Statuskorrektur bei "Wieder aktiviert"/"Termin verschoben" + Zuweisungslogik bei
+// Terminverschiebung (Briefing "Bitte korrigiere zwei Punkte..."). Ausschliesslich Status-Icons
+// und Assignment-Logik betroffen - Kartengroesse/-layout, Typografie, Farben, Tagesnavigation,
+// Desktop-Toolbar, Mobile-Layout, Apaleo-Daten, Reopen-/Timer-History unangetastet.
+//
+// (1) Zwei unterschiedliche fachliche Zustaende brauchten zwei unterschiedliche Icons statt
+// zweimal desselben IconRefresh-Symbols: neu IconRotateCcw ("Wieder aktiviert", ein umlaufender
+// Gegenuhrzeiger-Pfeil) und IconCalendarClock ("Termin verschoben", Kalenderflaeche mit kleiner
+// Uhr) in icons.tsx - beide teilen Groesse/Strichstaerke/currentColor mit dem bestehenden
+// Icon-System, keine farbigen Hintergruende. In TaskCard.tsx erscheinen beide bei Bedarf
+// nebeneinander im Status-Kopfbereich (vor WorkStatus), je mit eigenem Tooltip + role="img"/
+// aria-label ("Wieder aktiviert" / "Termin verschoben" - i18n-Keys reopened_badge_label/
+// rescheduled_badge_label). Die zuvor in der letzten Runde eingefuehrte, sichtbare
+// "verschoben von {Datum}"-Textzeile in der Zeitzeile wurde wieder entfernt (Rueckkehr zu
+// Icon+Tooltip, TimeLine()-Struktur sonst unveraendert).
+//
+// (2)-(6) Wird eine Reinigung oder manuelle Aufgabe auf einen ANDEREN Tag verschoben (oder per
+// "Zuruecksetzen" wieder auf den urspruenglichen Tag gestellt), wird eine bestehende
+// Personalzuweisung jetzt IMMER automatisch aufgehoben (api/task-schedule-overrides.js, neue
+// Hilfsfunktion buildUnassignedRecord) - die Zuweisung galt fuer die urspruengliche
+// Tagesplanung, ein anderer Durchfuehrungstag braucht eine neue Entscheidung. Betrifft
+// Abreisereinigung/Turnover/INTERCLEAN/sonstige Reinigungstypen ebenso wie manuelle Aufgaben.
+// Ablauf bei erfolgreicher Terminaenderung: (1) neues scheduledDate speichern, (2) bestehende
+// Zuweisung entfernen (Status auf 'open', housekeeperId/-Name geleert bzw. bei manuellen
+// Aufgaben assignedUserId/-Name auf null), (3) Aufgabe erscheint am neuen Tag als "Nicht
+// zugewiesen", (4) Tages-/Team-Zaehler aktualisieren sich reaktiv aus dem gepatchten State (kein
+// separater Reload noetig), (5)+(6) je ein Audit-Eintrag fuer Terminaenderung und fuer die
+// aufgehobene Zuweisung. Datumsaenderung und Zuweisungs-Entfernung laufen dabei gebuendelt in
+// einer MULTI/EXEC-Transaktion (kein WATCH - siehe Kommentar an buildUnassignedRecord) -
+// schlaegt eine Pruefung vorher fehl, wird ueberhaupt nichts geschrieben, die bestehende
+// Zuweisung bleibt unangetastet.
+//
+// (3)/(7) Kein paralleles Audit-System: die Zuweisungs-Aufhebung haengt lediglich einen neuen
+// history-Eintrag (action: 'unassigned', types.ts#TaskHistoryAction erweitert) an das bestehende,
+// bereits genutzte history[]-Array an - vorherige Eintraege (Reopen-/Timer-Verlauf) bleiben
+// vollstaendig erhalten und unveraendert sichtbar (TaskDetailSheet.tsx, neuer i18n-Key
+// history_unassigned). Laufende/pausierte Reinigungen bleiben weiterhin grundsaetzlich nicht
+// verschiebbar (unveraenderte bestehende Regel).
+//
+// Verifiziert per tsc/eslint/build (alle sauber) + eigenstaendiges Node-Integrationstest-Skript
+// (require.cache-Mocking von _redis/_auth/_users/_permissions, echter Route-Handler ohne Live-
+// Redis) mit 30 Assertions ueber 6 Szenarien: zugewiesene Reinigung verschieben (Zuweisung
+// atomar geleert, History korrekt angehaengt, Redis-Persistenz bestaetigt), bereits unzugewiesene
+// Reinigung verschieben (kein unnoetiger Zuweisungs-Schreibzugriff), manuelle Aufgabe verschieben
+// (assignedUserId/-Name geleert), Zuruecksetzen auf Ursprungsdatum (Zuweisung ebenfalls geleert),
+// nicht existierende Aufgabe (404, keinerlei Schreibzugriff), laufende Reinigung (409, Zuweisung
+// unveraendert). Source-Diff-Audit bestaetigt: ausschliesslich die acht fachlich betroffenen
+// Dateien (icons.tsx, TaskCard.tsx, TaskDetailSheet.tsx, types.ts, i18n.ts, api.ts,
+// useHousekeepingApp.ts, api/task-schedule-overrides.js) geaendert - keine Kartengroessen-,
+// Layout-, Typografie-, Farb-, Tagesnavigations-, Toolbar- oder Mobile-Layout-Aenderungen.
+export const APP_VERSION = '2.25.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -1017,12 +1067,20 @@ export async function loadTaskScheduleOverrides(): Promise<TaskScheduleOverrides
  * Rechtepruefung (nur Admin darf schreiben; jeder mit Property-Zugriff darf lesen). `nextArrivalDate`
  * ist optional und dient ausschliesslich der serverseitigen Plausibilitaetspruefung "nicht nach der
  * naechsten Anreise" (der Server ruft dafuer selbst nie Apaleo auf, siehe dortiger Kommentar). */
+/** Briefing "Bei Verschiebung Zuweisung immer aufheben": `taskAssignment`/`manualTask` sind nur
+ * gesetzt, wenn der Server durch DIESEN Aufruf tatsaechlich eine bestehende Zuweisung aufgehoben
+ * hat (siehe api/task-schedule-overrides.js#buildUnassignedRecord) - der Client patcht damit
+ * `state.taskAssignments`/`state.manualTasks` direkt aus der Serverantwort, ohne einen zweiten
+ * Request/Reload zu benoetigen (identisch zum bestehenden Muster bei anderen Task-Aktionen). */
 export const taskScheduleOverridesApi = {
   set: (taskId: string, scheduledDate: string, nextArrivalDate?: string | null) =>
-    backendPost<{ override: TaskScheduleOverride | null }>(
+    backendPost<{ override: TaskScheduleOverride | null; taskAssignment?: TaskAssignment; manualTask?: ManualTask }>(
       'task-schedule-overrides', { action: 'set', taskId, scheduledDate, ...(nextArrivalDate ? { nextArrivalDate } : {}) },
     ),
-  remove: (taskId: string) => backendPost<{ ok: true }>('task-schedule-overrides', { action: 'remove', taskId }),
+  remove: (taskId: string) =>
+    backendPost<{ ok: true; taskAssignment?: TaskAssignment; manualTask?: ManualTask }>(
+      'task-schedule-overrides', { action: 'remove', taskId },
+    ),
 };
 
 /** Manuell von Admin erstellte Aufgaben (Punkt "Admin kann Aufgaben erstellen") - siehe

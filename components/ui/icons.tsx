@@ -355,6 +355,33 @@ export function IconRefresh(props: IconProps) {
   );
 }
 
+/** Fuer "Wieder aktiviert" (Briefing "Statuskorrektur Icons") - EIN umlaufender Gegenuhrzeiger-
+ * Pfeil (Undo/Rueckgaengig-Sprache), bewusst optisch UNTERSCHIEDLICH von IconRefresh (zwei
+ * gegenlaeufige Pfeile, dort fuer "etwas hat sich veraendert"/Buchungsaenderung) - "Wieder
+ * aktiviert" bedeutet konkret "ein Schritt zurueckgenommen", nicht "etwas hat sich veraendert". */
+export function IconRotateCcw(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3.5 3.5v5.5h5.5" />
+      <path d="M4.2 9A8.5 8.5 0 1 1 5.7 16" />
+    </svg>
+  );
+}
+
+/** Fuer "Termin verschoben" (Briefing "Statuskorrektur Icons") - Kalenderflaeche mit kleiner Uhr,
+ * bewusst optisch UNTERSCHIEDLICH von IconRotateCcw/IconRefresh: eindeutig "ein Datum/Termin ist
+ * betroffen", nicht "etwas wurde rueckgaengig gemacht" oder "eine Buchung hat sich geaendert". */
+export function IconCalendarClock(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3.5" y="5" width="17" height="15" rx="2" />
+      <path d="M8 3v4M16 3v4M3.5 10h17" />
+      <circle cx="15.5" cy="15" r="3.3" />
+      <path d="M15.5 13.3V15l1.1.9" />
+    </svg>
+  );
+}
+
 export const NAV_ICONS = {
   bed: IconBed,
   chart: IconChart,

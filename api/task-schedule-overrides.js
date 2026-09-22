@@ -70,14 +70,49 @@ async function resolveTaskContext(redis, taskId) {
     if (!propertyCode || !DATE_RE.test(naturalDate || '')) return null;
     const raw = await redis.hGet(ASSIGNMENTS_HASH_KEY, taskId);
     const assignment = raw ? parseJSON(raw, null) : null;
-    return { kind: 'cleaning', propertyCode, naturalDate, status: assignment?.status || 'open' };
+    return {
+      kind: 'cleaning', propertyCode, naturalDate, status: assignment?.status || 'open', assignment,
+    };
   }
   const raw = await redis.hGet(MANUAL_TASKS_HASH_KEY, taskId);
   const manualTask = raw ? parseJSON(raw, null) : null;
   if (!manualTask) return null;
   return {
     kind: 'manual', propertyCode: manualTask.propertyCode, naturalDate: manualTask.date,
-    status: manualTask.status === 'completed' ? 'completed' : 'open',
+    status: manualTask.status === 'completed' ? 'completed' : 'open', manualTask,
+  };
+}
+
+// Briefing "Bei Verschiebung Zuweisung immer aufheben": eine bestehende Zuweisung gilt fuer die
+// urspruengliche Tagesplanung - aendert sich der TATSAECHLICHE Durchfuehrungstag (in beide
+// Richtungen: neu verschieben ODER zurueck auf den urspruenglichen Tag), muss neu entschieden
+// werden, wer die Aufgabe uebernimmt. Loescht dabei NIE den Redis-Datensatz und NIE dessen
+// bestehende `history[]` (Reopen-/Timer-Verlauf bleibt vollstaendig nachvollziehbar, siehe
+// Briefing Punkt 3/7) - haengt stattdessen einen neuen `'unassigned'`-Verlaufseintrag an denselben,
+// bestehenden Verlaufsmechanismus an (kein paralleles Audit-System). Gibt `null` zurueck, wenn es
+// nichts zu aendern gibt (keine Zuweisung vorhanden) - in dem Fall ist kein zusaetzlicher
+// Redis-Schreibzugriff noetig.
+function buildUnassignedRecord(context, user) {
+  const historyEntry = { action: 'unassigned', at: Date.now(), byUserId: user.id, byUserName: user.name || user.username };
+  if (context.kind === 'cleaning') {
+    const a = context.assignment;
+    if (!a || !a.housekeeperId) return null;
+    return {
+      key: ASSIGNMENTS_HASH_KEY,
+      record: {
+        ...a, status: 'open', housekeeperId: '', housekeeperName: '', cleaningStartedAt: null,
+        history: [...(Array.isArray(a.history) ? a.history : []), historyEntry],
+      },
+    };
+  }
+  const mt = context.manualTask;
+  if (!mt || !mt.assignedUserId) return null;
+  return {
+    key: MANUAL_TASKS_HASH_KEY,
+    record: {
+      ...mt, assignedUserId: null, assignedUserName: null,
+      history: [...(Array.isArray(mt.history) ? mt.history : []), historyEntry],
+    },
   };
 }
 
@@ -148,16 +183,33 @@ module.exports = async (req, res) => {
       }
       const existingRaw = await redis.hGet(HASH_KEY, taskId);
       const existing = existingRaw ? parseJSON(existingRaw, null) : null;
+      const fromDate = existing?.scheduledDate || context.naturalDate;
+      // Briefing "Bei Verschiebung Zuweisung immer aufheben" + Punkt 4 (Atomaritaet): erst NACH
+      // erfolgreicher Validierung (oben) wird ueberhaupt etwas geschrieben - schlaegt eine Pruefung
+      // fehl, bleibt die bestehende Zuweisung unangetastet (kein Redis-Zugriff bisher). Betrifft
+      // GENAU dann etwas, wenn sich der TATSAECHLICHE Tag aendert (`scheduledDate !== fromDate`) -
+      // das schliesst sowohl ein weiteres Verschieben als auch ein Zurueckstellen auf das
+      // urspruengliche Datum ein (unten). `unassignedOp` ist `null`, wenn ohnehin niemand zugewiesen
+      // war (dann ist nur der Datums-Schreibzugriff noetig, keine zweite Operation).
+      const unassignedOp = scheduledDate !== fromDate ? buildUnassignedRecord(context, user) : null;
       // Briefing Punkt 1: normalerweise sind Quell- und geplantes Datum identisch - wird wieder
       // exakt auf das natuerliche Quelldatum zurueckgestellt, gibt es nichts mehr zu ueberschreiben,
       // der Override wird komplett entfernt (naechste Verschiebung beginnt wieder frisch, siehe
       // types.ts#TaskScheduleOverride-Kommentar).
       if (scheduledDate === context.naturalDate) {
-        if (existing) await redis.hDel(HASH_KEY, taskId);
-        res.status(200).json({ override: null });
+        if (existing || unassignedOp) {
+          const multi = redis.multi();
+          if (existing) multi.hDel(HASH_KEY, taskId);
+          if (unassignedOp) multi.hSet(unassignedOp.key, taskId, JSON.stringify(unassignedOp.record));
+          await multi.exec();
+        }
+        res.status(200).json({
+          override: null,
+          taskAssignment: context.kind === 'cleaning' ? (unassignedOp ? unassignedOp.record : undefined) : undefined,
+          manualTask: context.kind === 'manual' ? (unassignedOp ? unassignedOp.record : undefined) : undefined,
+        });
         return;
       }
-      const fromDate = existing?.scheduledDate || context.naturalDate;
       const override = {
         taskId,
         propertyCode: context.propertyCode,
@@ -172,8 +224,25 @@ module.exports = async (req, res) => {
           { from: fromDate, to: scheduledDate, changedBy: user.id, changedByName: user.name || user.username, changedAt: Date.now() },
         ],
       };
-      await redis.hSet(HASH_KEY, taskId, JSON.stringify(override));
-      res.status(200).json({ override });
+      // Beide Schreibzugriffe (neues Datum + ggf. Zuweisung aufheben) gebuendelt in EINER
+      // MULTI/EXEC-Transaktion (Briefing Punkt 4: "moeglichst atomar") - bewusst OHNE WATCH (siehe
+      // api/task-assignments.js#claimTask-Kommentar zur dort dokumentierten Race-Bedingung bei
+      // gemeinsam genutzter Verbindung: die betrifft ausschliesslich WATCH, ein reines MULTI/EXEC
+      // mit unbedingten Schreibbefehlen ist davon nicht betroffen und wird bereits an anderer Stelle
+      // in dieser Codebasis so verwendet, siehe api/task-assignments.js#bulkAssign).
+      if (unassignedOp) {
+        await redis.multi()
+          .hSet(HASH_KEY, taskId, JSON.stringify(override))
+          .hSet(unassignedOp.key, taskId, JSON.stringify(unassignedOp.record))
+          .exec();
+      } else {
+        await redis.hSet(HASH_KEY, taskId, JSON.stringify(override));
+      }
+      res.status(200).json({
+        override,
+        taskAssignment: context.kind === 'cleaning' ? (unassignedOp ? unassignedOp.record : undefined) : undefined,
+        manualTask: context.kind === 'manual' ? (unassignedOp ? unassignedOp.record : undefined) : undefined,
+      });
       return;
     }
 
@@ -184,8 +253,25 @@ module.exports = async (req, res) => {
         res.status(403).json({ error: 'Nur Admin kann den Reinigungstag zurücksetzen.' });
         return;
       }
-      await redis.hDel(HASH_KEY, taskId);
-      res.status(200).json({ ok: true });
+      // Briefing "Bei Verschiebung Zuweisung immer aufheben": ein Zuruecksetzen auf den
+      // urspruenglichen Tag ist ebenfalls eine Terminaenderung (der zuletzt geplante Tag war ein
+      // ANDERER als der urspruengliche, sonst gaebe es hier gar keinen Override) - dieselbe Regel
+      // wie beim Verschieben in der 'set'-Aktion gilt deshalb auch hier.
+      const context = await resolveTaskContext(redis, taskId);
+      const unassignedOp = context ? buildUnassignedRecord(context, user) : null;
+      if (unassignedOp) {
+        await redis.multi()
+          .hDel(HASH_KEY, taskId)
+          .hSet(unassignedOp.key, taskId, JSON.stringify(unassignedOp.record))
+          .exec();
+      } else {
+        await redis.hDel(HASH_KEY, taskId);
+      }
+      res.status(200).json({
+        ok: true,
+        taskAssignment: context?.kind === 'cleaning' ? (unassignedOp ? unassignedOp.record : undefined) : undefined,
+        manualTask: context?.kind === 'manual' ? (unassignedOp ? unassignedOp.record : undefined) : undefined,
+      });
       return;
     }
 

@@ -39,7 +39,7 @@ function formatDateShort(ms: number): string {
 
 const HISTORY_LABEL_KEYS = {
   started: 'history_started', paused: 'history_paused', resumed: 'history_resumed', completed: 'history_completed',
-  reopened: 'history_reopened', restarted: 'history_restarted',
+  reopened: 'history_reopened', restarted: 'history_restarted', unassigned: 'history_unassigned',
 } as const;
 
 function formatFullDate(iso: string | null): string {

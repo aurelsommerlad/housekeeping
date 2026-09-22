@@ -420,7 +420,7 @@ export type TaskStatus = 'open' | 'assigned' | 'in_progress' | 'paused' | 'inspe
  * ("started" vs. "resumed") statt nur den Status zu spiegeln, damit die Verlaufszeile ohne
  * weitere Herleitung exakt den geforderten Text ("Reinigung gestartet" vs. "Fortgesetzt") tragen
  * kann. */
-export type TaskHistoryAction = 'started' | 'paused' | 'resumed' | 'completed' | 'reopened' | 'restarted';
+export type TaskHistoryAction = 'started' | 'paused' | 'resumed' | 'completed' | 'reopened' | 'restarted' | 'unassigned';
 
 /** Nur bei 'started'/'resumed' gesetzt (Punkt "Startquelle speichern") - woher DIESER konkrete
  * Start ausgeloest wurde. Rein informativ fuer die Verlaufsanzeige, aendert nichts an Timer-/
