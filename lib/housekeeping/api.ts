@@ -883,7 +883,18 @@ import type { Lang } from './i18n';
 // (kein zusaetzlicher "Babybett offen"-Text). Verifiziert per tsc/eslint/build sowie einem
 // Node-Integrationstest gegen einen Fake-Redis (togglePreparation an/aus, Rechte, complete-Sperre
 // inkl. Ruckwaertskompatibilitaet ohne requiredPreparationIds) - alle 12 Faelle bestanden.
-export const APP_VERSION = '2.30.0';
+// v2.30.1 - PATCH: drei kleine Korrekturen in der Reinigungsdetailansicht, keine Aenderung an
+// Business-Logik/Datenmodell. (1) Der Status-Punkt "Zugewiesen" (TASK_STATUS_CONFIG.assigned)
+// nutzte bisher denselben roten "dirty"-Ton wie "Offen" (unzugewiesen) - "zugewiesen" ist aber ein
+// positiver Zwischenschritt, kein Warnzustand, und bekommt jetzt denselben gruenen Ton wie
+// "Fertig" (status-clean). (2) Eine manuell verschobene Reinigung ("Geplant für") war nur ein
+// dezenter grauer Hinweistext - jetzt ein deutliches gelb/goldenes Feld (bereits bestehender
+// status-progress-Ton, wie bei "Buchung geändert" - keine neue Farbe eingefuehrt). (3) "Geplant
+// für DD.MM.YYYY" stand als eigener Block mit eigener Grossbuchstaben-Ueberschrift UEBER dem
+// Zeitfenster - jetzt in einer Zeile auf gleicher Hoehe/Schriftgroesse wie die Zeit, mit einem
+// neuen, schlichten Kalender-Icon (IconCalendar, bewusst unterschieden vom bestehenden
+// IconCalendarClock des "Termin verschoben"-Badges). Verifiziert per tsc/eslint/build.
+export const APP_VERSION = '2.30.1';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

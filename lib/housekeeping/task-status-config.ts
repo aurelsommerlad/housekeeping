@@ -27,12 +27,15 @@ export const TASK_STATUS_CONFIG: Record<TaskStatus, ToneConfig> = {
     toneBorderClass: 'border-status-dirty/30',
     dotClass: 'bg-status-dirty',
   },
+  // Nutzerfeedback: "zugewiesen" ist ein positiver Zwischenschritt (jemand ist verantwortlich),
+  // kein Warnzustand - bekommt deshalb denselben gruenen Ton wie "completed" statt des roten
+  // "dirty"-Tons von "open" (unzugewiesen, muss noch verteilt werden).
   assigned: {
     labelKey: 'wf_assigned',
-    toneClass: 'text-status-dirty',
-    toneBgClass: 'bg-status-dirty-bg',
-    toneBorderClass: 'border-status-dirty/30',
-    dotClass: 'bg-status-dirty',
+    toneClass: 'text-status-clean',
+    toneBgClass: 'bg-status-clean-bg',
+    toneBorderClass: 'border-status-clean/30',
+    dotClass: 'bg-status-clean',
   },
   in_progress: {
     labelKey: 'st_running',

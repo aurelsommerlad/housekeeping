@@ -13,7 +13,7 @@ import { TimeFlag } from './TimeFlag';
 import { OccupancyLine, WorkStatus } from './TaskCard';
 import { Button } from '@/components/ui/Button';
 import {
-  DoubleupIcon, IconAlertCircle, IconCalendarClock, IconCheck, IconChevronDown, IconCircle, IconClock, IconClose,
+  DoubleupIcon, IconAlertCircle, IconCalendar, IconCalendarClock, IconCheck, IconChevronDown, IconCircle, IconClock, IconClose,
   IconEdit, IconGlobe, IconMessageCircle, IconPlus, IconRefresh, IconRotateCcw, IconTask, IconUser,
 } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
@@ -853,18 +853,23 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           ) : null}
         </div>
 
-        {/* "Tag ändern" (Briefing Punkt 5/9): "Geplant für" mit Admin-Edit-Stift, analog zum
-         * bestehenden Zeitfenster-Editor darunter (Pencil -> inline Formular -> Speichern/
-         * Abbrechen/Zuruecksetzen) statt eines neuen "•••"-Menues. Fuer Nicht-Admin/nicht
-         * verschiebbare Tasks (Punkt 4/12) erscheint nur die reine Anzeige, kein Stift. Punkt 9:
-         * "Verschoben"-Zeile zeigt das URSPRUENGLICHE Datum, die tatsaechliche Reservierung
-         * (Abreise/Naechste Anreise) steht unveraendert weiter unten separat - nie der Eindruck,
-         * die Reservierung selbst waere geaendert worden. */}
+        {/* Nutzerfeedback: "Geplant für" stand bisher als eigene, mit einer Grossbuchstaben-
+         * Ueberschrift eingeleitete Zeile ÜBER dem Zeitfenster - optisch zwei unabhaengige Bloecke
+         * auf unterschiedlicher Texthoehe. Datum und Zeit gehoeren fachlich zusammen (beide
+         * beschreiben "wann") und stehen jetzt in EINER Zeile auf gleicher Hoehe/Schriftgroesse,
+         * Kalender-Icon analog zum bestehenden Uhr-Icon der Zeit - wie "Zeitfenster" zuvor ganz
+         * ohne vorangestellte Ueberschrift. "Tag ändern" (Punkt 5/9 aus dem vorherigen Briefing)
+         * bleibt unveraendert: Admin-Edit-Stift direkt daneben oeffnet dasselbe inline Formular
+         * (Schnellauswahl + Datepicker + Kollisions-Warnung/-Block). hasTimeRow ist eine
+         * Teilmenge von canScheduleType (nur turnover/departure haben ueberhaupt eine Kernzeit),
+         * die aeussere Bedingung kann sich deshalb auf canScheduleType beschraenken. */}
         {canScheduleType ? (
-          <div className="flex flex-col gap-1">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('schedule_title')}</p>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[13px] font-medium text-ink">{formatFullDate(task.scheduledDate)}</span>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+              <span className="flex items-center gap-1.5 text-[19px] font-semibold text-ink">
+                <IconCalendar width={18} height={18} className="shrink-0 text-muted" aria-hidden="true" />
+                {formatFullDate(task.scheduledDate)}
+              </span>
               {canEditSchedule ? (
                 <button
                   type="button"
@@ -876,15 +881,91 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                   <IconEdit width={15} height={15} aria-hidden="true" />
                 </button>
               ) : null}
+
+              {hasTimeRow ? (
+                <>
+                  <span className="text-muted" aria-hidden="true">·</span>
+                  <span className="flex items-center gap-1.5 text-[19px] font-semibold tabular-nums text-ink">
+                    <IconClock width={18} height={18} className="shrink-0 text-muted" aria-hidden="true" />
+                    {task.type === 'turnover' ? (
+                      <>{task.effectiveDepartureTime} → {task.effectiveArrivalTime}</>
+                    ) : (
+                      task.effectiveDepartureTime
+                    )}
+                  </span>
+                  {canEditTimes ? (
+                    <button
+                      type="button"
+                      onClick={() => (timeFormOpen ? setTimeFormOpen(false) : openTimeForm())}
+                      aria-label={t('edit_times')}
+                      title={t('edit_times')}
+                      className="rounded-full p-1 text-muted transition-colors hover:bg-surface hover:text-ink"
+                    >
+                      <IconEdit width={15} height={15} aria-hidden="true" />
+                    </button>
+                  ) : null}
+
+                  {task.timeConflict ? (
+                    <TimeBadge icon={IconAlertCircle} tone="attention" title={t('time_conflict_detail', { t1: task.bookedDepartureTime, t2: task.bookedArrivalTime || '' })}>
+                      {t('time_conflict_badge')}
+                    </TimeBadge>
+                  ) : (
+                    <>
+                      {task.hasLateCheckout ? (
+                        <TimeBadge icon={IconClock} title={t('late_checkout_detail', { time: task.bookedDepartureTime })}>
+                          {t('late_checkout_label')}
+                        </TimeBadge>
+                      ) : null}
+                      {task.hasEarlyCheckin ? (
+                        <TimeBadge icon={IconClock} title={t('early_checkin_detail', { time: task.bookedArrivalTime || '' })}>
+                          {t('early_checkin_label')}
+                        </TimeBadge>
+                      ) : null}
+                    </>
+                  )}
+                  {(task.departureOverridden || task.arrivalOverridden) && task.timeOverride ? (
+                    <TimeBadge
+                      icon={IconEdit}
+                      title={t('time_changed_detail', {
+                        name: shortStaffName(task.timeOverride.changedByName),
+                        date: formatDateShort(task.timeOverride.changedAt),
+                        time: formatClock(task.timeOverride.changedAt),
+                      })}
+                    >
+                      {t('time_changed_badge')}
+                    </TimeBadge>
+                  ) : null}
+                </>
+              ) : null}
+
+              {task.type === 'departure' && task.followingArrivalDate ? (
+                <span className="ml-auto text-right text-[11px] leading-tight text-muted">
+                  {t('next_arrival_label')}<br />{formatDayMonth(task.followingArrivalDate)}
+                </span>
+              ) : null}
             </div>
+
+            {/* Nutzerfeedback: eine manuell verschobene Reinigung war bisher nur ein dezenter
+             * grauer Hinweistext - kaum von normalem Fliesstext zu unterscheiden. Jetzt ein
+             * deutliches gelb/goldenes Feld (bereits bestehender status-progress-Ton, siehe
+             * "Buchung geändert" oben - keine neue Farbe eingefuehrt), damit eine Verschiebung auf
+             * den ersten Blick auffaellt. Zeigt weiterhin das URSPRUENGLICHE Datum; die
+             * tatsaechliche Reservierung (Abreise/Naechste Anreise) steht unveraendert separat
+             * weiter unten - nie der Eindruck, die Reservierung selbst waere geaendert worden. */}
             {task.scheduleOverride ? (
-              <p className="flex items-center gap-1.5 text-[12px] text-muted">
-                <IconRefresh width={13} height={13} className="shrink-0" aria-hidden="true" />
-                {t('rescheduled_from', {
-                  from: formatFullDate(task.scheduleOverride.originalScheduledDate),
-                  to: formatFullDate(task.scheduleOverride.scheduledDate),
-                })}
-              </p>
+              <div className="flex items-start gap-2 rounded-control border border-status-progress/25 bg-status-progress-bg px-3 py-2">
+                <IconRefresh width={14} height={14} className="mt-0.5 shrink-0 text-status-progress" aria-hidden="true" />
+                <p className="text-[12.5px] font-medium text-status-progress">
+                  {t('rescheduled_from', {
+                    from: formatFullDate(task.scheduleOverride.originalScheduledDate),
+                    to: formatFullDate(task.scheduleOverride.scheduledDate),
+                  })}
+                </p>
+              </div>
+            ) : null}
+
+            {!hasTimeRow && task.type === 'stayover' && task.nights ? (
+              <p className="text-[13px] text-muted">{t(task.nights === 1 ? 'nights_one' : 'nights_many', { n: task.nights })}</p>
             ) : null}
 
             {canEditSchedule && scheduleFormOpen ? (
@@ -958,74 +1039,8 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                 </div>
               </div>
             ) : null}
-          </div>
-        ) : null}
 
-        {/* Zeitfenster (Punkt 1/2/3) - EINE Zeile: Uhr-Icon + Kernzeit prominent, Edit-Stift nur
-         * fuer Admin direkt daneben statt eines Textlinks, LCO/ECI/Konflikt/Override kompakt mit
-         * Tooltip statt ausgeschriebener Zusatzzeilen. */}
-        {hasTimeRow ? (
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-              <span className="flex items-center gap-1.5 text-[19px] font-semibold tabular-nums text-ink">
-                <IconClock width={18} height={18} className="shrink-0 text-muted" aria-hidden="true" />
-                {task.type === 'turnover' ? (
-                  <>{task.effectiveDepartureTime} → {task.effectiveArrivalTime}</>
-                ) : (
-                  task.effectiveDepartureTime
-                )}
-              </span>
-              {canEditTimes ? (
-                <button
-                  type="button"
-                  onClick={() => (timeFormOpen ? setTimeFormOpen(false) : openTimeForm())}
-                  aria-label={t('edit_times')}
-                  title={t('edit_times')}
-                  className="rounded-full p-1 text-muted transition-colors hover:bg-surface hover:text-ink"
-                >
-                  <IconEdit width={15} height={15} aria-hidden="true" />
-                </button>
-              ) : null}
-
-              {task.timeConflict ? (
-                <TimeBadge icon={IconAlertCircle} tone="attention" title={t('time_conflict_detail', { t1: task.bookedDepartureTime, t2: task.bookedArrivalTime || '' })}>
-                  {t('time_conflict_badge')}
-                </TimeBadge>
-              ) : (
-                <>
-                  {task.hasLateCheckout ? (
-                    <TimeBadge icon={IconClock} title={t('late_checkout_detail', { time: task.bookedDepartureTime })}>
-                      {t('late_checkout_label')}
-                    </TimeBadge>
-                  ) : null}
-                  {task.hasEarlyCheckin ? (
-                    <TimeBadge icon={IconClock} title={t('early_checkin_detail', { time: task.bookedArrivalTime || '' })}>
-                      {t('early_checkin_label')}
-                    </TimeBadge>
-                  ) : null}
-                </>
-              )}
-              {(task.departureOverridden || task.arrivalOverridden) && task.timeOverride ? (
-                <TimeBadge
-                  icon={IconEdit}
-                  title={t('time_changed_detail', {
-                    name: shortStaffName(task.timeOverride.changedByName),
-                    date: formatDateShort(task.timeOverride.changedAt),
-                    time: formatClock(task.timeOverride.changedAt),
-                  })}
-                >
-                  {t('time_changed_badge')}
-                </TimeBadge>
-              ) : null}
-
-              {task.type === 'departure' && task.followingArrivalDate ? (
-                <span className="ml-auto text-right text-[11px] leading-tight text-muted">
-                  {t('next_arrival_label')}<br />{formatDayMonth(task.followingArrivalDate)}
-                </span>
-              ) : null}
-            </div>
-
-            {canEditTimes && timeFormOpen ? (
+            {hasTimeRow && canEditTimes && timeFormOpen ? (
               <div className="rounded-control border border-line bg-warm-white px-3.5 py-3">
                 <div className="flex gap-3">
                   <label className="flex flex-1 flex-col gap-1 text-[12.5px] font-medium text-muted">
@@ -1063,8 +1078,6 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
               </div>
             ) : null}
           </div>
-        ) : task.type === 'stayover' && task.nights ? (
-          <p className="text-[13px] text-muted">{t(task.nights === 1 ? 'nights_one' : 'nights_many', { n: task.nights })}</p>
         ) : null}
 
         {/* Briefing "Reinigungsdetailansicht ueberarbeiten" Punkt 1: kompakte ABREISE/ANREISE-
