@@ -811,7 +811,14 @@ import type { Lang } from './i18n';
 // api/task-notices.js und api/manual-tasks.js mit gemocktem Redis/fetch (kein Live-Redis/
 // -Anthropic in der Sandbox). Keine Aenderung an Kartengroesse/Mobile-Layout/bestehender
 // Housekeeping-Logik, keine geloeschten Daten.
-export const APP_VERSION = '2.28.0';
+// v2.28.1 - Feinschliff Task Card (Nutzerfeedback): "Termin verschoben"/"Wieder aktiviert" stehen
+// jetzt direkt neben dem Typ-Label (z. B. "Abreise") statt neben Zuweisung/Team. Die "Neu"/
+// "Buchung geändert"-Aufmerksamkeitspunkte nutzen eigene, minimal hellere Farbtoene (--color-dot-new/
+// --color-dot-changed, globals.css) statt der dunkleren status-clean/status-progress-Toene, die
+// weiterhin unveraendert fuer die eigentlichen Reinigungsstatus-Anzeigen gelten. Die Ansicht-/
+// Standort-<select> in TasksScreen.tsx zeigen keinen Fokusring mehr (neues `data-focus-none`-Opt-out
+// vom globalen Fokusring-Fallback in globals.css) - alle anderen Elemente sind unveraendert.
+export const APP_VERSION = '2.28.1';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

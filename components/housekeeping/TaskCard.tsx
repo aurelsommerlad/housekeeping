@@ -396,12 +396,12 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
         <span className="mt-1 flex shrink-0 items-center gap-1.5">
           {/* Briefing "Reinigungskarten ueberarbeiten" Punkt 5/6/7: EIN farbiger Punkt statt
            * zweier konkurrierender Signale - orange (Buchungsaenderung) hat Vorrang vor gruen
-           * (ungesehen), niemals beide gleichzeitig. Bewusst dieselben, bereits bestehenden
-           * Status-Farbtoene (status-clean/status-progress) statt neu erfundener Farben - Farbe
+           * (ungesehen), niemals beide gleichzeitig. Eigene, minimal hellere Farbtoene
+           * (dot-new/dot-changed statt status-clean/status-progress, siehe globals.css) - Farbe
            * ist nie der einzige Bedeutungstraeger, siehe aria-label/title. */}
           {attentionState !== 'none' ? (
             <span
-              className={cn('h-2.5 w-2.5 rounded-full', attentionState === 'changed' ? 'bg-status-progress' : 'bg-status-clean')}
+              className={cn('h-2.5 w-2.5 rounded-full', attentionState === 'changed' ? 'bg-dot-changed' : 'bg-dot-new')}
               role="img"
               aria-label={translate(lang, attentionState === 'changed' ? 'booking_changed_dot_label' : 'task_new_dot_label')}
               title={translate(lang, attentionState === 'changed' ? 'booking_changed_dot_label' : 'task_new_dot_label')}
@@ -421,15 +421,16 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
            * Outline-Icon neben dem ohnehin schon textlichen "Aufgabe"-Label der TonePill. */}
           {task.type === 'manual' ? <IconTask width={14} height={14} className="shrink-0 text-type-manual" aria-hidden="true" /> : null}
           <TonePill config={typeConfig} lang={lang} size="sm" />
-        </span>
-        <span className="flex min-w-0 items-center gap-1">
-          {/* Statuskorrektur (Briefing "unterschiedliche Icons fuer wieder aktiviert/verschoben"):
-           * zwei fachlich unterschiedliche Zustaende brauchen zwei unterschiedliche, semantisch
-           * passende Icons statt zweimal desselben Refresh-Symbols - beide koennen gleichzeitig
-           * erscheinen, je mit eigenem Tooltip/accessible label. "Wieder aktiviert" verschwindet
-           * automatisch wieder, sobald die Reinigung erneut gestartet wurde (siehe
-           * tasks.ts#ResolvedTask.reopened: rein aus dem letzten Verlaufseintrag abgeleitet), dann
-           * uebernimmt WorkStatus unten wieder den aktuellen Status ("In Reinigung ..."). */}
+          {/* Nutzerfeedback: "Termin verschoben"/"Wieder aktiviert" gehoeren fachlich zum Typ/
+           * Zeitplan der Reinigung (Abreise/Turnover/...), nicht zur Zuweisung - direkt neben dem
+           * Typ-Label statt neben Zuweisung/Team platziert. Statuskorrektur (Briefing
+           * "unterschiedliche Icons fuer wieder aktiviert/verschoben"): zwei fachlich
+           * unterschiedliche Zustaende brauchen zwei unterschiedliche, semantisch passende Icons
+           * statt zweimal desselben Refresh-Symbols - beide koennen gleichzeitig erscheinen, je mit
+           * eigenem Tooltip/accessible label. "Wieder aktiviert" verschwindet automatisch wieder,
+           * sobald die Reinigung erneut gestartet wurde (siehe tasks.ts#ResolvedTask.reopened: rein
+           * aus dem letzten Verlaufseintrag abgeleitet), dann uebernimmt WorkStatus unten wieder
+           * den aktuellen Status ("In Reinigung ..."). */}
           {task.reopened ? (
             <span title={translate(lang, 'reopened_badge_label')}>
               <IconRotateCcw width={13} height={13} className="shrink-0 text-muted" role="img" aria-label={translate(lang, 'reopened_badge_label')} />
@@ -440,6 +441,8 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
               <IconCalendarClock width={13} height={13} className="shrink-0 text-muted" role="img" aria-label={translate(lang, 'rescheduled_badge_label')} />
             </span>
           ) : null}
+        </span>
+        <span className="flex min-w-0 items-center gap-1">
           <WorkStatus task={task} lang={lang} shortName={shortName} />
         </span>
       </div>

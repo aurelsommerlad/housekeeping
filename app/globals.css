@@ -68,6 +68,14 @@
   --color-status-attention: #9B4F42;
   --color-status-attention-bg: #F1E1DD;
 
+  /* TaskCard-Aufmerksamkeitspunkte ("Neu"/"Buchung geändert", Briefing "Reinigungskarten
+     ueberarbeiten" Punkt 5/6/7) - bewusst eigene, minimal hellere Toene statt status-clean/
+     status-progress direkt zu benutzen: Nutzerfeedback, der Punkt wirke zu dunkel; status-clean/
+     status-progress bleiben unveraendert fuer die eigentlichen Reinigungsstatus-Anzeigen
+     (StatusPill/WorkflowStatusPill) andernorts in der App. */
+  --color-dot-new: #607759;
+  --color-dot-changed: #C59951;
+
   /* Aufgabentyp (Task Cards, lib/housekeeping/task-status-config.ts#TASK_TYPE_CONFIG) - bewusst
      sehr zurueckhaltende, der UNIQUE-PLACES-Palette entnommene Farbtoene, keine kraeftigen
      Hotel-PMS-/Ampelfarben. Strikt getrennt von den Status-Farben oben: diese Tokens zeigen
@@ -130,8 +138,10 @@ body {
  * Ursache des blauen Rings/Outlines: viele Buttons/Links/Selects in den housekeeping-
  * Komponenten sind schlichte, direkt im JSX geschriebene <button>/<a>/<select>-Elemente OHNE
  * eigene focus-Klassen (z. B. Tagesnav-Tabs, Edit-Stifte, "•••"-Menu, Chevron-Toggles,
- * Standortfilter-<select> in TasksScreen.tsx/TaskDetailSheet.tsx/DesktopNavRail.tsx/
- * StaffNavBar.tsx/StaffHeader.tsx u.a.) - diese fallen mangels eigenem Styling auf den
+ * Standortfilter-<select> in TaskDetailSheet.tsx/DesktopNavRail.tsx/StaffNavBar.tsx/
+ * StaffHeader.tsx u.a. - die Ansicht-/Standort-<select> in TasksScreen.tsx tragen bewusst
+ * `data-focus-none`, siehe unten, und sind davon ausgenommen) - diese fallen mangels eigenem
+ * Styling auf den
  * BROWSER-Standard zurueck (blauer Fokusring bei Klick/Tastatur, teils zusaetzlich ein blauer
  * Tap-Highlight auf Touch-Geraeten). Die bereits vorhandenen gemeinsamen UI-Primitiven (Button.tsx/
  * Card.tsx/Chip.tsx/PropertySwitcher.tsx/Header.tsx) haben BEREITS einen korrekten, salbeifarbenen
@@ -181,6 +191,14 @@ textarea:focus-visible,
    wirkt nur, wenn das Attribut explizit gesetzt ist - kein bestehendes Element aendert sich dadurch. */
 [data-focus-dark]:focus-visible {
   outline-color: var(--color-forest) !important;
+}
+
+/* Nutzerfeedback: die Standort-/Ansichts-<select>-Picker in TasksScreen.tsx (native <select>, ohne
+   eigene Fokus-Klassen - siehe Kommentar oben) sollen KEINEN sichtbaren Fokusring zeigen, auch nicht
+   bei Tastaturfokus - anders als der globale Fallback oben. `data-focus-none` markiert genau diese
+   Faelle, rein additiv (kein anderes Element aendert sich). */
+[data-focus-none]:focus-visible {
+  outline: none !important;
 }
 
 /* UNIQUE PLACES wird nie kursiv dargestellt - als globale Absicherung. */

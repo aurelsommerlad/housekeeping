@@ -256,6 +256,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                 value={state.myTasksOnly ? 'mine' : 'all'}
                 onChange={(e) => (e.target.value === 'mine' ? selectMine() : selectAllTasks())}
                 className={selectClass}
+                data-focus-none
               >
                 <option value="mine">{t('my_tasks_only')}</option>
                 <option value="all">{t('scope_all_tasks')}</option>
@@ -269,6 +270,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                 value={state.propertyScope}
                 onChange={(e) => selectScope(e.target.value)}
                 className={selectClass}
+                data-focus-none
               >
                 <option value="all">{t('scope_all_properties')}</option>
                 {allowedProps.map((p) => (
