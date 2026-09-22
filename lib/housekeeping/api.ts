@@ -762,7 +762,13 @@ import type {
 // TaskCard.tsx/TaskDetailSheet.tsx/TasksScreen.tsx/api.ts/i18n.ts/types.ts/
 // useHousekeepingApp.ts sowie die zwei neuen API-Dateien geaendert - keine Aenderung an
 // Kartengroesse/Mobile-Layout/Task-Ermittlung/Assignment-Logik/Apaleo-Integration.
-export const APP_VERSION = '2.27.0';
+// v2.27.1 - Bugfix: "Buchung geändert"-Detailkarte zeigte "NaN.NaN." statt des Datums.
+// change.arrivalFrom/-To/departureFrom/-To (BookingChangeRecord) sind die rohen Apaleo-Felder
+// r.arrival/r.departure - volle ISO-Datumszeiten, keine reinen Datumsstrings. formatDayMonth()
+// in TaskDetailSheet.tsx haengte "T00:00:00" direkt an eine bereits vollstaendige ISO-Datumszeit
+// an, was ein ungueltiges Datum ergab - jetzt wird zuerst auf "YYYY-MM-DD" normalisiert
+// (slice(0, 10), bei einem bereits reinen Datumsstring wirkungslos).
+export const APP_VERSION = '2.27.1';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

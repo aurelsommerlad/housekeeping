@@ -21,9 +21,16 @@ export interface TaskDetailSheetProps {
   task: ResolvedTask | null;
 }
 
+/** Bugfix (Punkt "Buchungsänderung geändert" zeigte "NaN.NaN."): `change.arrivalFrom/-To`/
+ * `departureFrom/-To` (BookingChangeRecord, siehe api/booking-changes.js) sind die ROHEN
+ * Apaleo-Reservierungsfelder `r.arrival`/`r.departure` - volle ISO-Datumszeiten
+ * ("2026-09-22T15:00:00Z"), NICHT reine Datumsstrings wie `orphanedSchedule.scheduledDate`. Ein
+ * direktes Anhaengen von "T00:00:00" an eine bereits vollstaendige ISO-Datumszeit ergab ein
+ * ungueltiges Datum. `slice(0, 10)` normalisiert beide Faelle einheitlich auf "YYYY-MM-DD" (bei
+ * einem bereits reinen Datumsstring wirkungslos), bevor die Uhrzeit angehaengt wird. */
 function formatDayMonth(iso: string | null): string {
   if (!iso) return '';
-  const d = new Date(`${iso}T00:00:00`);
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.`;
 }
 
