@@ -846,7 +846,44 @@ import type { Lang } from './i18n';
 // rein additiven FreeTextTranslation) und keine Aenderung am mobilen Dashboard/den Task-Cards
 // (nur TaskCard.tsx#WorkStatus/OccupancyLine wurden fuer die Wiederverwendung exportiert, ihr
 // eigenes Verhalten/Aussehen ist unveraendert). Verifiziert per tsc/eslint/build (alle sauber).
-export const APP_VERSION = '2.29.0';
+// v2.30.0 - MINOR: UX-Optimierung Reinigungsdetail - drei zusammenhaengende Punkte. (1) Der
+// schwarze Toast, der bisher direkt neben dem "Reinigung starten"-Button erschien, wenn der
+// wichtige Hinweis noch unbestaetigt war, ist entfernt. Der Button bleibt sichtbar, aber optisch
+// deaktiviert (unveraendert); ein Tap scrollt stattdessen sanft zur WICHTIGER-HINWEIS-Karte und
+// hebt sie kurz hervor (warme, nicht-rote Akzentflaeche). Solange der Hinweis unbestaetigt ist,
+// steht dort dauerhaft "Bitte bestätige diesen Hinweis. Danach kannst du die Reinigung starten." -
+// nach der Bestaetigung verschwindet dieser Text, die Hervorhebung endet und der Button wird
+// aktiv, OHNE zurueckzuscrollen (die Reinigungskraft entscheidet selbst, wann sie weitermacht).
+// Die serverseitige Sperre in api/task-assignments.js#startTimer ist unveraendert. (2) "Vorbereitung"
+// ist jetzt eine echte, pro Aufgabe abhakbare Checkliste statt reiner Anzeige-Chips: ein per
+// Apaleo-Service (BABY) gebuchtes Babybett sowie alle manuell gesetzten Vorbereitungs-Flags
+// (siehe tasks.ts#requiredPreparationItemIds) erscheinen als antippbare Zeilen (min. 44px,
+// Haken/Kreis-Icon statt Warnfarbe); ein NUR gebuchter Hund ohne manuelles Flag bleibt bewusst
+// reine Gaesteinformation und wird NICHT Teil der Checkliste. Der Erledigt-Status wird ueber die
+// neue Aktion 'togglePreparation' persistiert - additiv auf demselben TaskAssignment-Datensatz
+// (preparationCompletions: {itemId: {completedByUserId, completedByUserName, completedAt}}), also
+// weiterhin ausschliesslich unter housekeeping:task_assignments, kein neuer Redis-Key. Ein Abhaken
+// beansprucht die Aufgabe nie implizit (housekeeperId bleibt null, bis sie tatsaechlich gestartet
+// wird) - canTouchOwnAssignment() behandelt einen Datensatz ohne Zuweisung dafuer wie einen
+// fehlenden Datensatz (jede Person mit Property-Zugriff darf togglen), sonst haette nicht einmal
+// dieselbe Person ihr eigenes erstes Abhaken rueckgaengig machen koennen. "Reinigung abschließen"
+// ist jetzt zusaetzlich (client- UND serverseitig in api/task-assignments.js#complete, per
+// client-deklariertem requiredPreparationIds - derselbe Vertrauensrahmen wie das bereits
+// bestehende requiresInspection/linenItems) blockiert, solange Pflichtpunkte offen sind: Tap
+// scrollt zur Checkliste, hebt sie hervor und zeigt dort "Bitte erledige zuerst alle
+// Vorbereitungen. Danach kannst du die Reinigung abschließen." - eine offene Vorbereitung
+// blockiert AUSSCHLIESSLICH den Abschluss, niemals den Start (beide Sperren sind bewusst
+// unabhaengig). Manuelle Aufgaben (Typ 'manual') haben weiterhin keinerlei Vorbereitungs-Workflow.
+// (3) Der "Arbeitsauftrag"-Abschnitt hat jetzt eine eigene, dezente Hintergrundflaeche
+// (bg-type-stayover-bg, #EDF1EA - bereits bestehender Farbtoken, keine neue Farbe) statt derselben
+// beigen Flaeche wie "Buchung", damit er nicht mehr wie eine weitere generische Info-Karte wirkt.
+// Der Vorbereitungs-Chip-Editor (Admin/Standortverantwortlich, jetzt "Vorbereitung festlegen")
+// bleibt bestehen, ist aber visuell klar von der neuen Housekeeper-Checkliste getrennt - Admins
+// sehen zusaetzlich, wer eine Position wann erledigt hat. Kompakte Karte/Dashboard unveraendert
+// (kein zusaetzlicher "Babybett offen"-Text). Verifiziert per tsc/eslint/build sowie einem
+// Node-Integrationstest gegen einen Fake-Redis (togglePreparation an/aus, Rechte, complete-Sperre
+// inkl. Ruckwaertskompatibilitaet ohne requiredPreparationIds) - alle 12 Faelle bestanden.
+export const APP_VERSION = '2.30.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -1197,8 +1234,21 @@ export const taskAssignmentsApi = {
   startTimer: (taskId: string, startSource?: TaskStartSource) =>
     backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'startTimer', taskId, startSource }),
   stopTimer: (taskId: string) => backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'stopTimer', taskId }),
-  complete: (taskId: string, requiresInspectionFlag: boolean, linenItems?: { itemId: string; estimatedQuantity: number | null; actualQuantity: number }[]) =>
-    backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'complete', taskId, requiresInspection: requiresInspectionFlag, linenItems }),
+  /** Briefing "Vorbereitung als Checkliste": schaltet EINEN Vorbereitungspunkt (itemId, siehe
+   * DOUBLEUP_TYPES) fuer diesen Task um - siehe api/task-assignments.js#togglePreparation. */
+  togglePreparation: (taskId: string, itemId: string) =>
+    backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'togglePreparation', taskId, itemId }),
+  /** `requiredPreparationIds` (Punkt 4): die fuer diesen Task tatsaechlich zu erledigenden
+   * Vorbereitungspunkte (siehe tasks.ts#requiredPreparationItemIds) - der Server lehnt den
+   * Abschluss ab, solange nicht jeder dieser IDs bereits als erledigt gespeichert ist. */
+  complete: (
+    taskId: string, requiresInspectionFlag: boolean,
+    linenItems?: { itemId: string; estimatedQuantity: number | null; actualQuantity: number }[],
+    requiredPreparationIds?: string[],
+  ) =>
+    backendPost<{ taskAssignments: TaskAssignmentsState }>(
+      'task-assignments', { action: 'complete', taskId, requiresInspection: requiresInspectionFlag, linenItems, requiredPreparationIds },
+    ),
   completeInspection: (taskId: string) =>
     backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'completeInspection', taskId }),
   /** Briefing "Wieder aktivieren" - admin-only, siehe api/task-assignments.js#reopen. */

@@ -3,7 +3,7 @@ import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
 import { dayHeadingLabel } from '@/lib/housekeeping/dayLabel';
 import { isAdmin, isPropertyManager, isTeamLead } from '@/lib/housekeeping/permissions';
 import { TASK_STATUS_CONFIG, TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
-import { canRescheduleTask, nextArrivalDateForTask, taskId as buildTaskId } from '@/lib/housekeeping/tasks';
+import { canRescheduleTask, nextArrivalDateForTask, requiredPreparationItemIds, taskId as buildTaskId } from '@/lib/housekeeping/tasks';
 import { canShowOriginal, resolveFreeText, translationFailedFor } from '@/lib/housekeeping/translation';
 import type { TaskReservationSummary, TaskScheduleOverride, TaskType } from '@/lib/housekeeping/types';
 import type { HousekeepingApp, ResolvedTask } from '@/lib/housekeeping/useHousekeepingApp';
@@ -393,8 +393,15 @@ function CleaningAssignmentSection({
  * Standortverantwortliche den Timer eines Tasks ueberhaupt nicht ueber die UI bedienen, obwohl der
  * Server es schon erlaubte. */
 function PrimaryAction({
-  app, task, isManager, mine, onNoticeBlocked,
-}: { app: HousekeepingApp; task: ResolvedTask; isManager: boolean; mine: boolean; onNoticeBlocked: () => void }) {
+  app, task, isManager, mine, onNoticeBlocked, onPreparationBlocked,
+}: {
+  app: HousekeepingApp; task: ResolvedTask; isManager: boolean; mine: boolean; onNoticeBlocked: () => void;
+  /** Briefing "Vorbereitung als Checkliste" Punkt 4/5: bewusst eine ZWEITE, von onNoticeBlocked
+   * komplett getrennte Blockierung - unbestaetigter Hinweis verhindert den START, offene
+   * Vorbereitung verhindert den ABSCHLUSS. Beide fuehren den Benutzer zum jeweiligen Problem
+   * (Scroll+Highlight), nie zu einer konkurrierenden Warnmeldung am Button selbst. */
+  onPreparationBlocked: () => void;
+}) {
   const {
     t, claimTask, releaseTask, startTaskTimer, pauseTaskTimer, openLinenCompletion, completeTaskInspection, noticeForTask,
     completeManualTask, reopenTask, reopenManualTask, shortStaffName, state,
@@ -520,14 +527,29 @@ function PrimaryAction({
   }
 
   if (task.status === 'in_progress' && canAct) {
+    // Briefing "Vorbereitung als Checkliste" Punkt 4/5: eine offene Vorbereitung blockiert
+    // ausschliesslich den ABSCHLUSS, nie den Start (siehe onNoticeBlocked oben fuer die
+    // umgekehrte, separate Blockierung). Identisches Muster wie beim Start-Button: der Button
+    // bleibt sichtbar und wirkt ECHT disabled, kein konkurrierender Text daneben - die
+    // umschliessende <div> faengt den Tap trotzdem ab und fuehrt zum Problem (Vorbereitung).
+    const openPreparationCount = requiredPreparationItemIds(task).filter((id) => !task.preparationCompletions[id]).length;
+    const prepBlocked = openPreparationCount > 0;
     return (
       <div className="flex flex-col gap-2">
         <Button variant="secondary" className="w-full" onClick={() => pauseTaskTimer(task.id)}>
           {t('pause_clean')}
         </Button>
-        <Button variant="primary" className="w-full" onClick={() => openLinenCompletion(task)}>
-          {t('finish_clean')}
-        </Button>
+        <div onClick={prepBlocked ? onPreparationBlocked : undefined} className={prepBlocked ? 'cursor-not-allowed' : undefined}>
+          <Button
+            variant="primary"
+            className="w-full"
+            disabled={prepBlocked}
+            title={prepBlocked ? t('preparation_incomplete_hint') : undefined}
+            onClick={() => openLinenCompletion(task)}
+          >
+            {t('finish_clean')}
+          </Button>
+        </div>
       </div>
     );
   }
@@ -557,8 +579,8 @@ function PrimaryAction({
  */
 export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   const {
-    state, t, closeTaskModal, toggleTaskDoubleType,
-    finishTaskDoubleup, showToast, shortStaffName,
+    state, t, closeTaskModal, toggleTaskDoubleType, togglePreparationItem,
+    finishTaskDoubleup, shortStaffName,
     noticeForTask, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice, retryTaskNoticeTranslation,
     saveTaskTimeOverride, removeTaskTimeOverride, setTaskTeam,
     rescheduleTask, resetTaskSchedule,
@@ -578,6 +600,11 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   // versucht, ohne den wichtigen Hinweis bestaetigt zu haben (siehe onNoticeBlocked unten).
   const noticeRef = useRef<HTMLDivElement>(null);
   const [noticeHighlight, setNoticeHighlight] = useState(false);
+  // Briefing "Vorbereitung als Checkliste" Punkt 4/5: dieselbe Scroll+Highlight-Mechanik wie beim
+  // wichtigen Hinweis, aber vollstaendig getrennt - eine offene Vorbereitung blockiert den
+  // ABSCHLUSS, nie den Start (siehe onPreparationBlocked unten).
+  const prepRef = useRef<HTMLDivElement>(null);
+  const [prepHighlight, setPrepHighlight] = useState(false);
   // Briefing "automatische Uebersetzung frei eingegebener operativer Texte" Punkt 9: zwei
   // getrennte "Original anzeigen"-Toggles (Hinweis/Aufgaben-Beschreibung), rein clientseitiger
   // UI-Zustand - keine eigene Persistenz noetig, faellt beim Schliessen des Sheets zurueck.
@@ -728,14 +755,31 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   const apaleoHasDog = !!(task.reservationInfo?.hasDog || task.nextReservationInfo?.hasDog);
   const apaleoHasCrib = !!(task.reservationInfo?.hasCrib || task.nextReservationInfo?.hasCrib);
 
-  // Punkt 7: EINMALIGE, transiente Rueckmeldung statt eines dauerhaft sichtbaren Erklaerungstextes
-  // ueber dem Start-Button - zusaetzlich wird die Notice-Card selbst kurz optisch hervorgehoben und
-  // ins Bild gescrollt (nichts Neues erklaert, derselbe Text steht bereits in der Notice-Card).
+  // Punkt 3/4: die tatsaechlich abzuhakenden Vorbereitungs-Positionen (siehe
+  // requiredPreparationItemIds - manuelle Flags plus ein gebuchtes Babybett; ein nur gebuchter
+  // Hund bleibt dort bewusst aussen vor) und wie viele davon noch offen sind, bestimmt ob die
+  // Checkliste ueberhaupt angezeigt wird und ob "Reinigung abschliessen" blockiert.
+  const requiredPrepIds = requiredPreparationItemIds(task);
+  const openPreparationCount = requiredPrepIds.filter((id) => !task.preparationCompletions[id]).length;
+
+  // Nutzerfeedback "keine konkurrierende Meldung am Start-Button": KEIN Toast mehr (der erschien
+  // optisch wie ein zweiter, schwarzer Hinweis direkt neben dem schwarzen Start-Button) - die
+  // Erklaerung steht stattdessen dauerhaft (solange unbestaetigt) direkt in der Hinweis-Karte
+  // selbst (siehe notice_confirm_hint unten). Hier bleibt nur Scroll+kurzes Highlight, damit die
+  // Reinigungskraft dorthin gefuehrt wird, ohne dass irgendwo sonst eine Meldung aufploppt.
   function handleNoticeBlocked() {
-    showToast(t('notice_start_blocked'));
     setNoticeHighlight(true);
     noticeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     setTimeout(() => setNoticeHighlight(false), 2000);
+  }
+
+  // Briefing "Vorbereitung als Checkliste" Punkt 4/5: identisches Muster wie handleNoticeBlocked,
+  // aber fuer die separate Abschluss-Blockierung (offene Vorbereitung) - fuehrt zum Bereich
+  // "Vorbereitung" statt zum wichtigen Hinweis, ebenfalls ohne Toast/konkurrierende Meldung.
+  function handlePreparationBlocked() {
+    setPrepHighlight(true);
+    prepRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => setPrepHighlight(false), 2000);
   }
 
   const hasTimeRow = task.type === 'turnover' || task.type === 'departure';
@@ -1177,6 +1221,13 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                     </button>
                   </div>
                 ) : null}
+                {/* Nutzerfeedback "keine konkurrierende Meldung am Start-Button": die Erklaerung
+                 * steht jetzt dauerhaft HIER (statt als transienter Toast beim blockierten
+                 * Start-Versuch) - sichtbar GENAU solange die Bestaetigung fehlt, verschwindet
+                 * automatisch mit ihr. */}
+                {!currentUserAckCurrent ? (
+                  <p className="mt-2 text-[12.5px] text-ink">{t('notice_confirm_hint')}</p>
+                ) : null}
                 <div className="mt-2.5">
                   {currentUserAckCurrent && currentUserAck ? (
                     <span className="inline-flex items-center gap-1.5 text-[12.5px] text-muted">
@@ -1242,7 +1293,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
          * Aufgaben haben keinen Team-/Reinigungs-Workflow - dort weiterhin nur die schlichte
          * Zuweisungszeile vor der Hauptaktion. */}
         {!isManualTask ? (
-          <div className="flex flex-col gap-3 rounded-control border border-line bg-surface px-3.5 py-3">
+          <div className="flex flex-col gap-3 rounded-control border border-line bg-type-stayover-bg px-3.5 py-3">
             <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('work_order_title')}</p>
             <div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
               {/* Team-Feld: Admin kann es hier aendern (unabhaengig vom Standortverantwortlichen-
@@ -1286,54 +1337,98 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
               </div>
             </div>
 
-            {/* "Vorbereitung" (vormals "Zusatzausstattung") - Admin/Standortverantwortlich:
-             * interaktive Toggles; sonst nur die bereits aktive Ausstattung als Chips (read-only).
-             * Punkt 8: ein per Apaleo-Service (BABY) gebuchtes Babybett bzw. ein gebuchter Hund
-             * gilt IMMER zusaetzlich als aktiv (apaleoHasCrib/apaleoHasDog oben), unabhaengig vom
-             * separaten manuellen Flag - beide Quellen bleiben technisch getrennt (toggleTaskDoubleType
-             * aendert ausschliesslich den manuellen Flag), nur die Anzeige kombiniert sie. */}
-            <div className="flex flex-col gap-1.5 border-t border-line pt-3">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('task_prep_title')}</p>
-              <div className="flex flex-wrap gap-1.5">
-                {isManager
-                  ? DOUBLEUP_TYPES.map((dt) => {
-                    const manuallyOn = selectedTypes.includes(dt.id);
-                    const apaleoOn = (dt.id === 'crib' && apaleoHasCrib) || (dt.id === 'dog' && apaleoHasDog);
-                    const on = manuallyOn || apaleoOn;
-                    const isAddExtra = dt.id === 'extra' && !on;
-                    return (
-                      <button
-                        key={dt.id}
-                        type="button"
-                        onClick={() => toggleTaskDoubleType(task!, dt.id)}
-                        className={cn(
-                          'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors',
-                          on
-                            ? 'border-sage bg-type-stayover-bg text-ink'
-                            : isAddExtra
-                              ? 'border-dashed border-line bg-warm-white text-muted hover:text-ink'
-                              : 'border-line bg-warm-white text-muted hover:text-ink',
-                        )}
-                      >
-                        {isAddExtra ? <IconPlus width={13} height={13} aria-hidden="true" /> : <DoubleupIcon id={dt.id} width={14} height={14} aria-hidden="true" />}
-                        {isAddExtra ? t('doubleup_extra_add') : t(dt.label)}
-                        {on ? <IconCheck width={12} height={12} className="text-sage" aria-hidden="true" /> : null}
-                      </button>
-                    );
-                  })
-                  : DOUBLEUP_TYPES.filter((dt) =>
-                    selectedTypes.includes(dt.id) || (dt.id === 'crib' && apaleoHasCrib) || (dt.id === 'dog' && apaleoHasDog),
-                  ).map((dt) => (
-                    <span
-                      key={dt.id}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-sage bg-type-stayover-bg px-2.5 py-1 text-[12px] font-medium text-ink"
-                    >
-                      <DoubleupIcon id={dt.id} width={14} height={14} aria-hidden="true" />
-                      {t(dt.label)}
-                    </span>
-                  ))}
-              </div>
-              {(apaleoHasCrib || apaleoHasDog) ? <p className="text-[11px] text-muted">{t('prep_apaleo_note')}</p> : null}
+            {/* "Vorbereitung" (vormals "Zusatzausstattung"), aufgeteilt in zwei getrennte Bereiche
+             * (Briefing "UX-Optimierung Reinigungsdetail" Punkt 6/7): (a) ein Admin-/Standort-
+             * verantwortlichen-Editor zum Festlegen, welche Vorbereitung ueberhaupt gilt (die
+             * bisherigen Toggle-Chips, nur umbenannt), und (b) eine fuer die Reinigungskraft
+             * bestimmte, echte Checkliste (kein Chip/Filter-Look) mit antippbaren Zeilen fuer
+             * requiredPreparationItemIds(task) - das sind die manuell gesetzten Flags PLUS ein per
+             * Apaleo-Service (BABY) gebuchtes Babybett (siehe requiredPreparationItemIds in
+             * lib/housekeeping/tasks.ts). Ein nur gebuchter Hund ohne manuelles 'dog'-Flag taucht
+             * bewusst NICHT in der Checkliste auf, sondern bleibt reine Gaesteinformation
+             * (prep_apaleo_note weiter unten). toggleTaskDoubleType bleibt ausschliesslich der
+             * Admin-Editor fuer den manuellen Flag; togglePreparationItem ist die neue, getrennte
+             * Persistenz fuer den Erledigt-Status je Aufgabe (TaskAssignment.preparationCompletions). */}
+            <div className="flex flex-col gap-3 border-t border-line pt-3">
+              {isManager ? (
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('preparation_settings_title')}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {DOUBLEUP_TYPES.map((dt) => {
+                      const manuallyOn = selectedTypes.includes(dt.id);
+                      const apaleoOn = (dt.id === 'crib' && apaleoHasCrib) || (dt.id === 'dog' && apaleoHasDog);
+                      const on = manuallyOn || apaleoOn;
+                      const isAddExtra = dt.id === 'extra' && !on;
+                      return (
+                        <button
+                          key={dt.id}
+                          type="button"
+                          onClick={() => toggleTaskDoubleType(task!, dt.id)}
+                          className={cn(
+                            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors',
+                            on
+                              ? 'border-sage bg-warm-white text-ink'
+                              : isAddExtra
+                                ? 'border-dashed border-line bg-warm-white text-muted hover:text-ink'
+                                : 'border-line bg-warm-white text-muted hover:text-ink',
+                          )}
+                        >
+                          {isAddExtra ? <IconPlus width={13} height={13} aria-hidden="true" /> : <DoubleupIcon id={dt.id} width={14} height={14} aria-hidden="true" />}
+                          {isAddExtra ? t('doubleup_extra_add') : t(dt.label)}
+                          {on ? <IconCheck width={12} height={12} className="text-sage" aria-hidden="true" /> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {requiredPrepIds.length > 0 ? (
+                <div
+                  ref={prepRef}
+                  className={cn(
+                    'flex flex-col gap-1.5 rounded-control transition-colors',
+                    prepHighlight ? '-mx-1.5 bg-warm-white/70 px-1.5 py-1.5 ring-2 ring-sage/40' : undefined,
+                  )}
+                >
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('task_prep_title')}</p>
+                  <div className="flex flex-col">
+                    {requiredPrepIds.map((id) => {
+                      const dt = DOUBLEUP_TYPES.find((d) => d.id === id);
+                      if (!dt) return null;
+                      const completion = task.preparationCompletions[id];
+                      const done = !!completion;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => togglePreparationItem(task.id, id)}
+                          className="flex min-h-[44px] items-center gap-2.5 rounded-control px-1.5 text-left text-[13.5px] transition-colors hover:bg-warm-white/60"
+                        >
+                          {done
+                            ? <IconCheck width={16} height={16} className="shrink-0 text-sage" aria-hidden="true" />
+                            : <IconCircle width={16} height={16} className="shrink-0 text-muted" aria-hidden="true" />}
+                          <DoubleupIcon id={dt.id} width={15} height={15} className={cn('shrink-0', done ? 'text-muted' : 'text-ink')} aria-hidden="true" />
+                          <span className={done ? 'text-muted' : 'font-medium text-ink'}>{t(dt.label)}</span>
+                          {isManager && done ? (
+                            <span className="ml-auto shrink-0 text-[10.5px] text-muted">
+                              {t('preparation_completed_detail', {
+                                name: shortStaffName(completion.completedByUserName),
+                                time: new Date(completion.completedAt).toLocaleString(state.lang),
+                              })}
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {openPreparationCount > 0 ? <p className="text-[12.5px] text-ink">{t('preparation_incomplete_hint')}</p> : null}
+                </div>
+              ) : null}
+
+              {apaleoHasDog && !selectedTypes.includes('dog') ? (
+                <p className="text-[11px] text-muted">{t('prep_apaleo_note')}</p>
+              ) : null}
             </div>
           </div>
         ) : (
@@ -1370,7 +1465,10 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
             </Button>
           ) : null}
           <div className="flex-1">
-            <PrimaryAction app={app} task={task} isManager={isManager} mine={mine} onNoticeBlocked={handleNoticeBlocked} />
+            <PrimaryAction
+              app={app} task={task} isManager={isManager} mine={mine}
+              onNoticeBlocked={handleNoticeBlocked} onPreparationBlocked={handlePreparationBlocked}
+            />
           </div>
         </div>
 

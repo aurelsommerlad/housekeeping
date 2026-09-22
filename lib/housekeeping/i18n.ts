@@ -266,6 +266,11 @@ export const I18N = {
     auto_translated_label: 'Automatisch übersetzt',
     prep_apaleo_note: 'Diese Vorbereitung basiert auf den gebuchten Apaleo-Extras.',
     doubleup_extra_add: 'Extras hinzufügen',
+    // Briefing "wichtiger Hinweis blockiert Start / Vorbereitung als Checkliste".
+    notice_confirm_hint: 'Bitte bestätige diesen Hinweis. Danach kannst du die Reinigung starten.',
+    preparation_incomplete_hint: 'Bitte erledige zuerst alle Vorbereitungen. Danach kannst du die Reinigung abschließen.',
+    preparation_settings_title: 'Vorbereitung festlegen',
+    preparation_completed_detail: 'Erledigt von {{name}} · {{time}}',
   },
   en: {
     app_name: 'Housekeeping', login_title: 'Sign in', username: 'Username', password: 'Password',
@@ -490,6 +495,10 @@ export const I18N = {
     auto_translated_label: 'Automatically translated',
     prep_apaleo_note: 'This preparation is based on the booked Apaleo extras.',
     doubleup_extra_add: 'Add extras',
+    notice_confirm_hint: 'Please confirm this notice. After that you can start cleaning.',
+    preparation_incomplete_hint: 'Please complete all preparations first. After that you can finish cleaning.',
+    preparation_settings_title: 'Set preparation',
+    preparation_completed_detail: 'Done by {{name}} · {{time}}',
   },
   pl: {
     app_name: 'Housekeeping', login_title: 'Zaloguj sie', username: 'Nazwa uzytkownika', password: 'Haslo',
@@ -714,6 +723,10 @@ export const I18N = {
     auto_translated_label: 'Przetlumaczone automatycznie',
     prep_apaleo_note: 'To przygotowanie wynika z zarezerwowanych dodatkow Apaleo.',
     doubleup_extra_add: 'Dodaj dodatki',
+    notice_confirm_hint: 'Potwierdz ta informacje. Nastepnie mozesz rozpoczac sprzatanie.',
+    preparation_incomplete_hint: 'Najpierw ukoncz wszystkie przygotowania. Nastepnie mozesz zakonczyc sprzatanie.',
+    preparation_settings_title: 'Ustaw przygotowanie',
+    preparation_completed_detail: 'Wykonane przez {{name}} · {{time}}',
   },
   ro: {
     app_name: 'Housekeeping', login_title: 'Autentificare', username: 'Utilizator', password: 'Parola',
@@ -938,6 +951,10 @@ export const I18N = {
     auto_translated_label: 'Tradus automat',
     prep_apaleo_note: 'Aceasta pregatire se bazeaza pe extraoptiunile Apaleo rezervate.',
     doubleup_extra_add: 'Adauga extra',
+    notice_confirm_hint: 'Va rugam confirmati aceasta instiintare. Apoi puteti incepe curatenia.',
+    preparation_incomplete_hint: 'Va rugam finalizati mai intai toate pregatirile. Apoi puteti incheia curatenia.',
+    preparation_settings_title: 'Seteaza pregatirea',
+    preparation_completed_detail: 'Finalizat de {{name}} · {{time}}',
   },
 } as const;
 

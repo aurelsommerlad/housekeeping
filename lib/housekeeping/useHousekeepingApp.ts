@@ -38,7 +38,8 @@ import { managedPropertyCodes } from './permissions';
 import { dayHeadingLabel } from './dayLabel';
 import {
   buildTasks, canRescheduleTask, capacityForDay, daySummary, manualTaskToResolvedTask, nextArrivalDateForTask,
-  requiresInspection, resolveTasks, sortTasksForDay, teamCapacityForDay, type ResolvedTask, type TeamContext,
+  requiredPreparationItemIds, requiresInspection, resolveTasks, sortTasksForDay, teamCapacityForDay,
+  type ResolvedTask, type TeamContext,
 } from './tasks';
 import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, BookingChangeAcksState, BookingChangeRecordsState, BreakEntry,
@@ -967,7 +968,9 @@ export function useHousekeepingApp() {
         housekeeperName: task.assignedUserName || user?.name || '',
         type: 'clean', durationSeconds: task.elapsedSeconds, finishedAt: Date.now(),
       });
-      const { taskAssignments } = await taskAssignmentsApi.complete(task.id, requiresInspection(task.propertyCode), linenItems);
+      const { taskAssignments } = await taskAssignmentsApi.complete(
+        task.id, requiresInspection(task.propertyCode), linenItems, requiredPreparationItemIds(task),
+      );
       patch({ taskAssignments, detailTaskId: null, linenCompletionTaskId: null });
       showToast(t('saved'));
     } catch (err) {
@@ -1087,6 +1090,17 @@ export function useHousekeepingApp() {
       await loadBackend();
     });
   }, [loadBackend, runAction]);
+
+  /** Briefing "Vorbereitung als Checkliste": schaltet EINEN Punkt der Checkliste um (erledigt/
+   * offen) - taskbezogen persistiert (siehe api/task-assignments.js#togglePreparation), bewusst
+   * GETRENNT von toggleTaskDoubleType oben (das aendert das apartment-/roomweite "muss vorbereitet
+   * werden"-Flag, dieses hier den taskbezogenen "ist bereits erledigt"-Status). */
+  const togglePreparationItem = useCallback(async (taskId: string, itemId: string) => {
+    await runAction(async () => {
+      const { taskAssignments } = await taskAssignmentsApi.togglePreparation(taskId, itemId);
+      patch({ taskAssignments });
+    });
+  }, [patch, runAction]);
 
   const finishTaskDoubleup = useCallback(async (task: ResolvedTask) => {
     await runAction(async () => {
@@ -1418,7 +1432,7 @@ export function useHousekeepingApp() {
     toggleTaskMultiSelect, toggleTaskSelection, openTask, closeTaskModal,
     claimTask, releaseTask, assignTask, bulkAssignTasks, clearDayAssignments,
     startTaskTimer, pauseTaskTimer, finishTask, completeTaskInspection, reopenTask,
-    toggleTaskDoubleType, finishTaskDoubleup,
+    toggleTaskDoubleType, togglePreparationItem, finishTaskDoubleup,
 
     // Manuell erstellte Aufgaben
     openManualTaskForm, closeManualTaskForm, createManualTask, completeManualTask, reopenManualTask,

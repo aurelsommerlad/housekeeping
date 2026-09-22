@@ -459,9 +459,33 @@ export interface TaskAssignment {
   /** Chronologischer Reinigungsverlauf (start/pause/fortsetzen/abschluss) - additiv, aeltere
    * Eintraege ohne dieses Feld werden einfach als leerer Verlauf behandelt (siehe resolveTasks). */
   history?: TaskHistoryEntry[];
+  /** Briefing "Vorbereitung als Checkliste": erledigte Vorbereitungspunkte DIESES Tasks, Key = die
+   * jeweilige DoubleupTypeDef-Id ('crib'/'sofabed'/'dog'/'extra', siehe lib/housekeeping/api.ts#
+   * DOUBLEUP_TYPES) - additiv auf demselben TaskAssignment-Datensatz statt einer zweiten,
+   * parallelen Redis-Struktur (derselbe Grundsatz wie bei `history`). Ein NICHT vorhandener
+   * Eintrag bedeutet "noch offen"; es gibt bewusst keinen expliziten `completed: false`-Zustand -
+   * ein Zuruecknehmen loescht den Eintrag einfach wieder (kein Bedarf, den Verlauf einer
+   * Rueckgaengigmachung aufzuheben). */
+  preparationCompletions?: PreparationCompletionsState;
 }
 
 export type TaskAssignmentsState = Record<string, TaskAssignment | null>;
+
+/** EIN erledigter Vorbereitungspunkt (Briefing "Vorbereitung als Checkliste") - `itemId` ist die
+ * DoubleupTypeDef-Id (aktuell 'crib'/'sofabed'/'dog'/'extra'), bewusst dieselbe Kennung wie beim
+ * bestehenden manuellen Vorbereitungs-Flag (doubleupTypes) statt einer zweiten Taxonomie. Wer/wann
+ * wird gespeichert (Punkt 10 "Berechtigungen und Audit"), aber housekeeper-seitig nicht prominent
+ * angezeigt - nur Admin/Standortverantwortliche sehen es bei Bedarf. */
+export interface PreparationCompletion {
+  itemId: string;
+  completedByUserId: string;
+  completedByUserName: string;
+  completedAt: number;
+}
+
+/** Key = itemId (DoubleupTypeDef-Id), EINGEBETTET auf TaskAssignment.preparationCompletions -
+ * NICHT als eigener top-level Redis-Key/State (keine parallele Datenhaltung). */
+export type PreparationCompletionsState = Record<string, PreparationCompletion>;
 
 /**
  * Manueller Admin-Override der operativen Abreise-/Anreisezeit EINES Tasks (Redis

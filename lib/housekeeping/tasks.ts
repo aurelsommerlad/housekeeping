@@ -19,8 +19,8 @@
 import { unitCondition } from './rooms';
 import type {
   ApaleoReservation, ApaleoUnit, BookingChangeRecord, BookingChangeRecordsState, CapacityEntry, DaySummary, DoubleupsState,
-  HousekeepingTeam, ManualTask, Task, TaskAssignmentsState, TaskHistoryEntry, TaskReservationSummary, TaskStatus,
-  TaskScheduleOverride, TaskScheduleOverridesState, TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState,
+  HousekeepingTeam, ManualTask, PreparationCompletionsState, Task, TaskAssignmentsState, TaskHistoryEntry, TaskReservationSummary,
+  TaskStatus, TaskScheduleOverride, TaskScheduleOverridesState, TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState,
   TeamCapacityEntry, TeamPropertyDefaultsState, TaskType,
 } from './types';
 
@@ -330,6 +330,10 @@ export interface ResolvedTask extends Task {
    * `date` - das ist der einzige Ort, an dem eine Verschiebung tatsaechlich wirkt (siehe
    * useHousekeepingApp.ts#tasksForDayAll). `date` selbst bleibt fuer IMMER das Quelldatum. */
   scheduledDate: string;
+  /** Briefing "Vorbereitung als Checkliste": erledigte Vorbereitungspunkte DIESES Tasks, 1:1 aus
+   * TaskAssignment.preparationCompletions uebernommen (leeres Objekt, wenn noch nichts erledigt
+   * wurde oder es - wie bei einer manuellen Aufgabe - keinen Vorbereitungs-Workflow gibt). */
+  preparationCompletions: PreparationCompletionsState;
 }
 
 /** Housekeeping Teams: Kontext fuer die Team-Ableitung in resolveTasks() - Override VOR
@@ -384,6 +388,7 @@ export function resolveTasks(
       return {
         ...task, ...timeMeta, ...scheduleMeta, ...teamMeta, status: 'open', assignedUserId: null, assignedUserName: null,
         cleaningStartedAt: null, elapsedSeconds: 0, completedAt: null, history: [], reopened: false,
+        preparationCompletions: {},
       };
     }
     const elapsed = (a.elapsedSeconds || 0) + (a.cleaningStartedAt ? Math.round((now - a.cleaningStartedAt) / 1000) : 0);
@@ -392,6 +397,7 @@ export function resolveTasks(
       ...task, ...timeMeta, ...scheduleMeta, ...teamMeta, status: a.status, assignedUserId: a.housekeeperId, assignedUserName: a.housekeeperName,
       cleaningStartedAt: a.cleaningStartedAt, elapsedSeconds: elapsed, completedAt: a.completedAt || null,
       history, reopened: history.length > 0 && history[history.length - 1].action === 'reopened',
+      preparationCompletions: a.preparationCompletions || {},
     };
   });
 }
@@ -471,7 +477,25 @@ export function manualTaskToResolvedTask(mt: ManualTask, scheduleOverride: TaskS
     timeConflict: false,
     scheduleOverride,
     scheduledDate: scheduleOverride?.scheduledDate || mt.date,
+    // Punkt 11: manuelle Aufgaben haben keinen Vorbereitungs-Workflow.
+    preparationCompletions: {},
   };
+}
+
+/** Briefing "Vorbereitung als Checkliste": die Menge der fuer DIESEN Task tatsaechlich zu
+ * erledigenden Vorbereitungspunkte - Vereinigung aus dem manuell gesetzten Housekeeping-Flag
+ * (doubleupTypes, admin-editierbar ueber toggleTaskDoubleType) und einem per Apaleo-Service (BABY)
+ * gebuchten Babybett (IMMER Pflicht, unabhaengig vom manuellen Flag - siehe
+ * reservationSummary()#hasCrib). Ein gebuchter Hund (hasDog) ist bewusst NICHT automatisch
+ * enthalten - das bleibt reine Gaesteinformation, es sei denn, 'dog' wurde zusaetzlich manuell als
+ * Vorbereitung getoggelt (identische Unterscheidung wie bei den gebuchten Extras auf der Karte,
+ * siehe TaskCard.tsx#bookedExtraIcons). Architektur bewusst offen fuer weitere kuenftige,
+ * automatisch abgeleitete Pflichtpunkte - hier einfach ergaenzen, kein Datenmodell-Update noetig. */
+export function requiredPreparationItemIds(task: ResolvedTask): string[] {
+  const apaleoHasCrib = !!(task.reservationInfo?.hasCrib || task.nextReservationInfo?.hasCrib);
+  const ids = new Set(task.doubleupTypes);
+  if (apaleoHasCrib) ids.add('crib');
+  return Array.from(ids);
 }
 
 /** Briefing "DEPARTURE/TURNOVER vereinheitlichen" (Punkt 8): sortierbarer String-Schluessel fuer

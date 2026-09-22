@@ -100,7 +100,11 @@ async function canTouchOwnAssignment(redis, user, taskId) {
   const raw = await redis.hGet(HASH_KEY, taskId);
   if (!raw) return true;
   const existing = parseJSON(raw, null);
-  return !existing || existing.housekeeperId === user.id;
+  // `housekeeperId` bleibt null, wenn bislang nur togglePreparation() einen Datensatz angelegt hat
+  // (bewusst OHNE die Aufgabe zu beanspruchen, siehe dort) - ein Datensatz ohne Zuweisung gilt
+  // wie ein fehlender Datensatz weiterhin als frei fuer jede Person mit Property-Zugriff, sonst
+  // koennte nicht einmal dieselbe Person ihr eigenes erstes Abhaken rueckgaengig machen.
+  return !existing || existing.housekeeperId == null || existing.housekeeperId === user.id;
 }
 
 module.exports = async (req, res) => {
@@ -324,6 +328,36 @@ module.exports = async (req, res) => {
         appendHistory(existing, 'paused', user);
         await redis.hSet(HASH_KEY, taskId, JSON.stringify(existing));
       }
+    } else if (action === 'togglePreparation') {
+      // Briefing "Vorbereitung als Checkliste": schaltet EINEN Vorbereitungspunkt (itemId, siehe
+      // lib/housekeeping/api.ts#DOUBLEUP_TYPES) fuer DIESEN Task um - additiv auf demselben
+      // TaskAssignment-Datensatz wie Timer/Status/Verlauf (kein zweiter, paralleler Redis-Key).
+      // Rechte identisch zu startTimer/stopTimer (Selbstbedienung): Admin, Standortverantwortlich,
+      // oder die aktuell zugewiesene Person; existiert noch KEIN Datensatz (Task noch nie
+      // beruehrt), darf JEDE Person mit Property-Zugriff bereits vorbereiten - dieser erste Zugriff
+      // legt bewusst NUR den Vorbereitungsstatus an, OHNE housekeeperId zu setzen (ein Abhaken darf
+      // niemals implizit die Aufgabe fuer sich beanspruchen).
+      const { taskId, itemId } = req.body;
+      if (!taskId || !itemId) { res.status(400).json({ error: 'taskId und itemId sind erforderlich.' }); return; }
+      if (!(await canTouchOwnAssignment(redis, user, taskId))) {
+        res.status(403).json({ error: 'Diese Aufgabe gehört einer anderen Person.' });
+        return;
+      }
+      const propertyCode = propertyCodeFromTaskId(taskId);
+      if (!hasPropertyAccess(user, propertyCode)) { res.status(403).json({ error: 'Kein Zugriff auf dieses Property.' }); return; }
+      const existingRaw = await redis.hGet(HASH_KEY, taskId);
+      const existing = existingRaw
+        ? parseJSON(existingRaw, {})
+        : { taskId, housekeeperId: null, housekeeperName: null, since: Date.now(), status: 'open', cleaningStartedAt: null, elapsedSeconds: 0 };
+      existing.preparationCompletions = existing.preparationCompletions || {};
+      if (existing.preparationCompletions[itemId]) {
+        delete existing.preparationCompletions[itemId];
+      } else {
+        existing.preparationCompletions[itemId] = {
+          itemId, completedByUserId: user.id, completedByUserName: user.name || user.username, completedAt: Date.now(),
+        };
+      }
+      await redis.hSet(HASH_KEY, taskId, JSON.stringify(existing));
     } else if (action === 'complete') {
       // Punkt 23: unser Workflow-Status (hier) und der Apaleo Unit Condition Aufruf (separat vom
       // Client via dem bestehenden, unveraenderten setUnitCondition()) sind bewusst getrennt.
@@ -365,6 +399,24 @@ module.exports = async (req, res) => {
       const existing = existingRaw
         ? parseJSON(existingRaw, {})
         : { taskId, housekeeperId: user.id, housekeeperName: user.name || user.username, since: Date.now(), elapsedSeconds: 0 };
+
+      // Briefing "Vorbereitung als Checkliste" Punkt 4: eine Reinigung darf nicht abgeschlossen
+      // werden, solange verpflichtende Vorbereitungspunkte offen sind. `requiredPreparationIds`
+      // kommt vom Client (der die massgebliche Menge - manueller Flag + per Apaleo-Service (BABY)
+      // gebuchtes Babybett - bereits kennt, siehe tasks.ts#requiredPreparationItemIds) - derselbe
+      // Vertrauensrahmen wie bei `requiresInspection`/`linenItems` oben: dieser Server ruft selbst
+      // nie Apaleo auf, kann die Menge also nicht unabhaengig herleiten. Geprueft wird ausschliesslich
+      // gegen den bereits hier gefuehrten, serverseitig persistierten Abhak-Status
+      // (existing.preparationCompletions) - ein normaler Klick auf "Reinigung abschliessen" kann
+      // diese Sperre also nie umgehen, selbst wenn der Bestaetigungsdialog/-Button umgangen wuerde.
+      const requiredPreparationIds = Array.isArray(req.body.requiredPreparationIds) ? req.body.requiredPreparationIds : [];
+      const completions = existing.preparationCompletions || {};
+      const openPreparationIds = requiredPreparationIds.filter((id) => !completions[id]);
+      if (openPreparationIds.length > 0) {
+        res.status(409).json({ error: 'Bitte erledige zuerst alle Vorbereitungen.', openPreparationIds });
+        return;
+      }
+
       if (existing.cleaningStartedAt) {
         existing.elapsedSeconds = (existing.elapsedSeconds || 0) + Math.round((Date.now() - existing.cleaningStartedAt) / 1000);
         existing.cleaningStartedAt = null;
