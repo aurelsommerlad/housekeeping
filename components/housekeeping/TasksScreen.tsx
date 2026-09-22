@@ -189,7 +189,13 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       {/* Punkt 5 (Runde 6) / Punkt 1 (Feinschliff Runde 7): auf Mobile weiterhin ein 4-Spalten-
        * Grid ueber die volle Breite - auf Desktop stattdessen eine kompakte, inhaltsbreite
        * Pillen-Reihe (`xl:flex xl:w-auto`) statt eines starr auf 560px gestreckten Grids, damit
-       * die Tagesnavigation nicht breiter wirkt als ihr eigentlicher Inhalt. */}
+       * die Tagesnavigation nicht breiter wirkt als ihr eigentlicher Inhalt.
+       *
+       * Feinschliff Runde 8 (Punkt 1): auf Desktop exakt dieselbe Hoehe (`xl:h-9`) und exakt
+       * dieselbe Rundung (`xl:rounded-full`) wie Standortfilter/Aktionsbuttons in derselben
+       * Zeile - vorher `rounded-control` (eckigere 12px-Rundung), das sichtbar von den
+       * pillenfoermigen Nachbar-Controls abwich. Mobile behaelt `rounded-control`/die eigene
+       * Hoehe unveraendert (kein `xl:`-Praefix wirkt unterhalb 1280px). */}
       <div className="grid grid-cols-4 gap-1.5 px-4 pt-1 xl:order-2 xl:flex xl:w-auto xl:flex-none xl:gap-1.5 xl:px-0 xl:pt-0">
         {state.planningDays.map((d, i) => (
           <button
@@ -198,7 +204,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             onClick={() => selectDay(d)}
             aria-pressed={date === d}
             className={cn(
-              'flex flex-col items-center rounded-control border px-2 py-1.5 text-center transition-colors xl:px-3',
+              'flex flex-col items-center rounded-control border px-2 py-1.5 text-center transition-colors xl:h-9 xl:flex-row xl:justify-center xl:rounded-full xl:px-3 xl:py-0',
               date === d ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
             )}
           >
@@ -255,7 +261,12 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             value={openManualTasks.length}
             label={t(openManualTasks.length === 1 ? 'noun_task_one' : 'noun_task_many')}
             icon={IconTask}
-            toneClass="text-type-departure"
+            // Feinschliff Runde 8 (Punkt 3): "Aufgabe" ist keine Abreise-Reinigung, sondern der
+            // neutrale, manuelle Aufgabentyp (siehe TaskCard.tsx#TYPE_LEFT_BORDER: type-manual) -
+            // `text-type-departure` war ein bestehender Farbfehler (Abreise-Braunton statt des
+            // neutralen Aufgaben-Akzents). Korrektur nur auf Desktop (`xl:`), damit Mobile hier
+            // unveraendert bleibt, wie fuer dieses Feinschliff-Update gefordert.
+            toneClass="text-type-departure xl:text-type-manual"
           />
           <SummaryStat value={doneTasks.length} label={t('wf_done')} icon={IconCheck} toneClass="text-status-clean" />
         </div>
@@ -365,7 +376,9 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             <TaskGroup
               text={countLabel(t, openManualTasks.length, 'noun_task_one', 'noun_task_many')}
               icon={IconTask}
-              toneClass="text-type-departure"
+              // Feinschliff Runde 8 (Punkt 3/4): derselbe Farbtoken-Fix wie bei der Kennzahl oben,
+              // fuer denselben Aufgabentyp - nur auf Desktop (`xl:`), Mobile unveraendert.
+              toneClass="text-type-departure xl:text-type-manual"
             >
               {openManualTasks.map((task) => (
                 <TaskCard

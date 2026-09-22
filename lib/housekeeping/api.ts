@@ -406,7 +406,28 @@ import type {
 // Mobile-Masse unveraendert. Erneut per Sourcecode-Diff-Audit + temporaerem CSS-Grid-Smoketest
 // (375/390/430/1280/1440/1920/2560px, vor dem Commit entfernt) verifiziert - keine Aenderung an
 // Business-Logik, Mobile-Darstellung oder -Verhalten.
-export const APP_VERSION = '2.20.0';
+//
+// Feinschliff Runde 8 (nur `xl:`-Klassen bzw. neue, ausschliesslich Desktop-sichtbare Elemente,
+// kein Mobile-Eingriff): (1) Toolbar exakt ausgerichtet - Tagesnav-Pillen haben auf Desktop jetzt
+// dieselbe Hoehe/Rundung (`xl:h-9 xl:rounded-full`) wie Standortfilter/Aktionsbuttons, vorher wich
+// ihre `rounded-control`-Eckung sichtbar ab. (2) Doppeltes Plus am "Aufgabe erstellen"-Button
+// behoben - die i18n-Strings enthielten bereits ein eigenes "+ " zusaetzlich zum ohnehin schon
+// gerenderten Plus-Icon; das "+ " ist jetzt aus allen 4 Sprachen entfernt, das bestehende
+// Icon bleibt einziger Plus-Indikator. (3) Farbfehler bei der "Aufgabe"-Kennzahl/-Sektion
+// korrigiert - nutzte `text-type-departure` (Abreise-Braunton) statt des dafuer vorgesehenen
+// neutralen `text-type-manual`-Akzents (siehe TaskCard.tsx#TYPE_LEFT_BORDER); Korrektur nur per
+// `xl:`-Override, Mobile zeigt bewusst weiterhin den unveraenderten Ausgangszustand. (4) Neuer,
+// admin-only Desktop-Navigationspunkt "Einstellungen" unten in der linken Navigationsleiste
+// (DesktopNavRail.tsx), durch eine feine Trennlinie von der operativen Hauptnavigation abgesetzt -
+// routet auf denselben bestehenden, bereits abgesicherten `activeNav: 'settings'`-Screen
+// (SettingsScreen.tsx), keine zweite Einstellungs-Implementierung. Bewusst NICHT Teil der mit der
+// mobilen StaffNavBar geteilten `navItems.ts`-Liste, da ein dortiger Eintrag auch in der mobilen
+// Bottom Navigation erschienen waere - die mobile Navigation bleibt dadurch unveraendert
+// (weiterhin 4 Eintraege). Verifiziert per Sourcecode-Diff-Audit (nur additive
+// `xl:`-Klassen bzw. das neue, isolierte Nav-Element betroffen) + temporaerem CSS-Grid-Smoketest
+// (Produktionsbuild, 1280/1440/1920/2560px, vor dem Commit entfernt) + Playwright-Regressionslauf
+// der echten Login-Seite bei 375/390/430/1280/1440/1920/2560px ohne Konsolenfehler.
+export const APP_VERSION = '2.21.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
