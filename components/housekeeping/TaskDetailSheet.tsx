@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
 import { dayHeadingLabel } from '@/lib/housekeeping/dayLabel';
 import { isAdmin, isPropertyManager, isTeamLead } from '@/lib/housekeeping/permissions';
@@ -121,8 +121,18 @@ function TimeBadge({ icon, tone, title, children }: { icon: Parameters<typeof Ti
  * (siehe types.ts#BookingChangeRecord/api/booking-changes.js). Apaleo liefert nur den aktuellen
  * Stand; der Vorher-Wert kommt ausschliesslich aus dem separat gespeicherten Snapshot. */
 function BookingChangeDetail({
-  change, orphanedSchedule, t,
-}: { change: NonNullable<ResolvedTask['bookingChange']>; orphanedSchedule: TaskScheduleOverride | null; t: HousekeepingApp['t'] }) {
+  change, orphanedSchedule, t, unitLabel, acknowledged, onAcknowledge,
+}: {
+  change: NonNullable<ResolvedTask['bookingChange']>; orphanedSchedule: TaskScheduleOverride | null; t: HousekeepingApp['t'];
+  /** Loest eine rohe Apaleo-Unit-ID (unitFrom/unitTo) in ihren Anzeigenamen auf (z. B. "ONE"),
+   * Fallback auf die ID selbst, falls die Einheit im aktuell geladenen Bestand nicht (mehr)
+   * bekannt ist - siehe TaskDetailSheet()#unitDisplayName. */
+  unitLabel: (unitId: string | undefined) => string;
+  /** Briefing "Reinigungskarten ueberarbeiten" Punkt 8: eigene Bestaetigung, bewusst GETRENNT von
+   * "gesehen" (siehe TaskDetailSheet()#markTaskSeen-Effekt oben). */
+  acknowledged: boolean;
+  onAcknowledge: () => void;
+}) {
   return (
     <div className="rounded-control border border-line bg-surface px-3.5 py-3">
       <div className="flex items-start gap-2">
@@ -144,7 +154,7 @@ function BookingChangeDetail({
             ) : null}
             {change.unitFrom !== undefined || change.unitTo !== undefined ? (
               <p className="text-[12.5px] text-ink">
-                <span className="text-muted">{t('reservation_title')}:</span> {change.unitFrom || '–'} → {change.unitTo || '–'}
+                <span className="text-muted">{t('booking_changed_unit_label')}:</span> {unitLabel(change.unitFrom)} → {unitLabel(change.unitTo)}
               </p>
             ) : null}
           </div>
@@ -159,6 +169,19 @@ function BookingChangeDetail({
               <IconAlertCircle width={13} height={13} className="mt-0.5 shrink-0" aria-hidden="true" />
               {t('schedule_override_orphaned_note', { date: formatDayMonth(orphanedSchedule.scheduledDate) })}
             </p>
+          ) : null}
+          {/* Briefing "Reinigungskarten ueberarbeiten" Punkt 8: dezente Aktion, die den orangenen
+           * Punkt auf der Karte fuer DIESEN User aufhebt - erscheint nur, solange GENAU diese
+           * Aenderung noch nicht bestaetigt wurde (siehe isBookingChangeAckedByMe). */}
+          {!acknowledged ? (
+            <button
+              type="button"
+              onClick={onAcknowledge}
+              className="mt-2 flex items-center gap-1.5 text-[12.5px] font-medium text-sage transition-colors hover:text-forest"
+            >
+              <IconCheck width={14} height={14} aria-hidden="true" />
+              {t('acknowledge_change_action')}
+            </button>
           ) : null}
         </div>
       </div>
@@ -506,6 +529,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
     noticeForTask, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice,
     saveTaskTimeOverride, removeTaskTimeOverride, setTaskTeam,
     rescheduleTask, resetTaskSchedule,
+    markTaskSeen, isTaskSeenByMe, isBookingChangeAckedByMe, acknowledgeBookingChange,
   } = app;
   const open = !!task;
   const [noticeFormOpen, setNoticeFormOpen] = useState(false);
@@ -521,6 +545,18 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   // versucht, ohne den wichtigen Hinweis bestaetigt zu haben (siehe onNoticeBlocked unten).
   const noticeRef = useRef<HTMLDivElement>(null);
   const [noticeHighlight, setNoticeHighlight] = useState(false);
+
+  // Briefing "Reinigungskarten ueberarbeiten" Punkt 5: "gesehen" gilt GENAU dann, wenn die
+  // Detailansicht fuer DIESEN Task tatsaechlich geoeffnet wurde - nicht schon beim Laden/Scrollen
+  // des Dashboards (dort wird task.id nie an diese Komponente durchgereicht, siehe
+  // TasksScreen.tsx#state.detailTaskId). Muss VOR dem fruehen `if (!task) return` stehen (Regeln
+  // der Hooks), daher der Guard innerhalb des Effekts selbst.
+  useEffect(() => {
+    if (!task) return;
+    if (isTaskSeenByMe(task.id)) return;
+    markTaskSeen(task.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id]);
 
   if (!task) {
     return <BottomSheet open={false} onClose={closeTaskModal}><div /></BottomSheet>;
@@ -625,6 +661,16 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
     }
     return null;
   })();
+
+  // Briefing "Reinigungskarten ueberarbeiten" Punkt 8: unitFrom/unitTo im BookingChangeRecord
+  // sind rohe Apaleo-Unit-IDs (siehe api/booking-changes.js) - hier auf den bereits geladenen
+  // Apartmentnamen aufgeloest ("ONE" statt einer internen ID), Fallback auf die ID selbst, falls
+  // die Einheit in state.planningUnits (aktueller Standort-/Zeitraumfilter) nicht bekannt ist.
+  function unitDisplayName(unitId: string | undefined): string {
+    if (!unitId) return '–';
+    return state.planningUnits.find((u) => u.id === unitId)?.name || unitId;
+  }
+  const bookingChangeAcked = task.bookingChange ? isBookingChangeAckedByMe(task) : true;
 
   // Punkt 7: EINMALIGE, transiente Rueckmeldung statt eines dauerhaft sichtbaren Erklaerungstextes
   // ueber dem Start-Button - zusaetzlich wird die Notice-Card selbst kurz optisch hervorgehoben und
@@ -925,7 +971,12 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
 
         {/* Buchungsaenderung (Punkt 9) - nur fuer Apaleo-abgeleitete Tasks (turnover/departure/
          * stayover) ueberhaupt moeglich, siehe types.ts#BookingChangeRecord. */}
-        {task.bookingChange ? <BookingChangeDetail change={task.bookingChange} orphanedSchedule={orphanedSchedule} t={t} /> : null}
+        {task.bookingChange ? (
+          <BookingChangeDetail
+            change={task.bookingChange} orphanedSchedule={orphanedSchedule} t={t} unitLabel={unitDisplayName}
+            acknowledged={bookingChangeAcked} onAcknowledge={() => acknowledgeBookingChange(task.id)}
+          />
+        ) : null}
 
         {/* Wichtiger Hinweis - NIE aus dem Apaleo-Kommentar abgeleitet/ueberschrieben (Punkt 12),
          * sehr helle warme Flaeche statt roter Warnbox. Punkt 7: ref+Hervorhebung fuer den

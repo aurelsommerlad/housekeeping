@@ -11,11 +11,13 @@
  * lib/housekeeping/auth.ts.
  */
 import type {
-  ApaleoReservation, ApaleoUnit, AssignmentsState, BookingChangeRecordsState, DoubleupsState, Completion, BreakEntry,
+  ApaleoReservation, ApaleoUnit, AssignmentsState, BookingChangeAck, BookingChangeAcksState, BookingChangeRecordsState,
+  DoubleupsState, Completion, BreakEntry,
   ConsumableItem, ConsumableReport, HousekeepingIncident, HousekeepingTeam, LinenItem, ManualTask, ManualTasksState,
   NfcTagStatusesState, Property, ReservationSearchResult, ReservationsState, StaffUser, TaskAssignment, TaskAssignmentsState,
   TaskNotice, TaskNoticeAck, TaskNoticeAcksState, TaskNoticesState, TaskScheduleOverride, TaskScheduleOverridesState,
-  TaskStartSource, TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState, TeamPropertyDefaultsState,
+  TaskSeenRecord, TaskSeenState, TaskStartSource, TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState,
+  TeamPropertyDefaultsState,
 } from './types';
 
 // MINOR-Bump (2.5.0 -> 2.6.0): TaskCard-Redesign - klare Informationshierarchie (Apartment+Standort,
@@ -715,7 +717,52 @@ import type {
 // unveraendert vorrangig) + Source-Diff-Audit (ausschliesslich TaskCard.tsx/i18n.ts/
 // task-status-config.ts/tasks.ts geaendert - keine Kartengroesse/-layout, Tagesnavigation,
 // Desktop-Toolbar, Mobile-Layout oder Apaleo-Datenanbindung betroffen).
-export const APP_VERSION = '2.26.0';
+// v2.27.0 - Briefing "Reinigungskarten ueberarbeiten": Standort-Gruppierung, zwei neue
+// userbezogene Aufmerksamkeits-Punkte (gesehen/Buchungsaenderung) und ein prominenter
+// Babybett-Vorbereitungshinweis fuer Same-Day-Anreisen. Bestehende Business-Logik (Task-
+// Ermittlung, Assignment, Timer, INTERCLEAN, Permissions, Apaleo-Integration) unveraendert.
+//
+// (1)/(2) TasksScreen.tsx: bei "Alle Standorte" werden Reinigungen/Aufgaben jetzt zusaetzlich
+// nach der ECHTEN Apaleo Property-ID (task.propertyCode, niemals Unit-Namen/String-Matching) in
+// kleine, ruhige Standortgruppen unterteilt (neue reine Funktion groupTasksByProperty) - dieselbe,
+// bereits bestehende dringlichkeitsbasierte Sortierung (sortTasksForDay) bleibt INNERHALB jeder
+// Gruppe exakt erhalten, keine neue parallele Prioritaetslogik. Ist bereits ein einzelner Standort
+// ausgewaehlt, entfaellt die zusaetzliche Ueberschrift (redundant). Gruppenreihenfolge folgt der
+// bestehenden Standort-Picker-Reihenfolge.
+//
+// (5)/(7)/(8) Neuer, bewusst von "Wichtiger Hinweis" GETRENNTER Aufmerksamkeits-Punkt oben rechts
+// auf der Task Card: gruen = fuer den eingeloggten Benutzer noch nie in der Detailansicht
+// geoeffnet (neues, userbezogenes housekeeping:task_seen, gesetzt ausschliesslich beim
+// tatsaechlichen Oeffnen der Detailansicht - nie beim Laden/Scrollen des Dashboards), orange =
+// Buchungsaenderung noch nicht bestaetigt (neues housekeeping:task_booking_change_acks, an den
+// exakten Aenderungszeitstempel gekoppelt, damit eine SPAETERE neue Aenderung automatisch wieder
+// unbestaetigt ist). Buchungsaenderung hat immer Vorrang vor "ungesehen" (nie beide Punkte
+// gleichzeitig). Neue Route api/task-views.js (+ Helfer api/_task-views.js, identisches Muster
+// wie api/task-notices.js) - "gesehen" und "Buchungsaenderung bestaetigt" bleiben zwei technisch
+// getrennte Datenquellen. Der bisherige, inline in der Zeitzeile stehende "Buchung geändert"-Text
+// wurde entfernt (jetzt ausschliesslich der orange Punkt) - die Zeitzeile ist wieder
+// ausschliesslich operative Zeitinformation. Die Detailansicht zeigt weiterhin nur tatsaechlich
+// geaenderte Werte (jetzt mit aufgeloestem Apartmentnamen statt roher Unit-ID) plus eine neue,
+// dezente "Änderung zur Kenntnis genommen"-Aktion.
+//
+// (9)-(11) Babybett-Vorbereitung: bei einer Same-Day-Anreise (Turnover) mit gebuchtem
+// Apaleo-Service BABY auf der ANKOMMENDEN Reservierung erscheint rechts unten im ANREISE-Block ein
+// eigenes, etwas groesseres Crib-Icon (kein Text auf der kompakten Karte) - ersetzt dort die
+// bisherige kleine Inline-Anzeige (die weiterhin fuer die ABREISE-Seite unveraendert gilt). Hund
+// bleibt unveraendert je Seite inline neben der Gaestezahl. BABY wird weiterhin ausschliesslich aus
+// dem gebuchten Apaleo-Service abgeleitet, nie aus Kinderzahl/-alter/Gaestezahl - eine BABY-Buchung
+// nur auf der abreisenden Reservierung loest keinen Anreise-Vorbereitungshinweis aus. IF-Reinigung
+// (Team) bleibt unveraendert auf der Karte sichtbar.
+//
+// Verifiziert per tsc/eslint/build (alle sauber) + zwei eigenstaendigen Node-Integrationstests:
+// 16 Assertions fuer api/task-views.js (markSeen/acknowledgeChange, userbezogene Isolation,
+// server-seitig ermittelter Aenderungszeitstempel statt Client-Wert, Property-Zugriffspruefung
+// fuer abgeleitete UND manuelle Task-IDs) sowie eine erneute Bestaetigung der bestehenden
+// sortTasksForDay()-Prioritaet (unveraendert). Source-Diff-Audit bestaetigt: ausschliesslich
+// TaskCard.tsx/TaskDetailSheet.tsx/TasksScreen.tsx/api.ts/i18n.ts/types.ts/
+// useHousekeepingApp.ts sowie die zwei neuen API-Dateien geaendert - keine Aenderung an
+// Kartengroesse/Mobile-Layout/Task-Ermittlung/Assignment-Logik/Apaleo-Integration.
+export const APP_VERSION = '2.27.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -1095,6 +1142,25 @@ export const taskNoticesApi = {
   set: (taskId: string, text: string) => backendPost<{ notice: TaskNotice }>('task-notices', { action: 'set', taskId, text }),
   remove: (taskId: string) => backendPost<{ ok: true }>('task-notices', { action: 'remove', taskId }),
   acknowledge: (taskId: string) => backendPost<{ ack: TaskNoticeAck }>('task-notices', { action: 'acknowledge', taskId }),
+};
+
+export interface TaskViewsData {
+  seen: TaskSeenState;
+  changeAcks: BookingChangeAcksState;
+}
+
+export async function loadTaskViews(): Promise<TaskViewsData> {
+  const data = await backendGet<{ seen?: TaskSeenState; changeAcks?: BookingChangeAcksState }>('task-views');
+  return { seen: data.seen || {}, changeAcks: data.changeAcks || {} };
+}
+
+/** Briefing "Reinigungskarten ueberarbeiten" Punkt 5/8: zwei bewusst getrennte, userbezogene
+ * Aufmerksamkeits-Aktionen - "gesehen" (Detailansicht tatsaechlich geoeffnet) und
+ * "Buchungsaenderung zur Kenntnis genommen" (siehe api/task-views.js fuer die serverseitige
+ * Ableitung des zu bestaetigenden Zeitstempels aus dem aktuellen BookingChangeRecord). */
+export const taskViewsApi = {
+  markSeen: (taskId: string) => backendPost<{ seen: TaskSeenRecord }>('task-views', { action: 'markSeen', taskId }),
+  acknowledgeChange: (taskId: string) => backendPost<{ ack: BookingChangeAck }>('task-views', { action: 'acknowledgeChange', taskId }),
 };
 
 export async function loadTaskTimeOverrides(): Promise<TaskTimeOverridesState> {

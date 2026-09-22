@@ -559,6 +559,44 @@ export interface TaskNoticeAck {
 /** Key = "<taskId>|<userId>", siehe TaskNoticeAck. */
 export type TaskNoticeAcksState = Record<string, TaskNoticeAck | null>;
 
+/**
+ * Briefing "Reinigungskarten ueberarbeiten" Punkt 5: haelt fest, dass GENAU dieser User die
+ * Detailansicht DIESES Tasks tatsaechlich geoeffnet hat (Redis housekeeping:task_seen, Key =
+ * "<taskId>|<userId>") - bewusst technisch GETRENNT von TaskNoticeAck/BookingChangeAck (Punkt 8:
+ * "gesehen und zur Kenntnis genommen nicht vermischen"), da "gesehen" rein die Detailansicht
+ * betrifft und mit keiner der beiden Bestaetigungs-Semantiken identisch ist. Wird NIE beim
+ * blossen Laden/Scrollen der Aufgabenliste gesetzt, ausschliesslich beim tatsaechlichen Oeffnen
+ * (siehe TaskDetailSheet.tsx). Vom GET-Endpoint bereits auf den eingeloggten User gefiltert
+ * zurueckgegeben - der Client sieht deshalb nie den "gesehen"-Status anderer Benutzer.
+ */
+export interface TaskSeenRecord {
+  taskId: string;
+  userId: string;
+  at: number;
+}
+
+/** Key = Task-ID (bereits userbezogen gefiltert vom Server, siehe api/task-views.js). */
+export type TaskSeenState = Record<string, TaskSeenRecord | null>;
+
+/**
+ * Briefing "Reinigungskarten ueberarbeiten" Punkt 7/8: eigene, von TaskSeenRecord GETRENNTE
+ * Bestaetigung "Buchungsänderung zur Kenntnis genommen" (Redis
+ * housekeeping:task_booking_change_acks, Key = "<taskId>|<userId>") - `changedAt` verankert die
+ * Bestaetigung an EXAKT die zum Zeitpunkt der Bestaetigung gueltige Aenderung (identisches Muster
+ * wie TaskNoticeAck.noticeVersion): tritt DANACH eine neue, andere Buchungsaenderung ein (neues
+ * `BookingChangeRecord.changedAt`), gilt die alte Bestaetigung automatisch nicht mehr, ohne dass
+ * der Server aktiv etwas loeschen muesste - ein reiner Zeitstempelvergleich genuegt.
+ */
+export interface BookingChangeAck {
+  taskId: string;
+  userId: string;
+  changedAt: number;
+  ackedAt: number;
+}
+
+/** Key = Task-ID (bereits userbezogen gefiltert vom Server, siehe api/task-views.js). */
+export type BookingChangeAcksState = Record<string, BookingChangeAck | null>;
+
 /** Planungshorizont Heute+3 (Punkt 2) - ein Eintrag pro Kalendertag. */
 export interface PlanningDay {
   date: string;

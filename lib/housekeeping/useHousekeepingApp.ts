@@ -29,9 +29,9 @@ import {
   getPropertyDisplayName, housekeepingTeamsApi, incidentPhotosApi, incidentsApi, linenItemsApi, loadBackendState,
   loadConsumableItems, loadHousekeepingTeams, loadIntegrationsStatus, loadLinenItems, loadManualTasks, loadNfcTagStatuses,
   loadProperties, loadReservations, loadReservationsRangeForProperties, loadTaskAssignments, loadTaskNotices,
-  loadTaskScheduleOverrides, loadTaskTimeOverrides, loadUnits, loadUnitsForProperties, manualTasksApi, nfcApi,
+  loadTaskScheduleOverrides, loadTaskTimeOverrides, loadTaskViews, loadUnits, loadUnitsForProperties, manualTasksApi, nfcApi,
   setUnitCondition, syncBookingChanges, taskAssignmentsApi, taskNoticesApi, taskScheduleOverridesApi, taskTimeOverridesApi,
-  usersApi, type IntegrationsStatus, type ManualTaskCreateInput, type ReportIncidentInput,
+  taskViewsApi, usersApi, type IntegrationsStatus, type ManualTaskCreateInput, type ReportIncidentInput,
 } from './api';
 import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './rooms';
 import { managedPropertyCodes } from './permissions';
@@ -41,11 +41,12 @@ import {
   requiresInspection, resolveTasks, sortTasksForDay, teamCapacityForDay, type ResolvedTask, type TeamContext,
 } from './tasks';
 import type {
-  ApaleoReservation, ApaleoUnit, AssignmentsState, BookingChangeRecordsState, BreakEntry, CapacityEntry, Completion,
+  ApaleoReservation, ApaleoUnit, AssignmentsState, BookingChangeAcksState, BookingChangeRecordsState, BreakEntry,
+  CapacityEntry, Completion,
   ConsumableItem, ConsumableReport, DaySummary, DoubleupsState, HousekeepingIncident, HousekeepingTeam, LinenItem,
   ManualTask, ManualTasksState, NfcTagStatusesState, Property, ReservationsState, Room, RoomFilter, StaffUser,
-  TaskAssignmentsState, TaskNotice, TaskNoticeAcksState, TaskNoticesState, TaskScheduleOverridesState, TaskStartSource,
-  TaskTeamOverridesState, TaskTimeOverridesState, TeamCapacityEntry, TeamPropertyDefaultsState,
+  TaskAssignmentsState, TaskNotice, TaskNoticeAcksState, TaskNoticesState, TaskScheduleOverridesState, TaskSeenState,
+  TaskStartSource, TaskTeamOverridesState, TaskTimeOverridesState, TeamCapacityEntry, TeamPropertyDefaultsState,
 } from './types';
 
 /** Key-Schema exakt wie api/_nfc.js#unitKey - EINZIGE Stelle im Client, die dieses Format kennt. */
@@ -111,6 +112,12 @@ interface AppState {
    * eigene, vom Apaleo-Reservierungskommentar getrennte Datenquelle (Punkt 3-8). */
   taskNotices: TaskNoticesState;
   taskNoticeAcks: TaskNoticeAcksState;
+  /** Briefing "Reinigungskarten ueberarbeiten" Punkt 5/8: zwei bewusst GETRENNTE, userbezogene
+   * Aufmerksamkeits-Zustaende - "gesehen" (taskSeen, Key = Task-ID, bereits vom Server auf den
+   * eingeloggten User gefiltert) und "Buchungsaenderung zur Kenntnis genommen"
+   * (bookingChangeAcks, ebenso Key = Task-ID) - niemals dasselbe Feld, siehe types.ts. */
+  taskSeen: TaskSeenState;
+  bookingChangeAcks: BookingChangeAcksState;
   /** Manueller Admin-Override der Abreise-/Anreisezeit (Prioritaet 1), Key = Task-ID - eigene,
    * vom Apaleo-Reservierungskommentar/gebuchten Service getrennte Datenquelle. */
   taskTimeOverrides: TaskTimeOverridesState;
@@ -227,6 +234,8 @@ function initialState(): AppState {
     taskTeamOverrides: {},
     taskNotices: {},
     taskNoticeAcks: {},
+    taskSeen: {},
+    bookingChangeAcks: {},
     taskTimeOverrides: {},
     taskScheduleOverrides: {},
     nfcTags: {},
@@ -345,6 +354,7 @@ export function useHousekeepingApp() {
       const [teamsData, linenItems, consumableItems] = await Promise.all([loadHousekeepingTeams(), loadLinenItems(), loadConsumableItems()]);
       patch({
         planningUnits: [], planningReservations: [], taskAssignments: {}, taskNotices: {}, taskNoticeAcks: {},
+        taskSeen: {}, bookingChangeAcks: {},
         taskTimeOverrides: {}, taskScheduleOverrides: {}, planningDays: days, manualTasks: {}, bookingChanges: {},
         teams: teamsData.teams, teamPropertyDefaults: teamsData.propertyDefaults, taskTeamOverrides: teamsData.taskTeamOverrides,
         linenItems, consumableItems,
@@ -353,7 +363,7 @@ export function useHousekeepingApp() {
     }
     const [
       units, reservations, taskAssignments, noticesData, taskTimeOverrides, taskScheduleOverrides, teamsData, linenItems,
-      consumableItems, manualTasks,
+      consumableItems, manualTasks, viewsData,
     ] = await Promise.all([
         loadUnitsForProperties(scopeCodes),
         loadReservationsRangeForProperties(scopeCodes, days[0], days[3]),
@@ -365,6 +375,7 @@ export function useHousekeepingApp() {
         loadLinenItems(),
         loadConsumableItems(),
         loadManualTasks(),
+        loadTaskViews(),
         loadBackend(),
       ]);
     // Buchungsaenderungen (Punkt "Buchungsaenderung sichtbar machen"): rein informative
@@ -386,6 +397,7 @@ export function useHousekeepingApp() {
     patch({
       planningUnits: units, planningReservations: reservations, taskAssignments,
       taskNotices: noticesData.notices, taskNoticeAcks: noticesData.acks, taskTimeOverrides, taskScheduleOverrides,
+      taskSeen: viewsData.seen, bookingChangeAcks: viewsData.changeAcks,
       planningDays: days,
       teams: teamsData.teams, teamPropertyDefaults: teamsData.propertyDefaults, taskTeamOverrides: teamsData.taskTeamOverrides,
       linenItems, consumableItems, manualTasks, bookingChanges,
@@ -1185,6 +1197,42 @@ export function useHousekeepingApp() {
     });
   }, [patch, runAction]);
 
+  // --- Briefing "Reinigungskarten ueberarbeiten" Punkt 5/7/8: "gesehen" (Detailansicht
+  // tatsaechlich geoeffnet) und "Buchungsaenderung zur Kenntnis genommen" - zwei bewusst
+  // getrennte, userbezogene Zustaende (siehe types.ts#TaskSeenRecord/BookingChangeAck). Beide
+  // Server-Antworten sind bereits auf den eingeloggten User gefiltert (Key = Task-ID), daher hier
+  // ohne noticeAckKey()-Praefix.
+  const isTaskSeenByMe = useCallback((taskId: string): boolean => !!state.taskSeen[taskId], [state.taskSeen]);
+
+  const markTaskSeen = useCallback(async (taskId: string) => {
+    if (state.taskSeen[taskId]) return;
+    try {
+      const { seen } = await taskViewsApi.markSeen(taskId);
+      patch((s) => ({ taskSeen: { ...s.taskSeen, [taskId]: seen } }));
+    } catch {
+      // Punkt 5 ist eine rein informative Zusatzfunktion - ein fehlgeschlagener Schreibversuch
+      // (z. B. kurzzeitig offline) darf die Detailansicht selbst nicht stoeren; der gruene Punkt
+      // bleibt dann beim naechsten Laden schlicht weiterhin sichtbar.
+    }
+  }, [state.taskSeen, patch]);
+
+  /** Punkt 7/8: true, wenn keine Buchungsaenderung vorliegt ODER GENAU dieser User GENAU die
+   * aktuell gueltige Aenderung (task.bookingChange.changedAt) bestaetigt hat - eine Bestaetigung
+   * einer AELTEREN Aenderung (vor einer erneuten, spaeteren Aenderung) zaehlt nicht, analog zu
+   * isNoticeAcknowledgedBy()/noticeVersion oben. */
+  const isBookingChangeAckedByMe = useCallback((task: ResolvedTask): boolean => {
+    if (!task.bookingChange) return true;
+    const ack = state.bookingChangeAcks[task.id];
+    return !!ack && ack.changedAt === task.bookingChange.changedAt;
+  }, [state.bookingChangeAcks]);
+
+  const acknowledgeBookingChange = useCallback(async (taskId: string) => {
+    await runAction(async () => {
+      const { ack } = await taskViewsApi.acknowledgeChange(taskId);
+      patch((s) => ({ bookingChangeAcks: { ...s.bookingChangeAcks, [taskId]: ack } }));
+    });
+  }, [patch, runAction]);
+
   // --- Manueller Zeiten-Override (Prioritaet 1 vor gebuchtem Extra/Standard) - nur Admin darf
   // schreiben (serverseitig erzwungen, siehe api/task-time-overrides.js), Standortverantwortliche
   // und Housekeeper sehen den Stand nur (kein UI-Einstiegspunkt fuer sie, siehe TaskDetailSheet).
@@ -1366,6 +1414,10 @@ export function useHousekeepingApp() {
 
     // Wichtiger Hinweis
     noticeForTask, isNoticeAcknowledgedBy, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice,
+
+    // Briefing "Reinigungskarten ueberarbeiten": "gesehen" + "Buchungsaenderung zur Kenntnis
+    // genommen" - zwei getrennte userbezogene Zustaende.
+    isTaskSeenByMe, markTaskSeen, isBookingChangeAckedByMe, acknowledgeBookingChange,
 
     // Manueller Zeiten-Override
     saveTaskTimeOverride, removeTaskTimeOverride,

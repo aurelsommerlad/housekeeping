@@ -3,7 +3,7 @@ import { translate } from '@/lib/housekeeping/i18n';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
 import {
   DoubleupIcon, IconAlertCircle, IconCalendarClock, IconCheck, IconClock, IconEdit, IconEnter, IconExit, IconPause, IconPlay,
-  IconRefresh, IconRotateCcw, IconTask, IconUser,
+  IconRotateCcw, IconTask, IconUser,
 } from '@/components/ui/icons';
 import { TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
 import type { ResolvedTask } from '@/lib/housekeeping/useHousekeepingApp';
@@ -19,6 +19,12 @@ export interface TaskCardProps {
   /** Punkt 9: 'unread' zeigt ein dezentes Outline-Warnsymbol (wichtiger, vom zugewiesenen
    * Mitarbeiter noch nicht bestaetigter Hinweis), 'read' ein dezentes Haekchen, 'none' nichts. */
   noticeState?: 'none' | 'unread' | 'read';
+  /** Briefing "Reinigungskarten ueberarbeiten" Punkt 5/6/7: EIN gemeinsamer Aufmerksamkeits-Punkt
+   * oben rechts, bewusst technisch/visuell GETRENNT vom "Wichtiger Hinweis"-Icon oben (noticeState)
+   * - 'changed' (orange) hat Vorrang vor 'new' (gruen), niemals beide gleichzeitig (Punkt 7:
+   * "Buchungsänderung > ungesehen"). Farbe wird nie allein als Bedeutungstraeger verwendet - siehe
+   * aria-label/title am Punkt selbst. */
+  attentionState?: 'none' | 'new' | 'changed';
   /** Punkt "Reinigungskräfte standardmäßig nur mit Vornamen anzeigen" - reine Darstellungsfunktion
    * (siehe lib/housekeeping/names.ts/useHousekeepingApp.ts#shortStaffName), der gespeicherte
    * volle Name bleibt unveraendert. */
@@ -145,12 +151,6 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
   const overrideFlag = task.departureOverridden || task.arrivalOverridden ? (
     <TimeFlag icon={IconEdit}>{translate(lang, 'time_changed_badge')}</TimeFlag>
   ) : null;
-  // Punkt "Buchungsaenderung sichtbar machen": nur ein dezenter Hinweis auf der kompakten Karte,
-  // niemals die volle Vorher/Nachher-Historie (die steht in der Detailansicht, siehe
-  // TaskDetailSheet.tsx) - dasselbe TimeFlag-Badge wie die uebrigen Zeit-Kennzeichnungen.
-  const bookingChangeFlag = task.bookingChange ? (
-    <TimeFlag icon={IconRefresh}>{translate(lang, 'booking_changed_badge')}</TimeFlag>
-  ) : null;
 
   if (task.type === 'turnover') {
     return (
@@ -161,7 +161,6 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
         </span>
         {flags}
         {overrideFlag}
-        {bookingChangeFlag}
       </div>
     );
   }
@@ -185,20 +184,16 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
         </span>
         {flags}
         {overrideFlag}
-        {bookingChangeFlag}
       </div>
     );
   }
 
-  if (task.type === 'stayover' && (task.nights || task.bookingChange)) {
+  if (task.type === 'stayover' && task.nights) {
     return (
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-line/70 pt-2">
-        {task.nights ? (
-          <p className="text-[12.5px] text-muted">
-            {translate(lang, task.nights === 1 ? 'nights_one' : 'nights_many', { n: task.nights })}
-          </p>
-        ) : null}
-        {bookingChangeFlag}
+        <p className="text-[12.5px] text-muted">
+          {translate(lang, task.nights === 1 ? 'nights_one' : 'nights_many', { n: task.nights })}
+        </p>
       </div>
     );
   }
@@ -228,11 +223,17 @@ function formatOccupancy(lang: Lang, adults: number | null, childrenCount: numbe
  * (DoubleupIcon/DOUBLEUP_ICONS), hier nur mit einem eigenen, expliziten "... gebucht"-Label statt
  * des generischen Vorbereitungs-Labels - macht in der Detailansicht/Tooltip den Unterschied
  * zum manuell gesetzten Housekeeping-Flag klar. */
-function bookedExtraIcons(info: { hasDog: boolean; hasCrib: boolean } | null | undefined, lang: Lang): { id: string; label: string }[] {
+function bookedExtraIcons(
+  info: { hasDog: boolean; hasCrib: boolean } | null | undefined, lang: Lang, opts: { excludeCrib?: boolean } = {},
+): { id: string; label: string }[] {
   if (!info) return [];
   const extras: { id: string; label: string }[] = [];
   if (info.hasDog) extras.push({ id: 'dog', label: translate(lang, 'booked_dog_label') });
-  if (info.hasCrib) extras.push({ id: 'crib', label: translate(lang, 'booked_crib_label') });
+  // Briefing "Reinigungskarten ueberarbeiten" Punkt 9: das Babybett bekommt auf der Anreiseseite
+  // eines Same-Day-Turnovers ein eigenes, prominenteres Icon (siehe `prominent` unten) statt hier
+  // ein zweites Mal klein neben der Gaestezahl zu erscheinen - `excludeCrib` blendet es dafuer
+  // GENAU dort aus dieser generischen Liste aus (Hund bleibt davon unberuehrt, Punkt 11).
+  if (info.hasCrib && !opts.excludeCrib) extras.push({ id: 'crib', label: translate(lang, 'booked_crib_label') });
   return extras;
 }
 
@@ -241,10 +242,15 @@ function bookedExtraIcons(info: { hasDog: boolean; hasCrib: boolean } | null | u
  * ohne Erklaerung nicht eindeutig genug"): das Label allein macht die Richtung eindeutig, das
  * Icon bleibt zusaetzlich als visueller Anker erhalten. `extras` (gebuchte Hund-/Babybett-
  * Services DIESER Reservierung) stehen direkt hinter der Gaestezahl in derselben Zeile - keine
- * neue Zeile, keine Aenderung der Kartenhoehe. */
+ * neue Zeile, keine Aenderung der Kartenhoehe. `prominent` (Briefing Punkt 9): ein zusaetzliches,
+ * deutlich groesseres Icon auf einer eigenen Zeile unten rechts im Block - fuer den einzigen Fall,
+ * der fuer Housekeeping eine konkrete Vorbereitung bedeutet (Babybett fuer die HEUTIGE Anreise). */
 function OccupancyBlock({
-  icon: Icon, label, text, extras,
-}: { icon: typeof IconExit; label: string; text: string; extras: { id: string; label: string }[] }) {
+  icon: Icon, label, text, extras, prominent,
+}: {
+  icon: typeof IconExit; label: string; text: string; extras: { id: string; label: string }[];
+  prominent?: { id: string; label: string } | null;
+}) {
   return (
     <div className="flex min-w-0 flex-col">
       <span className="truncate text-[8px] font-medium uppercase leading-none tracking-wide text-muted">{label}</span>
@@ -259,6 +265,11 @@ function OccupancyBlock({
           </span>
         ) : null}
       </span>
+      {prominent ? (
+        <span className="mt-1 flex items-center justify-end" title={prominent.label}>
+          <DoubleupIcon id={prominent.id} width={17} height={17} className="text-ink" role="img" aria-label={prominent.label} />
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -289,7 +300,11 @@ function OccupancyLine({ task, lang, doubleTypes }: { task: ResolvedTask; lang: 
           <OccupancyBlock icon={IconExit} label={translate(lang, 'label_departure')} text={departureText} extras={bookedExtraIcons(task.reservationInfo, lang)} />
         ) : <span />}
         {arrivalText ? (
-          <OccupancyBlock icon={IconEnter} label={translate(lang, 'label_arrival')} text={arrivalText} extras={bookedExtraIcons(task.nextReservationInfo, lang)} />
+          <OccupancyBlock
+            icon={IconEnter} label={translate(lang, 'label_arrival')} text={arrivalText}
+            extras={bookedExtraIcons(task.nextReservationInfo, lang, { excludeCrib: true })}
+            prominent={task.nextReservationInfo?.hasCrib ? { id: 'crib', label: translate(lang, 'crib_prep_label') } : null}
+          />
         ) : <span />}
       </div>
     );
@@ -326,7 +341,7 @@ function OccupancyLine({ task, lang, doubleTypes }: { task: ResolvedTask; lang: 
  * Playwright-Hoehenvergleich vor/nach der Aenderung) - reine Darstellung, keine Aenderung an
  * Task-Ableitung/Zuweisung/Timer/Pausen/NFC/Notices/Zeiten-Overrides.
  */
-export function TaskCard({ task, lang, selected, selectable, noticeState = 'none', shortName, onOpen }: TaskCardProps) {
+export function TaskCard({ task, lang, selected, selectable, noticeState = 'none', attentionState = 'none', shortName, onOpen }: TaskCardProps) {
   const typeConfig = TASK_TYPE_CONFIG[task.type];
   // Punkt "gebucht vs. manuell": ein Hund/Babybett, das bereits als gebuchtes Apaleo-Extra bei
   // Abreise oder Anreise angezeigt wird (siehe OccupancyLine/bookedExtraIcons), erscheint hier in
@@ -378,11 +393,26 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
             task.propertyName
           )}
         </span>
-        {noticeState === 'unread' ? (
-          <IconAlertCircle width={16} height={16} className="mt-0.5 shrink-0 text-muted" aria-hidden="true" />
-        ) : noticeState === 'read' ? (
-          <IconCheck width={14} height={14} className="mt-1 shrink-0 text-sage" aria-hidden="true" />
-        ) : null}
+        <span className="mt-1 flex shrink-0 items-center gap-1.5">
+          {/* Briefing "Reinigungskarten ueberarbeiten" Punkt 5/6/7: EIN farbiger Punkt statt
+           * zweier konkurrierender Signale - orange (Buchungsaenderung) hat Vorrang vor gruen
+           * (ungesehen), niemals beide gleichzeitig. Bewusst dieselben, bereits bestehenden
+           * Status-Farbtoene (status-clean/status-progress) statt neu erfundener Farben - Farbe
+           * ist nie der einzige Bedeutungstraeger, siehe aria-label/title. */}
+          {attentionState !== 'none' ? (
+            <span
+              className={cn('h-2.5 w-2.5 rounded-full', attentionState === 'changed' ? 'bg-status-progress' : 'bg-status-clean')}
+              role="img"
+              aria-label={translate(lang, attentionState === 'changed' ? 'booking_changed_dot_label' : 'task_new_dot_label')}
+              title={translate(lang, attentionState === 'changed' ? 'booking_changed_dot_label' : 'task_new_dot_label')}
+            />
+          ) : null}
+          {noticeState === 'unread' ? (
+            <IconAlertCircle width={16} height={16} className="shrink-0 text-muted" aria-hidden="true" />
+          ) : noticeState === 'read' ? (
+            <IconCheck width={14} height={14} className="shrink-0 text-sage" aria-hidden="true" />
+          ) : null}
+        </span>
       </div>
 
       <div className="flex items-center justify-between gap-2">

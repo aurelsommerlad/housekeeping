@@ -37,6 +37,29 @@ function SummaryStat({ value, label, icon: Icon, toneClass }: { value: number; l
   );
 }
 
+/** Briefing "Reinigungskarten ueberarbeiten" Punkt 1: gruppiert eine BEREITS priorisierte
+ * Task-Liste (sortTasksForDay() lief schon vorher, siehe useHousekeepingApp.ts#tasksForDay) nach
+ * `task.propertyCode` - ausschliesslich die echte Apaleo Property-ID/-Code, niemals Unit-Namen
+ * oder String-Matching. Sortiert NICHT neu (Punkt 2: "keine neue parallele Prioritaetslogik") -
+ * innerhalb jeder Gruppe bleibt exakt die bestehende, dringlichkeitsbasierte Reihenfolge erhalten,
+ * nur partitioniert. Gruppenreihenfolge folgt `orderedCodes` (dieselbe Reihenfolge wie im
+ * bestehenden Standort-Dropdown, siehe allowedProps) statt einer neu erfundenen (z. B.
+ * alphabetischen) Sortierung; ein Code ausserhalb dieser Liste (sollte praktisch nicht vorkommen)
+ * haengt defensiv am Ende an. */
+function groupTasksByProperty(
+  tasks: ResolvedTask[], orderedCodes: string[],
+): { propertyCode: string; propertyName: string; tasks: ResolvedTask[] }[] {
+  const byCode = new Map<string, ResolvedTask[]>();
+  for (const task of tasks) {
+    if (!byCode.has(task.propertyCode)) byCode.set(task.propertyCode, []);
+    byCode.get(task.propertyCode)!.push(task);
+  }
+  const order = [...orderedCodes, ...Array.from(byCode.keys()).filter((c) => !orderedCodes.includes(c))];
+  return order
+    .filter((code) => byCode.has(code))
+    .map((code) => ({ propertyCode: code, propertyName: byCode.get(code)![0].propertyName, tasks: byCode.get(code)! }));
+}
+
 /** Korrektur (UX-Feinschliff Runde 3): keine farbige Grossbuchstaben-Ueberschrift mehr - nur
  * noch die Anzahl in normaler Textfarbe ("3 Reinigungen"), optional mit demselben kleinen
  * Outline-Icon wie die zugehoerige Kennzahl oben (in deren dezentem Akzent) fuer den visuellen
@@ -46,10 +69,22 @@ function SummaryStat({ value, label, icon: Icon, toneClass }: { value: number; l
  * bestehen - ab `xl` zeigt eine ZWEITE, per `hidden xl:flex`/`xl:hidden` umgeschaltete Variante
  * stattdessen "[Icon] REINIGUNGEN 3" (ruhige Grossbuchstaben-Kategorie VOR der Zahl, bestehendes
  * Icon unveraendert wiederverwendet) - dieselben Werte (`count`/dasselbe Icon/derselbe toneClass),
- * nur umsortierte Darstellung fuer den Breakpoint, kein zweiter Text-Bau-Mechanismus. */
+ * nur umsortierte Darstellung fuer den Breakpoint, kein zweiter Text-Bau-Mechanismus.
+ *
+ * Briefing "Reinigungskarten ueberarbeiten" Punkt 1: bei "Alle Standorte" (locationGroups gesetzt)
+ * erscheint ZUSAETZLICH je eine kleine, ruhige Standortueberschrift (kein Card-Rahmen darum) vor
+ * dem jeweiligen Teil-Grid - bei einem einzelnen ausgewaehlten Standort (locationGroups === null)
+ * bleibt exakt das bisherige, einzelne Grid bestehen (keine redundante Standortueberschrift). Auf
+ * Mobile identisch zu Desktop, nur dasselbe bereits bestehende responsive Grid je Gruppe. */
 function TaskGroup({
-  text, count, categoryLabel, icon: Icon, toneClass, children,
-}: { text: string; count: number; categoryLabel: string; icon?: typeof IconCheck; toneClass?: string; children: ReactNode }) {
+  text, count, categoryLabel, icon: Icon, toneClass, tasks, locationGroups, renderCard,
+}: {
+  text: string; count: number; categoryLabel: string; icon?: typeof IconCheck; toneClass?: string;
+  tasks: ResolvedTask[];
+  locationGroups: { propertyCode: string; label: string; tasks: ResolvedTask[] }[] | null;
+  renderCard: (task: ResolvedTask) => ReactNode;
+}) {
+  const gridClass = 'grid grid-cols-1 gap-3 px-4 pt-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]';
   return (
     <div>
       {/* Desktop-Toolbar-Redesign (Punkt 9/10): auf Desktop bewusst etwas kleiner/ruhiger
@@ -72,7 +107,18 @@ function TaskGroup({
       {/* Punkt 8 (Desktop): ab xl eine minmax()-basierte Grid-Regel statt fester 3-Spalten, damit
        * Cards auf sehr breiten Monitoren nicht unnoetig auseinandergezogen werden (Karte selbst
        * unveraendert) - unterhalb xl bleiben sm:/lg:grid-cols-* exakt wie bisher wirksam. */}
-      <div className="grid grid-cols-1 gap-3 px-4 pt-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]">{children}</div>
+      {locationGroups ? (
+        <div className="flex flex-col gap-1">
+          {locationGroups.map((group) => (
+            <div key={group.propertyCode}>
+              <p className="px-4 pb-1 pt-3 text-[12px] font-medium text-muted first:pt-1">{group.label}</p>
+              <div className={gridClass}>{group.tasks.map(renderCard)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className={gridClass}>{tasks.map(renderCard)}</div>
+      )}
     </div>
   );
 }
@@ -92,6 +138,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
     state, t, selectDay, selectPropertyScope, toggleMyTasksOnly,
     toggleTaskMultiSelect, toggleTaskSelection, openTask, bulkAssignTasks, clearDayAssignments, retryTasksLoad,
     noticeForTask, isNoticeAcknowledgedBy, openManualTaskForm, shortStaffName,
+    isTaskSeenByMe, isBookingChangeAckedByMe,
   } = app;
   const [bulkOpen, setBulkOpen] = useState(false);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
@@ -107,6 +154,33 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const allowedProps = state.properties.filter((p) => allowed.includes(p.code));
   const topCapacityEntry = capacity.find((e) => e.housekeeperId);
   const unassignedCapacityEntry = capacity.find((e) => e.housekeeperId === null);
+
+  // Briefing "Reinigungskarten ueberarbeiten" Punkt 1: nur bei "Alle Standorte" tatsaechlich
+  // gruppieren - ist bereits ein einzelner Standort ausgewaehlt, waere die Ueberschrift redundant
+  // (Punkt 1, letzter Satz). `orderedPropertyCodes` uebernimmt dieselbe Reihenfolge wie der
+  // bestehende Standort-Picker oben (allowedProps), keine neu erfundene (z. B. alphabetische)
+  // Sortierung.
+  const groupByLocation = state.propertyScope === 'all';
+  const orderedPropertyCodes = allowedProps.map((p) => p.code);
+  function toLocationGroups(tasks: ResolvedTask[], oneKey: Parameters<typeof countLabel>[2], manyKey: Parameters<typeof countLabel>[3]) {
+    if (!groupByLocation) return null;
+    return groupTasksByProperty(tasks, orderedPropertyCodes).map((g) => ({
+      propertyCode: g.propertyCode,
+      label: `${g.propertyName} · ${countLabel(t, g.tasks.length, oneKey, manyKey)}`,
+      tasks: g.tasks,
+    }));
+  }
+
+  // Briefing "Reinigungskarten ueberarbeiten" Punkt 5/6/7: EIN gemeinsamer Aufmerksamkeits-Zustand
+  // pro Karte - Buchungsaenderung (orange) hat immer Vorrang vor "ungesehen" (gruen), niemals
+  // beide gleichzeitig. Bewusst UNABHAENGIG von cardNoticeState() unten (siehe dort) - "gesehen"/
+  // "Buchungsaenderung bestaetigt" und der "Wichtiger Hinweis"-Bestaetigungsstatus sind zwei
+  // technisch komplett getrennte Datenquellen (siehe types.ts).
+  function cardAttentionState(task: ResolvedTask): 'none' | 'new' | 'changed' {
+    if (task.bookingChange && !isBookingChangeAckedByMe(task)) return 'changed';
+    if (!isTaskSeenByMe(task.id)) return 'new';
+    return 'none';
+  }
 
   const scopedHousekeepers: StaffUser[] = state.users.filter((u) => {
     if (u.role === 'admin') return false;
@@ -375,6 +449,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
               selectable
               shortName={shortStaffName}
               noticeState={cardNoticeState(task)}
+              attentionState={cardAttentionState(task)}
               onOpen={() => openTask(task.id)}
             />
           ))}
@@ -392,8 +467,9 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
               categoryLabel={t('noun_cleaning_many')}
               icon={IconSparkles}
               toneClass="text-type-turnover"
-            >
-              {cleaningTasks.map((task) => (
+              tasks={cleaningTasks}
+              locationGroups={toLocationGroups(cleaningTasks, 'noun_cleaning_one', 'noun_cleaning_many')}
+              renderCard={(task) => (
                 <TaskCard
                   key={task.id}
                   task={task}
@@ -402,10 +478,11 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                   selectable={false}
                   shortName={shortStaffName}
                   noticeState={cardNoticeState(task)}
+                  attentionState={cardAttentionState(task)}
                   onOpen={() => openTask(task.id)}
                 />
-              ))}
-            </TaskGroup>
+              )}
+            />
           ) : null}
 
           {openManualTasks.length > 0 ? (
@@ -417,8 +494,9 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
               // Feinschliff Runde 8 (Punkt 3/4): derselbe Farbtoken-Fix wie bei der Kennzahl oben,
               // fuer denselben Aufgabentyp - nur auf Desktop (`xl:`), Mobile unveraendert.
               toneClass="text-type-departure xl:text-type-manual"
-            >
-              {openManualTasks.map((task) => (
+              tasks={openManualTasks}
+              locationGroups={toLocationGroups(openManualTasks, 'noun_task_one', 'noun_task_many')}
+              renderCard={(task) => (
                 <TaskCard
                   key={task.id}
                   task={task}
@@ -427,10 +505,11 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                   selectable={false}
                   shortName={shortStaffName}
                   noticeState="none"
+                  attentionState={cardAttentionState(task)}
                   onOpen={() => openTask(task.id)}
                 />
-              ))}
-            </TaskGroup>
+              )}
+            />
           ) : null}
 
           {doneTasks.length > 0 ? (
@@ -469,6 +548,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                       selectable={false}
                       shortName={shortStaffName}
                       noticeState="none"
+                      attentionState={cardAttentionState(task)}
                       onOpen={() => openTask(task.id)}
                     />
                   ))}
