@@ -919,7 +919,18 @@ import type { Lang } from './i18n';
 // wird dabei nie faelschlich als "0 Gaeste"-Aenderung gewertet. Verifiziert per tsc/eslint/build
 // sowie einem Node-Integrationstest gegen einen Fake-Redis (8 Faelle: Erkennung/Baseline/
 // Ruecksetzung fuer Personenanzahl, Regressionscheck der bestehenden Datum-Erkennung).
-export const APP_VERSION = '2.31.0';
+// v2.31.1 - PATCH: Nutzerfeedback zur Vorbereitungs-Checkliste, keine Aenderung an
+// Business-Logik/Datenmodell. Die in v2.30.0 eingefuehrte schmale Listenzeile war weniger gut
+// lesbar als die vorherige, groessere Pill-Darstellung - jeder Vorbereitungspunkt ist jetzt
+// wieder ein groesserer, abgerundeter Chip (wie zuvor bei den reinen Anzeige-Chips), aber
+// weiterhin tappable: ein Klick schaltet ueber togglePreparationItem weiterhin den
+// Erledigt-Status um und zeigt dabei einen Haken statt des leeren Kreises. Die Admin-Detailinfo
+// ("Erledigt von X · Zeit") ist als Tooltip auf dem Chip statt als sichtbarer Zusatztext
+// untergebracht, damit die Chip-Groesse einheitlich bleibt. Der Hinweistext bei offenen
+// Pflichtpunkten ("Vorbereitung noch nicht vollständig.") ist deutlich kuerzer und dezenter
+// (kleinere, gedaempfte Schrift statt normaler Textfarbe) statt des vorherigen ausformulierten
+// Satzes. Verifiziert per tsc/eslint/build.
+export const APP_VERSION = '2.31.1';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

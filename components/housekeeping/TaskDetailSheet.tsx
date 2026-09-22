@@ -1397,7 +1397,11 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                   )}
                 >
                   <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('task_prep_title')}</p>
-                  <div className="flex flex-col">
+                  {/* Nutzerfeedback: die vorherige, groessere Chip-Darstellung war besser lesbar als
+                   * die schmale Listenzeile - jetzt wieder als groesserer Pill wie zuvor, nur
+                   * zusaetzlich tappable und mit Haken, sobald erledigt (weiterhin ueber
+                   * togglePreparationItem/task.preparationCompletions, nicht mehr nur Anzeige). */}
+                  <div className="flex flex-wrap gap-2">
                     {requiredPrepIds.map((id) => {
                       const dt = DOUBLEUP_TYPES.find((d) => d.id === id);
                       if (!dt) return null;
@@ -1408,26 +1412,25 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                           key={id}
                           type="button"
                           onClick={() => togglePreparationItem(task.id, id)}
-                          className="flex min-h-[44px] items-center gap-2.5 rounded-control px-1.5 text-left text-[13.5px] transition-colors hover:bg-warm-white/60"
+                          title={isManager && completion ? t('preparation_completed_detail', {
+                            name: shortStaffName(completion.completedByUserName),
+                            time: new Date(completion.completedAt).toLocaleString(state.lang),
+                          }) : undefined}
+                          className={cn(
+                            'inline-flex min-h-[44px] items-center gap-2 rounded-full border px-3.5 py-2 text-[13.5px] font-medium transition-colors',
+                            done ? 'border-sage bg-warm-white text-ink' : 'border-line bg-warm-white text-muted hover:text-ink',
+                          )}
                         >
                           {done
                             ? <IconCheck width={16} height={16} className="shrink-0 text-sage" aria-hidden="true" />
                             : <IconCircle width={16} height={16} className="shrink-0 text-muted" aria-hidden="true" />}
-                          <DoubleupIcon id={dt.id} width={15} height={15} className={cn('shrink-0', done ? 'text-muted' : 'text-ink')} aria-hidden="true" />
-                          <span className={done ? 'text-muted' : 'font-medium text-ink'}>{t(dt.label)}</span>
-                          {isManager && done ? (
-                            <span className="ml-auto shrink-0 text-[10.5px] text-muted">
-                              {t('preparation_completed_detail', {
-                                name: shortStaffName(completion.completedByUserName),
-                                time: new Date(completion.completedAt).toLocaleString(state.lang),
-                              })}
-                            </span>
-                          ) : null}
+                          <DoubleupIcon id={dt.id} width={16} height={16} className="shrink-0" aria-hidden="true" />
+                          {t(dt.label)}
                         </button>
                       );
                     })}
                   </div>
-                  {openPreparationCount > 0 ? <p className="text-[12.5px] text-ink">{t('preparation_incomplete_hint')}</p> : null}
+                  {openPreparationCount > 0 ? <p className="text-[11px] text-muted">{t('preparation_incomplete_hint')}</p> : null}
                 </div>
               ) : null}
 
