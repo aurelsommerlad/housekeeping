@@ -38,7 +38,7 @@ import { managedPropertyCodes } from './permissions';
 import { dayHeadingLabel } from './dayLabel';
 import {
   buildTasks, canRescheduleTask, capacityForDay, daySummary, guestCount, manualTaskToResolvedTask, nextArrivalDateForTask,
-  requiredPreparationItemIds, requiresInspection, resolveTasks, sortTasksForDay, teamCapacityForDay,
+  requiredPreparationItemIds, requiresInspection, resolveTasks, sortTasksForDay, taskGenerationDays, teamCapacityForDay,
   type ResolvedTask, type TeamContext,
 } from './tasks';
 import type {
@@ -351,6 +351,11 @@ export function useHousekeepingApp() {
     const scopeCodes = propertyScope === 'all' ? allowed : (allowed.includes(propertyScope) ? [propertyScope] : []);
     const today = todayISO();
     const days = [0, 1, 2, 3].map((n) => addDaysISO(today, n));
+    // Bugfix "Verschobene Reinigung verschwindet nach Tageswechsel" (siehe tasks.ts#
+    // taskGenerationDays): die Apaleo-Abfrage muss auch die NICHT sichtbaren Ruecklauftage
+    // abdecken, sonst fehlt buildTasks() unten das Reservierungsdatum einer kuerzlich verschobenen
+    // Reinigung komplett, sobald ihr Quelldatum aus dem sichtbaren Fenster gerutscht ist.
+    const fetchDays = taskGenerationDays(days);
     if (scopeCodes.length === 0) {
       const [teamsData, linenItems, consumableItems] = await Promise.all([loadHousekeepingTeams(), loadLinenItems(), loadConsumableItems()]);
       patch({
@@ -367,7 +372,7 @@ export function useHousekeepingApp() {
       consumableItems, manualTasks, viewsData,
     ] = await Promise.all([
         loadUnitsForProperties(scopeCodes),
-        loadReservationsRangeForProperties(scopeCodes, days[0], days[3]),
+        loadReservationsRangeForProperties(scopeCodes, fetchDays[0], days[3]),
         loadTaskAssignments(),
         loadTaskNotices(),
         loadTaskTimeOverrides(),
@@ -796,9 +801,14 @@ export function useHousekeepingApp() {
   const resolvedTasksAll = useCallback((): ResolvedTask[] => {
     const propertyNames = Object.fromEntries(state.properties.map((p) => [p.code, getPropertyDisplayName(p)]));
     const today = state.planningDays[0] || todayISO();
+    // Bugfix "Verschobene Reinigung verschwindet nach Tageswechsel": zusaetzliche, nicht sichtbare
+    // Ruecklauftage mitgeben (siehe tasks.ts#taskGenerationDays) - ohne sie wuerde buildTasks() das
+    // Apaleo-Quelldatum eines kuerzlich verschobenen Tasks nicht mehr finden, sobald es aus dem
+    // sichtbaren Fenster gerutscht ist, und der Task trotz gueltigem Override auf einen sichtbaren
+    // Tag gar nicht erst erzeugen.
     const raw = buildTasks({
       propertyNames, units: state.planningUnits, reservations: state.planningReservations,
-      doubleups: state.doubleups, days: state.planningDays, today, bookingChanges: state.bookingChanges,
+      doubleups: state.doubleups, days: taskGenerationDays(state.planningDays), today, bookingChanges: state.bookingChanges,
     });
     const teamsById = Object.fromEntries(state.teams.map((tm) => [tm.id, tm]));
     const teamContext: TeamContext = { overrides: state.taskTeamOverrides, propertyDefaults: state.teamPropertyDefaults, teamsById };

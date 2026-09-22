@@ -16,7 +16,7 @@
  * (Timer/Pause/Abschluss) wie jede andere - `forced` bleibt aus Typkompatibilitaet bestehen, ist
  * fuer type==='stayover' aber immer `false` (kein "erzwungener" Charakter mehr).
  */
-import { unitCondition } from './rooms';
+import { addDaysISO, unitCondition } from './rooms';
 import type {
   ApaleoReservation, ApaleoUnit, BookingChangeRecord, BookingChangeRecordsState, CapacityEntry, DaySummary, DoubleupsState,
   HousekeepingTeam, ManualTask, PreparationCompletionsState, Task, TaskAssignmentsState, TaskHistoryEntry, TaskReservationSummary,
@@ -133,6 +133,36 @@ function nightsSince(arrivalIso: string, refIso: string): number {
  */
 export function taskId(propertyCode: string, unitId: string, date: string, type: TaskType, sourceReservationId: string | null): string {
   return `${propertyCode}|${unitId}|${date}|${type}|${sourceReservationId || 'none'}`;
+}
+
+/**
+ * Bugfix "Verschobene Reinigung verschwindet nach Tageswechsel": eine Reinigung darf nur innerhalb
+ * des sichtbaren Planungsfensters (planningDays, siehe TaskDetailSheet.tsx#scheduleMin/-Max)
+ * verschoben werden - ihr unveraendertes Apaleo-Quelldatum (task.date, siehe taskId() weiter oben)
+ * kann dadurch bis zu `planningDays.length - 1` Tage VOR dem aktuellen "heute" liegen, sobald das
+ * rollierende Fenster seit der Verschiebung weitergerueckt ist. Extremfall: eine Verschiebung von
+ * Tag 0 auf Tag+3 - drei Tage spaeter ist "heute" der ehemalige Tag+3, das Quelldatum liegt dann
+ * drei Tage zurueck. Ohne diese zusaetzlichen Ruecklauftage wuerde buildTasks() das zugrunde
+ * liegende Apaleo-Reservierungsdatum nicht mehr in `days` finden und den Task gar nicht erst
+ * erzeugen (er "verwaist" nicht etwa NUR sein Override, er entsteht ueberhaupt nicht mehr) - genau
+ * der vom Nutzer gemeldete Fall "eine gestern auf heute verschobene Reinigung wird heute nicht mehr
+ * angezeigt" (bereits am naechsten Tag nach JEDER Verschiebung um nur einen Tag reproduzierbar).
+ *
+ * Erzeugt daher zusaetzliche, NICHT sichtbare Ruecklauftage NUR fuer die interne Task-Ableitung
+ * (buildTasks) und den zugehoerigen Apaleo-Abfragezeitraum (siehe useHousekeepingApp.ts
+ * #loadPlanningData) - `state.planningDays` (Tages-Tabs/Datumsauswahl im UI) bleibt davon
+ * vollstaendig unberuehrt. Ein auf einem Ruecklauftag erzeugter Task erscheint in KEINER
+ * Tagesansicht (daySummary/capacityForDay/tasksForDayAll filtern ausschliesslich nach
+ * `scheduledDate`, siehe dort) - AUSSER ein Override zieht ihn aktiv auf einen sichtbaren Tag,
+ * genau der hier zu behebende Fall. Keine Dopplung moeglich: pro Tag/Einheit/Reservierung entsteht
+ * weiterhin hoechstens ein Task-Objekt, die Ruecklauftage liegen zudem immer VOR dem ersten
+ * sichtbaren Tag.
+ */
+export function taskGenerationDays(planningDays: string[]): string[] {
+  if (planningDays.length === 0) return planningDays;
+  const lookbackDays = planningDays.length - 1;
+  const extra = Array.from({ length: lookbackDays }, (_, i) => addDaysISO(planningDays[0], i - lookbackDays));
+  return [...extra, ...planningDays];
 }
 
 export interface BuildTasksInput {

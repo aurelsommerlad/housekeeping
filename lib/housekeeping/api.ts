@@ -930,7 +930,26 @@ import type { Lang } from './i18n';
 // Pflichtpunkten ("Vorbereitung noch nicht vollständig.") ist deutlich kuerzer und dezenter
 // (kleinere, gedaempfte Schrift statt normaler Textfarbe) statt des vorherigen ausformulierten
 // Satzes. Verifiziert per tsc/eslint/build.
-export const APP_VERSION = '2.31.1';
+// v2.31.2 - PATCH: Bugfix "Verschobene Reinigung verschwindet nach Tageswechsel" (Nutzerfeedback:
+// "eine Reinigung, die ich gestern von gestern auf heute verschoben habe, wird heute nicht mehr
+// als Reinigung angezeigt"). Ursache: buildTasks() erzeugt einen Task ausschliesslich fuer Tage
+// innerhalb des sichtbaren, rollierenden 4-Tage-Planungsfensters (Heute+3); das unveraenderte
+// Apaleo-Quelldatum einer verschobenen Reinigung faellt aber bereits am naechsten Tag aus diesem
+// Fenster - der Task wurde dann gar nicht erst generiert (nicht nur sein Override verwaiste,
+// sondern die gesamte Reinigung verschwand), obwohl ihr Verschiebungs-Zieldatum weiterhin
+// sichtbar war. War kein Rand-, sondern der REGELFALL: bereits nach jeder Verschiebung um nur
+// einen Tag am naechsten Tag reproduzierbar. Neue Funktion tasks.ts#taskGenerationDays() liefert
+// zusaetzliche, NICHT sichtbare Ruecklauftage (mathematisch hergeleitet aus der Fenstergroesse,
+// die bereits die maximale Verschiebedistanz begrenzt) - buildTasks() (useHousekeepingApp.ts#
+// resolvedTasksAll) und die Apaleo-Reservierungsabfrage (useHousekeepingApp.ts#loadPlanningData)
+// beruecksichtigen diese Ruecklauftage jetzt zusaetzlich, sodass das Quelldatum einer verschobenen
+// Reinigung auffindbar bleibt. `state.planningDays` (Tages-Tabs/Datumsauswahl im UI) sowie die
+// bestehende Begrenzung des Zieldatums auf das sichtbare Fenster bleiben dabei unveraendert - ein
+// auf einem Ruecklauftag erzeugter, NICHT verschobener Task bleibt weiterhin unsichtbar (alle
+// Tagesansichten filtern unveraendert nach scheduledDate). Verifiziert per tsc/eslint/build sowie
+// einem Node-Logiktest gegen die transpilierte tasks.ts (11 Faelle: Bug reproduziert ohne Fix,
+// Fix behebt ihn, keine Dopplung, Regressionscheck fuer unveraenderte Ruecklauftag-Tasks).
+export const APP_VERSION = '2.31.2';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

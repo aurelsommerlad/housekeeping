@@ -36,13 +36,23 @@
 // Dopplung (derselbe Task an zwei Tagen gleichzeitig sichtbar) kommen: es gibt weiterhin genau EIN
 // Task-Objekt pro Reservierung/Tag-Kombination, nur seine Sichtbarkeits-Zuordnung wird verschoben.
 //
-// Wichtige Konsequenz: das Planungsfenster selbst (Heute+3, siehe useHousekeepingApp.ts
-// #loadPlanningData) bleibt unveraendert 4 Tage breit - eine Reinigung kann daher nur INNERHALB
-// dieses Fensters verschoben werden (das UI begrenzt die Auswahl entsprechend, siehe
-// TaskDetailSheet.tsx). Verschoebe man eine Reinigung ausserhalb des Fensters, wuerde sie mit
-// fortschreitendem "heute" irgendwann nicht mehr generiert (ihr Quelldatum faellt aus dem
-// rollierenden Fenster), der Override wuerde verwaist zurueckbleiben - dieselbe Fensterbegrenzung
-// gilt deshalb bewusst auch fuer manuelle Aufgaben, obwohl sie selbst nicht neu generiert werden.
+// Wichtige Konsequenz: das sichtbare Planungsfenster selbst (Heute+3, siehe useHousekeepingApp.ts
+// #loadPlanningData) bleibt unveraendert 4 Tage breit - eine Reinigung kann daher weiterhin nur
+// INNERHALB dieses Fensters verschoben werden (das UI begrenzt die Auswahl entsprechend, siehe
+// TaskDetailSheet.tsx).
+//
+// Bugfix "Verschobene Reinigung verschwindet nach Tageswechsel" (Nutzerfeedback: "eine gestern von
+// gestern auf heute verschobene Reinigung wird heute nicht mehr angezeigt"): urspruenglich wurde
+// hier dokumentiert, dass eine Verschiebung mit fortschreitendem "heute" irgendwann verwaisen
+// wuerde, sobald ihr Quelldatum aus dem rollierenden Fenster faellt - das war KEIN Rand-, sondern
+// der Regelfall (bereits am naechsten Tag nach jeder Verschiebung um nur einen Tag reproduzierbar,
+// da das Quelldatum dann garantiert vor dem neuen "heute" liegt). Behoben durch
+// lib/housekeeping/tasks.ts#taskGenerationDays: buildTasks() erhaelt zusaetzliche, NICHT sichtbare
+// Ruecklauftage (und useHousekeepingApp.ts#loadPlanningData fragt Apaleo entsprechend weiter
+// zurueck ab), sodass das Quelldatum eines verschobenen Tasks innerhalb der durch die
+// Fensterbegrenzung oben mathematisch garantierten Ruecklaufzeit weiterhin auffindbar bleibt - die
+// Fensterbegrenzung fuer das ZIELDATUM bleibt unveraendert bestehen und gilt bewusst auch fuer
+// manuelle Aufgaben, obwohl sie selbst nicht neu generiert werden.
 const { getRedis, parseJSON } = require('./_redis');
 const { requireSession } = require('./_auth');
 const { getUserRawById } = require('./_users');
