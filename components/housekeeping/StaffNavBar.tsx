@@ -1,30 +1,7 @@
 import { NAV_ICONS } from '@/components/ui/icons';
-import { allowedProperties } from '@/lib/housekeeping/rooms';
-import { isElevatedHousekeepingUser, managedPropertyCodes } from '@/lib/housekeeping/permissions';
-import type { HousekeepingApp, NavId } from '@/lib/housekeeping/useHousekeepingApp';
-import type { I18nKey } from '@/lib/housekeeping/i18n';
+import { visibleNavItems } from '@/lib/housekeeping/navItems';
+import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { cn } from '@/lib/cn';
-
-/** 'melden' ist bewusst KEIN eigener NavId/Screen (siehe useHousekeepingApp.ts#openReportMenu) -
- * ein Klick oeffnet ein kleines Auswahl-Sheet (ReportMenuSheet.tsx: "Vorfall melden"/"Verbrauch
- * melden") ueber dem aktuell sichtbaren Screen, statt die Tab-Auswahl zu wechseln (analog zu
- * anderen Sheets wie TaskDetailSheet). Punkt 14 "nicht einfach weitere Bottom-Nav-Punkte
- * hinzufuegen": beide Melde-Funktionen teilen sich diesen EINEN Punkt statt je einem eigenen.
- * 'nonElevated' zeigt ihn nur denjenigen, die "Apartments" NICHT sowieso schon haben (siehe
- * 'elevated' unten) - so wandert er fuer normale Housekeeper exakt in die frei gewordene
- * Apartments-Position, ohne fuer Admin/Standortverantwortliche/Lead einen fuenften, gleichwertigen
- * Bottom-Nav-Punkt zu erzeugen (die erreichen beide Funktionen stattdessen ueber Einstellungen
- * oder - "Vorfall melden" - direkt aus der Task-Detailansicht heraus, siehe TaskDetailSheet.tsx). */
-const ITEMS: { id: NavId | 'melden'; icon: keyof typeof NAV_ICONS; labelKey: I18nKey; requires?: 'manager' | 'admin' | 'elevated' | 'nonElevated' }[] = [
-  { id: 'tasks', icon: 'checklist', labelKey: 'nav_tasks' },
-  { id: 'rooms', icon: 'bed', labelKey: 'nav_apartments', requires: 'elevated' },
-  { id: 'melden', icon: 'alert', labelKey: 'nav_report_menu', requires: 'nonElevated' },
-  // Punkt 5 (Feinschliff-Analyse): Statistik ist bewusst NUR fuer Admin sichtbar (vorher
-  // 'manager' = auch Standortverantwortliche/Team-Leads) - server-seitig zusaetzlich in
-  // api/completions.js abgesichert, diese Nav-Sichtbarkeit ist nur die UI-Bequemlichkeit dazu.
-  { id: 'stats', icon: 'chart', labelKey: 'nav_stats', requires: 'admin' },
-  { id: 'team', icon: 'users', labelKey: 'nav_team', requires: 'admin' },
-];
 
 /**
  * Bottom-Navigation - EINE gemeinsame App fuer alle Rollen, Sichtbarkeit haengt ausschliesslich
@@ -38,24 +15,17 @@ const ITEMS: { id: NavId | 'melden'; icon: keyof typeof NAV_ICONS; labelKey: I18
  * Profil-Button im Header), "Extras" ist als Task-Typ/-Feld in die Aufgaben-Ansicht aufgegangen.
  * WICHTIG: diese Sichtbarkeit ist reine UI-Bequemlichkeit - jede tatsaechliche Aktion bleibt
  * server-seitig ueber role/properties/managedProperties abgesichert (siehe api/*.js).
+ * Item-Liste/Filterung selbst lebt jetzt in lib/housekeeping/navItems.ts (Desktop-Admin-Layout,
+ * Punkt 3) - dieselbe Quelle speist auch die neue Desktop-Seitennavigation (DesktopNavRail.tsx).
+ * `xl:hidden` blendet diese Bottom-Navigation NUR ab 1280px aus, darunter unveraendert wie zuvor.
  */
 export function StaffNavBar({ app }: { app: HousekeepingApp }) {
   const { state, t, setActiveNav, openReportMenu } = app;
-  const isAdmin = state.user?.role === 'admin';
-  const allowed = allowedProperties(state.user, state.properties.map((p) => p.code));
-  const isManagerAnywhere = isAdmin || managedPropertyCodes(state.user, allowed).length > 0;
-  const elevated = isElevatedHousekeepingUser(state.user, state.properties.map((p) => p.code));
-  const items = ITEMS.filter((i) => {
-    if (i.requires === 'admin') return isAdmin;
-    if (i.requires === 'manager') return isManagerAnywhere;
-    if (i.requires === 'elevated') return elevated;
-    if (i.requires === 'nonElevated') return !elevated;
-    return true;
-  });
+  const items = visibleNavItems(app);
 
   return (
     <nav
-      className="grid shrink-0 border-t border-line bg-warm-white pb-[max(env(safe-area-inset-bottom),0.5rem)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
+      className="grid shrink-0 border-t border-line bg-warm-white pb-[max(env(safe-area-inset-bottom),0.5rem)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] xl:hidden"
       style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
     >
       {items.map((item) => {

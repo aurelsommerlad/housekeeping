@@ -76,63 +76,61 @@ export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderPr
   }).format(new Date());
 
   return (
-    <header className="shrink-0 border-b border-line bg-warm-white pt-[max(env(safe-area-inset-top),0.5rem)] pl-[max(env(safe-area-inset-left),1rem)] pr-[max(env(safe-area-inset-right),1rem)]">
-      {/* Desktop-Optimierung (>= 1280px, Tailwind `xl:`): ausschliesslich additive xl:-Klassen auf
-       * einem neuen, rein strukturellen Wrapper - unterhalb von xl bleibt jede bestehende Klasse/
-       * jedes Element unveraendert, dieser <div> selbst hat unterhalb xl keine eigenen Klassen und
-       * damit keinerlei Effekt auf das Mobile-Layout. Zentriert den Header-Inhalt auf sehr breiten
-       * Monitoren analog zum Content-Container in TasksScreen.tsx, statt ihn endlos zu strecken. */}
-      <div className="xl:mx-auto xl:max-w-[1560px]">
-        <div className="flex items-center justify-between gap-2 py-2">
-          <div className="min-w-0 leading-none">
-            {/* Dieselbe Marken-Typografie wie auf Login-/Admin-Einrichtungsseite (siehe
-             * LoginScreen.tsx/app/admin/page.tsx): "UNIQUE PLACES" kraeftig/dunkel als eigentlicher
-             * Markenname, der Bereichsname darunter klein/tracked/grossgeschrieben als Unterzeile -
-             * statt umgekehrt (vorher war "UNIQUE PLACES" die kleine Zeile). */}
-            <p className="brand-wordmark truncate font-sans text-sm font-semibold tracking-[0.05em] text-ink">UNIQUE PLACES</p>
-            <p className="mt-0.5 truncate text-[10px] font-medium uppercase tracking-[0.18em] text-muted">{t('app_name')}</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <CleaningPauseButton app={app} />
-            {state.user?.role === 'admin' ? (
-              <>
-                {/* Mobile/Tablet (unveraendert bis < xl): exakt das bestehende Such-Icon - per
-                 * `xl:hidden` NUR ab 1280px ausgeblendet, darunter unveraendert sichtbar/funktional. */}
-                <button
-                  type="button"
-                  aria-label={t('search_aria_label')}
-                  onClick={onOpenSearch}
-                  className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-muted transition-colors hover:text-ink xl:hidden"
-                >
-                  <IconSearch width={16} height={16} />
-                </button>
-                {/* Desktop (Punkt 3): kompaktes, wie ein Suchfeld aussehendes Element statt des
-                 * Icons - oeffnet dieselbe, bestehende Reservierungssuche (ReservationSearchSheet
-                 * via onOpenSearch), keine eigene/zweite Such-Implementierung. */}
-                <button
-                  type="button"
-                  onClick={onOpenSearch}
-                  className="hidden h-9 w-72 items-center gap-2 rounded-full border border-line bg-warm-white px-3.5 text-[13px] text-muted transition-colors hover:text-ink xl:flex"
-                >
-                  <IconSearch width={15} height={15} className="shrink-0" aria-hidden="true" />
-                  <span className="truncate">{t('search_desktop_placeholder')}</span>
-                </button>
-              </>
-            ) : null}
-            <button
-              type="button"
-              aria-label={t('profile_title')}
-              onClick={onOpenSettings}
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-muted transition-colors hover:text-ink"
-            >
-              <IconUser width={17} height={17} />
-            </button>
-          </div>
+    // Desktop-Admin-Layout (>= 1280px): der fruehere eigene xl:mx-auto/max-w-Wrapper ist entfallen
+    // (Breite/Zentrierung kommt jetzt einmalig vom Grid in app/page.tsx) - stattdessen platziert
+    // `xl:[grid-column:2] xl:[grid-row:1]` diesen Header direkt in die Hauptbereich-Spalte des
+    // dortigen Grids (neben der linken Navigation, ueber Toolbar/Inhalt). Reine Platzierung, an
+    // Inhalt/Klassen des Headers selbst aendert sich nichts.
+    <header className="shrink-0 border-b border-line bg-warm-white pt-[max(env(safe-area-inset-top),0.5rem)] pl-[max(env(safe-area-inset-left),1rem)] pr-[max(env(safe-area-inset-right),1rem)] xl:[grid-column:2] xl:[grid-row:1]">
+      <div className="flex items-center justify-between gap-2 py-2">
+        <div className="min-w-0 leading-none">
+          {/* Dieselbe Marken-Typografie wie auf Login-/Admin-Einrichtungsseite (siehe
+           * LoginScreen.tsx/app/admin/page.tsx): "UNIQUE PLACES" kraeftig/dunkel als eigentlicher
+           * Markenname, der Bereichsname darunter klein/tracked/grossgeschrieben als Unterzeile -
+           * statt umgekehrt (vorher war "UNIQUE PLACES" die kleine Zeile). */}
+          <p className="brand-wordmark truncate font-sans text-sm font-semibold tracking-[0.05em] text-ink">UNIQUE PLACES</p>
+          <p className="mt-0.5 truncate text-[10px] font-medium uppercase tracking-[0.18em] text-muted">{t('app_name')}</p>
         </div>
-        <p className="truncate pb-2 text-[12px] text-muted">
-          {state.user?.name} · {dateLabel}
-        </p>
+        <div className="flex shrink-0 items-center gap-2">
+          <CleaningPauseButton app={app} />
+          {state.user?.role === 'admin' ? (
+            <>
+              {/* Mobile/Tablet (unveraendert bis < xl): exakt das bestehende Such-Icon - per
+               * `xl:hidden` NUR ab 1280px ausgeblendet, darunter unveraendert sichtbar/funktional. */}
+              <button
+                type="button"
+                aria-label={t('search_aria_label')}
+                onClick={onOpenSearch}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-muted transition-colors hover:text-ink xl:hidden"
+              >
+                <IconSearch width={16} height={16} />
+              </button>
+              {/* Desktop (Punkt 3): kompaktes, wie ein Suchfeld aussehendes Element statt des
+               * Icons - oeffnet dieselbe, bestehende Reservierungssuche (ReservationSearchSheet
+               * via onOpenSearch), keine eigene/zweite Such-Implementierung. */}
+              <button
+                type="button"
+                onClick={onOpenSearch}
+                className="hidden h-9 w-72 items-center gap-2 rounded-full border border-line bg-warm-white px-3.5 text-[13px] text-muted transition-colors hover:text-ink xl:flex"
+              >
+                <IconSearch width={15} height={15} className="shrink-0" aria-hidden="true" />
+                <span className="truncate">{t('search_desktop_placeholder')}</span>
+              </button>
+            </>
+          ) : null}
+          <button
+            type="button"
+            aria-label={t('profile_title')}
+            onClick={onOpenSettings}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-muted transition-colors hover:text-ink"
+          >
+            <IconUser width={17} height={17} />
+          </button>
+        </div>
       </div>
+      <p className="truncate pb-2 text-[12px] text-muted">
+        {state.user?.name} · {dateLabel}
+      </p>
     </header>
   );
 }

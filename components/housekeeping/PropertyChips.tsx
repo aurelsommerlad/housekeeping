@@ -15,7 +15,10 @@ export function PropertyChips({ app }: { app: HousekeepingApp }) {
   if (props.length <= 1) return null;
 
   return (
-    <div className="flex gap-2 overflow-x-auto border-b border-line px-4 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    // Desktop-Admin-Layout: `xl:[grid-column:2] xl:[grid-row:2]` platziert diesen Streifen
+    // innerhalb der Hauptbereich-Spalte des Grids in app/page.tsx, direkt unter dem Header -
+    // reine Platzierung, Inhalt/Klassen unveraendert.
+    <div className="flex gap-2 overflow-x-auto border-b border-line px-4 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden xl:[grid-column:2] xl:[grid-row:2]">
       {props.map((p) => (
         <button
           key={p.code}

@@ -362,7 +362,31 @@ import type {
 // zusaetzliche, per CSS ein-/ausgeblendete zweite Rendering-Variante der Reinigungskarten oder
 // clientseitige Breakpoint-Erkennung per JS - beides ein groesserer struktureller Eingriff, der
 // laut Vorgabe zunaechst nur berichtet, nicht implementiert werden sollte.
-export const APP_VERSION = '2.18.0';
+//
+// 2.19.0 - Desktop-Admin-/Dispositionslayout (>= 1280px, `xl:`), reines Layout-Refactoring auf
+// Basis von app/page.tsx als CSS-Grid (Spalten Navigation/Hauptbereich/Sidebar, Zeilen Header/
+// PropertyChips/Body) - unterhalb xl bleibt exakt der bisherige `flex flex-col`-Mobile-Stapel
+// bestehen (mechanisch per Diff geprueft: an jeder geaenderten Stelle wurden ausschliesslich
+// neue `xl:`-Klassen an bestehende Klassenlisten angehaengt, nie eine bestehende entfernt/
+// ersetzt). (1) Neue schmale linke Desktop-Navigation (DesktopNavRail.tsx) ersetzt ab xl die
+// mobile Bottom Navigation (StaffNavBar.tsx bekommt `xl:hidden`) - beide nutzen jetzt dieselbe,
+// aus StaffNavBar.tsx ausgelagerte Item-/Berechtigungsliste (lib/housekeeping/navItems.ts), keine
+// zweite Navigationslogik. (2) Neue rechte Admin-Sidebar (DesktopAdminSidebar.tsx, nur xl, nur
+// auf der Aufgabenplanung UND fuer Standortverantwortliche/Team-Leads/Admin) zeigt kompakt
+// Tages-Kennzahlen, Team (Klick auf "Team" fuer Admin oeffnet die bestehende Teamansicht,
+// setActiveNav) und einen ehrlichen, leeren "Operations"-Slot (der Operations Monitor existiert
+// in dieser Codebasis noch nicht - bewusst keine erfundenen Findings). Ersetzt die bisherige
+// Team-Auslastung im Hauptbereich, die dort jetzt `xl:hidden` ist (keine doppelte
+// Teamdarstellung) - beide Ansichten lesen dieselbe, neu ausgelagerte dayOverviewFor()-Funktion
+// (lib/housekeeping/dayOverview.ts, 1:1 identische Ableitung wie zuvor inline in TasksScreen.tsx).
+// (3) Der gesamte Layout-Container ist auf max-width 1800px zentriert, damit die Ansicht auf
+// 1920/2560px nicht auseinandergezogen wirkt; das Reinigungen-/Aufgaben-/Fertig-Kartenraster
+// bleibt bei der bereits bestehenden minmax(340px,1fr)-Regel. Verifiziert per Sourcecode-Diff-
+// Audit sowie einem temporaeren, vor dem Commit wieder entfernten CSS-Grid-Smoketest (Playwright-
+// Screenshots bei 375/390/430/1280/1440/1920/2560px) - Mobile-Darstellung/-Verhalten
+// unveraendert, Business-Logik (Apaleo/Task-Ermittlung/INTERCLEAN/Assignments/Timer/Notice/
+// Berechtigungen) nicht angefasst.
+export const APP_VERSION = '2.19.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

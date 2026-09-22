@@ -6,6 +6,8 @@ import { isElevatedHousekeepingUser } from '@/lib/housekeeping/permissions';
 import { StaffHeader } from '@/components/housekeeping/StaffHeader';
 import { PropertyChips } from '@/components/housekeeping/PropertyChips';
 import { StaffNavBar } from '@/components/housekeeping/StaffNavBar';
+import { DesktopNavRail } from '@/components/housekeeping/DesktopNavRail';
+import { DesktopAdminSidebar } from '@/components/housekeeping/DesktopAdminSidebar';
 import { TasksScreen } from '@/components/housekeeping/TasksScreen';
 import { RoomsScreen } from '@/components/housekeeping/RoomsScreen';
 import { StatsScreen } from '@/components/housekeeping/StatsScreen';
@@ -62,11 +64,23 @@ export default function HousekeepingPage() {
   const detailRoom = state.detailRoomKey ? app.rooms().find((r) => r.key === state.detailRoomKey) || null : null;
 
   return (
-    <div className="flex min-h-dvh flex-col bg-page">
+    // Desktop-Admin-Layout (>= 1280px, Punkt 1-2): unterhalb `xl` bleibt dies exakt der bisherige
+    // `flex flex-col`-Stapel (Header/PropertyChips/main/StaffNavBar untereinander, unveraendert).
+    // Ab `xl` wird derselbe Satz direkter Geschwister-Elemente stattdessen zu einem CSS-Grid mit
+    // drei Spalten (Navigation/Hauptbereich/Sidebar) und drei Zeilen (Header/PropertyChips/Body) -
+    // jedes Element bekommt seine Platzierung ueber eine eigene `xl:[grid-column/row:...]`-Klasse
+    // direkt an seiner bestehenden Stelle (siehe StaffHeader.tsx/PropertyChips.tsx), keine neuen
+    // Wrapper noetig, die das mobile Flex-Sizing von `<main>` beeinflussen koennten. Eine leere
+    // Spalte/Zeile (kein Standortverantwortlicher -> keine Sidebar; keine 'rooms'-Ansicht -> keine
+    // PropertyChips) kollabiert automatisch auf 0, `minmax(0,1fr)` fuer den Hauptbereich fuellt den
+    // frei werdenden Platz. `xl:max-w-[1800px] xl:mx-auto` verhindert das "endlose Auseinander-
+    // ziehen" auf sehr breiten Monitoren (Punkt 18: 1920/2560).
+    <div className="flex min-h-dvh flex-col bg-page xl:mx-auto xl:grid xl:h-dvh xl:max-w-[1800px] xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:grid-rows-[auto_auto_1fr] xl:overflow-hidden">
+      <DesktopNavRail app={app} />
       <StaffHeader app={app} onOpenSettings={() => setSettingsOpen(true)} onOpenSearch={() => setSearchOpen(true)} />
       {state.activeNav === 'rooms' ? <PropertyChips app={app} /> : null}
 
-      <main className="flex-1 overflow-y-auto pb-4">
+      <main className="flex-1 overflow-y-auto pb-4 xl:[grid-column:2] xl:[grid-row:3] xl:min-h-0">
         {state.activeNav === 'tasks' ? <TasksScreen app={app} /> : null}
         {state.activeNav === 'rooms' ? (
           !state.activeProperty ? (
@@ -85,6 +99,11 @@ export default function HousekeepingPage() {
           <SettingsScreen app={app} />
         ) : null}
       </main>
+
+      {/* Desktop-Admin-Layout Punkt 11 (nur xl, nur activeNav==='tasks', siehe
+       * DesktopAdminSidebar.tsx fuer die Berechtigungspruefung) - ersetzt auf Desktop die
+       * bisherige, jetzt dort `xl:hidden` geschaltete Team-Auslastung im Hauptbereich. */}
+      <DesktopAdminSidebar app={app} />
 
       <StaffNavBar app={app} />
       <RoomDetailSheet app={app} room={detailRoom} />

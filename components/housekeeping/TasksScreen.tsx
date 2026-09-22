@@ -5,10 +5,11 @@ import type { ReactNode } from 'react';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import type { ResolvedTask } from '@/lib/housekeeping/tasks';
 import type { StaffUser } from '@/lib/housekeeping/types';
-import type { I18nKey } from '@/lib/housekeeping/i18n';
 import { allowedProperties } from '@/lib/housekeeping/rooms';
 import { getPropertyDisplayName } from '@/lib/housekeeping/api';
-import { isPropertyManager, managedPropertyCodes } from '@/lib/housekeeping/permissions';
+import { dayOverviewFor } from '@/lib/housekeeping/dayOverview';
+import { DAY_LABEL_KEYS, DAY_LOCALES, shortDayLabel } from '@/lib/housekeeping/dayLabel';
+import { countLabel } from '@/lib/housekeeping/pluralLabel';
 import { TaskCard } from './TaskCard';
 import { TaskDetailSheet } from './TaskDetailSheet';
 import { ManualTaskFormSheet } from './ManualTaskFormSheet';
@@ -18,26 +19,6 @@ import { BottomSheet } from './BottomSheet';
 import { Button } from '@/components/ui/Button';
 import { IconCheck, IconCheckSquare, IconChevronDown, IconPlus, IconSparkles, IconTask, IconUsers } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
-
-const DAY_LABEL_KEYS = ['day_today', 'day_tomorrow'] as const;
-const LOCALES: Record<string, string> = { de: 'de-DE', en: 'en-GB', pl: 'pl-PL', ro: 'ro-RO' };
-
-/** "Mo 21." statt eines vagen "+2 Tage" (Punkt 7) - der konkrete Wochentag/Kalendertag ist bei
- * der Einsatzplanung sofort eindeutig, waehrend "Heute"/"Morgen" fuer die ersten beiden Tage
- * (schneller erfassbar) unveraendert bleiben. */
-function shortDayLabel(iso: string, locale: string): string {
-  const d = new Date(`${iso}T00:00:00`);
-  const weekday = new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(d).replace(/[.,]/g, '');
-  return `${weekday} ${d.getDate()}.`;
-}
-
-/** Korrektur (UX-Feinschliff Runde 4, Punkt 5): eine einzige gemeinsame Stelle fuer korrektes
- * Singular/Plural statt an jeder Anzeige-Stelle einzeln hartcodiert - waehlt je nach `n` den
- * `_one`/`_many` Nomen-Schluessel und setzt "<n> <Nomen>" zusammen (nur `n === 1` ist Singular,
- * `0` zaehlt sprachlich als Plural: "0 Reinigungen"). */
-function countLabel(t: (key: I18nKey) => string, n: number, oneKey: I18nKey, manyKey: I18nKey): string {
-  return `${n} ${t(n === 1 ? oneKey : manyKey)}`;
-}
 
 /** Punkt 6/7 (UX-Feinschliff): Icon DIREKT neben der Zahl (statt darunter beim Label) - eine
  * visuelle Einheit statt zweier gestapelter Zeilen. Alle drei Kennzahlen teilen sich dieselbe
@@ -87,7 +68,7 @@ function TaskGroup({ text, icon: Icon, toneClass, children }: { text: string; ic
  */
 export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const {
-    state, t, tasksForDay, capacityFor, selectDay, selectPropertyScope, toggleMyTasksOnly,
+    state, t, selectDay, selectPropertyScope, toggleMyTasksOnly,
     toggleTaskMultiSelect, toggleTaskSelection, openTask, bulkAssignTasks, clearDayAssignments, retryTasksLoad,
     noticeForTask, isNoticeAcknowledgedBy, openManualTaskForm, shortStaffName,
   } = app;
@@ -96,26 +77,13 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const [teamOpen, setTeamOpen] = useState(false);
   const [doneOpen, setDoneOpen] = useState(false);
 
-  const isAdmin = state.user?.role === 'admin';
+  // Punkt 17 (Desktop-Admin-Layout): dieselbe Ableitung wie zuvor hier inline, jetzt in
+  // lib/housekeeping/dayOverview.ts ausgelagert - die neue DesktopAdminSidebar.tsx nutzt exakt
+  // dieselbe Funktion, keine zweite/abweichende Berechnung. Definitionen (Reinigungen/Aufgaben/
+  // Fertig, Rollen/Berechtigungen) unveraendert, siehe dortige Kommentare.
+  const { date, visible, cleaningTasks, openManualTasks, doneTasks, isAdmin, isManagerHere, capacity } = dayOverviewFor(app);
   const allowed = allowedProperties(state.user, state.properties.map((p) => p.code));
   const allowedProps = state.properties.filter((p) => allowed.includes(p.code));
-  const managed = managedPropertyCodes(state.user, allowed);
-  const isManagerHere = state.propertyScope === 'all' ? managed.length > 0 || isAdmin : isPropertyManager(state.user, state.propertyScope);
-
-  const date = state.selectedDay || state.planningDays[0];
-  const visible = date ? tasksForDay(date) : [];
-  // Punkt 8 (UX-Feinschliff): fachliche Definition der drei Kennzahlen/Abschnitte - rein aus den
-  // bereits nach Tag/Ansicht/Standort gefilterten `visible`-Daten abgeleitet (Punkt 11: Rollen/
-  // Filter/Berechtigungen bleiben exakt dieselben wie fuer die Kartenliste selbst), keine
-  // Aenderung an der Task-/Zwischenreinigungs-/INTERCLEAN-Ableitung selbst.
-  // - Reinigungen: alle noch nicht abgeschlossenen Reinigungen (turnover/departure/stayover,
-  //   stayover schliesst eine gebuchte INTERCLEAN-Zwischenreinigung automatisch mit ein).
-  // - Aufgaben: offene manuelle Aufgaben.
-  // - Fertig: abgeschlossene Reinigungen PLUS erledigte manuelle Aufgaben.
-  const cleaningTasks = visible.filter((task) => task.type !== 'manual' && task.status !== 'completed');
-  const openManualTasks = visible.filter((task) => task.type === 'manual' && task.status !== 'completed');
-  const doneTasks = visible.filter((task) => task.status === 'completed');
-  const capacity = date && isManagerHere ? capacityFor(date) : [];
   const topCapacityEntry = capacity.find((e) => e.housekeeperId);
   const unassignedCapacityEntry = capacity.find((e) => e.housekeeperId === null);
 
@@ -165,12 +133,15 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const selectClass = 'h-9 w-full appearance-none rounded-full border border-line bg-warm-white pl-3.5 pr-8 text-[13px] font-medium text-ink';
 
   return (
-    <div className="pb-6 xl:mx-auto xl:max-w-[1560px]">
-      {/* Desktop-Optimierung (>= 1280px, siehe StaffHeader.tsx fuer denselben Breakpoint/dieselbe
-       * Max-Breite): rein struktureller Wrapper ohne eigene Mobile-Klassen - fasst Standortfilter/
-       * Tagesnavigation/Kennzahlen/Adminaktionen zu EINER kompakten Desktop-Steuerungszeile
-       * zusammen (Punkt 4-6), unterhalb von xl bleibt jeder der vier Bloecke exakt in seiner
-       * bisherigen Position/Groesse (kein `xl:`-Praefix = kein Effekt unterhalb 1280px). */}
+    <div className="pb-6">
+      {/* Desktop-Admin-Layout (>= 1280px): der bisherige eigene xl:mx-auto/max-w-Wrapper hier
+       * entfaellt - die Breitenbegrenzung/Zentrierung passiert jetzt einmalig auf Ebene der
+       * Grid-Spalte in app/page.tsx (Hauptbereich), damit Header/Toolbar/Sidebar konsistent
+       * dieselbe Spaltenbreite respektieren. Rein struktureller Wrapper ohne eigene Mobile-
+       * Klassen - fasst Standortfilter/Tagesnavigation/Kennzahlen/Adminaktionen zu EINER
+       * kompakten Desktop-Steuerungszeile zusammen (Punkt 4-6), unterhalb von xl bleibt jeder
+       * der vier Bloecke exakt in seiner bisherigen Position/Groesse (kein `xl:`-Praefix = kein
+       * Effekt unterhalb 1280px). */}
       <div className="xl:flex xl:flex-wrap xl:items-center xl:pt-2">
       {showScopeRow ? (
         <div className="flex gap-2 px-4 py-2.5 xl:order-1 xl:flex-none">
@@ -221,7 +192,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             )}
           >
             <span className="truncate text-[12.5px] font-medium">
-              {i < DAY_LABEL_KEYS.length ? t(DAY_LABEL_KEYS[i]) : shortDayLabel(d, LOCALES[state.lang] || 'de-DE')}
+              {i < DAY_LABEL_KEYS.length ? t(DAY_LABEL_KEYS[i]) : shortDayLabel(d, DAY_LOCALES[state.lang] || 'de-DE')}
             </span>
           </button>
         ))}
@@ -282,10 +253,13 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       </div>
 
       {/* Punkt 11: eingeklappt per Default (kompakte Ein-Zeilen-Zusammenfassung), fuer normale
-       * Housekeeper (isManagerHere=false) komplett ausgeblendet. Punkt 7 (Desktop): auf 1280px+
-       * kein fast bildschirmbreiter Balken mehr, sondern ein kompaktes, inhaltsbreites Element. */}
+       * Housekeeper (isManagerHere=false) komplett ausgeblendet. Desktop-Admin-Layout Punkt 14:
+       * dieser Block existiert ab xl NICHT mehr zusaetzlich im Hauptbereich (`xl:hidden`) - dieselben
+       * Team-Daten (capacity/shortStaffName) erscheinen dort stattdessen kompakt in der neuen
+       * rechten Admin-Sidebar (DesktopAdminSidebar.tsx, ueber dayOverviewFor() gespeist), keine
+       * doppelte Teamdarstellung. */}
       {isManagerHere && capacity.length > 0 ? (
-        <div className="mx-4 mt-3 rounded-card-lg border border-line bg-warm-white xl:inline-block xl:w-auto xl:min-w-[280px] xl:max-w-[520px]">
+        <div className="mx-4 mt-3 rounded-card-lg border border-line bg-warm-white xl:hidden">
           <button
             type="button"
             onClick={() => setTeamOpen((v) => !v)}
