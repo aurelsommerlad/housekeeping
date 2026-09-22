@@ -661,7 +661,61 @@ import type {
 // Dateien (icons.tsx, TaskCard.tsx, TaskDetailSheet.tsx, types.ts, i18n.ts, api.ts,
 // useHousekeepingApp.ts, api/task-schedule-overrides.js) geaendert - keine Kartengroessen-,
 // Layout-, Typografie-, Farb-, Tagesnavigations-, Toolbar- oder Mobile-Layout-Aenderungen.
-export const APP_VERSION = '2.25.0';
+// v2.26.0 - Briefing "DEPARTURE/TURNOVER vereinheitlichen": Darstellung und Prioritaetsverstaendnis
+// beider Reinigungstypen angeglichen - die internen Task-Types 'turnover'/'departure' selbst
+// bleiben unveraendert (Datenmodelle NICHT zusammengefuehrt).
+//
+// (1)/(6) Beide teilen sich jetzt dieselbe dezente Kartenfarbe (die bisherige Turnover-Farbe,
+// rot/terracotta) statt getrennt Beige (Abreise) vs. Rot (Turnover) - task-status-config.ts:
+// TASK_TYPE_CONFIG.departure verwendet nun woertlich dieselben Ton-Klassen wie .turnover
+// (toneClass/toneBgClass/toneBorderClass/dotClass), TaskCard.tsx#TYPE_LEFT_BORDER ebenso fuer den
+// "Fertig"-Zustand. Der Unterschied bleibt ausschliesslich ueber das Label erkennbar, keine
+// zweite Farbcodierung. `--color-type-departure` (app/globals.css) bleibt als CSS-Variable
+// bestehen, da sie unabhaengig davon weiterhin fuer die "Aufgaben"-Kennzahl auf Mobile
+// (TasksScreen.tsx) gebraucht wird - dort bewusst nicht veraendert.
+//
+// (2) TURNOVER heisst in der UI jetzt "Abreise & Anreise" statt "Turnover" (i18n-Key
+// type_turnover, DE/EN/PL/RO) - der interne Type-Wert 'turnover' ist davon unberuehrt.
+//
+// (3) Same-Day-Turnover zeigt weiterhin "Abreisezeit → Anreisezeit" plus ABREISE/ANREISE-
+// Belegungszeile - unveraendert, ECI/LCO/manuelle Time-Overrides werden wie bisher beruecksichtigt
+// (TaskCard.tsx#TimeLine/OccupancyLine, keine Aenderung an dieser Ableitung noetig).
+//
+// (4)/(5) Bei DEPARTURE steht an der Stelle, an der beim Turnover die Anreisezeit stuende, jetzt
+// dieselbe Informationslogik als Text: "10:00 → Nächste Anreise 24.09." bzw., falls keine
+// zukuenftige Reservierung bekannt ist, "10:00 → Keine nächste Anreise" (neuer i18n-Key
+// next_arrival_inline, no_next_arrival gekuerzt) - beide bewusst durchgehend dezent/`text-muted`,
+// nicht alarmierend. Die dadurch redundant gewordene, vormals separate rechtsbuendige "Nächste
+// Anreise"-Anzeige auf der Task Card wurde entfernt (TaskDetailSheet.tsx unveraendert, dort keine
+// Redundanz).
+//
+// (7) INTERCLEAN (type 'stayover' mit gebuchtem INTERCLEAN-Service) bleibt vollstaendig
+// unveraendert - eigener Stil, eigenes Label "Zwischenreinigung", nicht Teil dieser Angleichung.
+//
+// (8) tasks.ts#sortTasksForDay: die operative Prioritaet zwischen Turnover und Departure wird
+// nicht mehr aus dem Type selbst abgeleitet (bisher TYPE_TIER: turnover immer vor departure),
+// sondern aus dem tatsaechlichen naechsten Zeitpunkt, zu dem das Apartment bezugsfertig sein muss
+// (neue Funktion nextRequiredAtKey(), ein sortierbarer "YYYY-MM-DD HH:MM"-Schluessel) - Same-Day-
+// Turnover: die heutige effektive Anreisezeit (ECI/Override bereits beruecksichtigt); Departure mit
+// bekannter Folgebelegung: der naechste Anreisetag. Beide Typen bilden jetzt EINEN gemeinsamen
+// Rang (statt zwei getrennter TYPE_TIER-Werte), Stayover/Extra/Manual bleiben unveraendert eigene,
+// niedrigere Raenge. Effekt: eine Departure mit sehr naher Folgeanreise sortiert jetzt vor einer
+// Departure ohne/mit ferner Folgeanreise (vorher beide gleichrangig) - die bestehende Risk Engine
+// wurde dafuer NUR an der einen Stelle angepasst, an der TURNOVER bisher pauschal Vorrang hatte,
+// keine sonstige Neuentwicklung.
+//
+// (9) Kennzahlen: keine Aenderung noetig - eine separate "Turnover"-Kennzahl existierte im
+// Dashboard/TasksScreen ohnehin nicht (nur die uebergeordnete Kategorie "Reinigungen"), DaySummary.
+// turnover bleibt intern fuer Auswertungszwecke bestehen, wird aber nirgends als eigene UI-
+// Kennzahl angezeigt.
+//
+// Verifiziert per tsc/eslint/build (alle sauber) + eigenstaendigem Node-Logiktest fuer
+// sortTasksForDay() (6 Szenarien: Turnover vs. nahe/ferne/unbekannte Departure-Folgeanreise,
+// Reinigung-nach-Abreise-Familie vor Stayover/Extra/Manual, Statusrang und Zeitkonflikt bleiben
+// unveraendert vorrangig) + Source-Diff-Audit (ausschliesslich TaskCard.tsx/i18n.ts/
+// task-status-config.ts/tasks.ts geaendert - keine Kartengroesse/-layout, Tagesnavigation,
+// Desktop-Toolbar, Mobile-Layout oder Apaleo-Datenanbindung betroffen).
+export const APP_VERSION = '2.26.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

@@ -77,6 +77,14 @@ export const TASK_STATUS_CONFIG: Record<TaskStatus, ToneConfig> = {
  * zugleich als Kartenhintergrund - ein Typ hat also GENAU einen Hintergrund- und einen
  * Akzentton, nirgends zusaetzlich vermischt mit Status-Farben. */
 export const TASK_TYPE_CONFIG: Record<TaskType, ToneConfig> = {
+  // Briefing "DEPARTURE/TURNOVER vereinheitlichen": beide sind fuer Housekeeping primaer eine
+  // Reinigung nach Abreise - `turnover` und `departure` teilen sich deshalb hier bewusst
+  // DIESELBEN Ton-Klassen (das bisherige Turnover-Rot/Terracotta), Kartenfarbe/Akzent werden
+  // dadurch automatisch identisch (siehe TaskCard.tsx#toneBgClass als Kartenhintergrund). Der
+  // Unterschied bleibt ausschliesslich ueber das Label erkennbar (labelKey), NICHT ueber eine
+  // zweite Farbe (Punkt 6) - `--color-type-departure` (app/globals.css) bleibt als CSS-Variable
+  // bestehen, da sie an anderer, unabhaengiger Stelle (TasksScreen.tsx-Kennzahl "Aufgaben" auf
+  // Mobile) weiterhin gebraucht wird und dort NICHT veraendert werden soll.
   turnover: {
     labelKey: 'type_turnover',
     toneClass: 'text-type-turnover',
@@ -86,10 +94,10 @@ export const TASK_TYPE_CONFIG: Record<TaskType, ToneConfig> = {
   },
   departure: {
     labelKey: 'type_departure',
-    toneClass: 'text-type-departure',
-    toneBgClass: 'bg-type-departure-bg',
-    toneBorderClass: 'border-type-departure/30',
-    dotClass: 'bg-type-departure',
+    toneClass: 'text-type-turnover',
+    toneBgClass: 'bg-type-turnover-bg',
+    toneBorderClass: 'border-type-turnover/30',
+    dotClass: 'bg-type-turnover',
   },
   stayover: {
     labelKey: 'type_stayover',

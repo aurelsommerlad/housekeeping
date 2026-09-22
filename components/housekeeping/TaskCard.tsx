@@ -35,9 +35,13 @@ function formatDayMonth(iso: string | null): string {
 // Literale Klassennamen (Tailwind kann Utility-Klassen nur erkennen, wenn sie irgendwo im
 // Quellcode woertlich vorkommen - eine zur Laufzeit per String-Ersetzung aus toneBorderClass
 // zusammengesetzte Klasse wuerde vom Scanner nicht gefunden und bliebe ungestylt).
+// Briefing "DEPARTURE/TURNOVER vereinheitlichen" (Punkt 1): dieselbe dezente Kartenfarbe fuer
+// beide Typen, auch im "Fertig"-Zustand (siehe unten, wo dieser Rand statt der vollflaechigen
+// Hintergrundfarbe steht) - `departure` verwendet deshalb bewusst denselben Klassennamen wie
+// `turnover` statt eines eigenen Braun-/Beige-Tons.
 const TYPE_LEFT_BORDER: Record<ResolvedTask['type'], string> = {
   turnover: 'border-l-type-turnover/50',
-  departure: 'border-l-type-departure/50',
+  departure: 'border-l-type-turnover/50',
   stayover: 'border-l-type-stayover/50',
   extra: 'border-l-type-extra/50',
   manual: 'border-l-type-manual/50',
@@ -163,22 +167,25 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
   }
 
   if (task.type === 'departure') {
+    // Briefing "DEPARTURE/TURNOVER vereinheitlichen" (Punkt 4/5): dieselbe Informationslogik wie
+    // bei Turnover ("Abreisezeit → naechster Zeitpunkt, zu dem das Apartment benoetigt wird"),
+    // hier als Text statt einer zweiten Uhrzeit, da bei Departure nur das Anreise-DATUM (nicht die
+    // Uhrzeit) bekannt ist. Ersetzt das vormals separate, rechtsbuendige "Naechste Anreise"-Badge
+    // (das dadurch redundant wurde) - bewusst durchgehend dezent/`text-muted`, auch wenn eine
+    // naechste Anreise bekannt ist (keine alarmierende Farbe fuer "keine bekannt", Punkt 5).
+    const nextArrivalText = task.followingArrivalDate
+      ? translate(lang, 'next_arrival_inline', { date: formatDayMonth(task.followingArrivalDate) })
+      : translate(lang, 'no_next_arrival');
     return (
-      <div className="flex flex-wrap items-center justify-between gap-x-2.5 gap-y-1 border-t border-line/70 pt-2">
-        <span className="flex items-center gap-2.5">
-          <span className="flex items-center gap-1.5 text-[15px] font-semibold tabular-nums text-ink">
-            <IconClock width={15} height={15} className="shrink-0 text-muted" aria-hidden="true" />
-            {task.effectiveDepartureTime}
-          </span>
-          {flags}
-          {overrideFlag}
-          {bookingChangeFlag}
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-line/70 pt-2">
+        <span className="flex items-center gap-1.5 text-[15px] font-semibold tabular-nums text-ink">
+          <IconClock width={15} height={15} className="shrink-0 text-muted" aria-hidden="true" />
+          {task.effectiveDepartureTime}
+          <span className="text-[13px] font-normal text-muted">→ {nextArrivalText}</span>
         </span>
-        {task.followingArrivalDate ? (
-          <span className="text-right text-[11px] leading-tight text-muted">
-            {translate(lang, 'next_arrival_label')}<br />{formatDayMonth(task.followingArrivalDate)}
-          </span>
-        ) : null}
+        {flags}
+        {overrideFlag}
+        {bookingChangeFlag}
       </div>
     );
   }

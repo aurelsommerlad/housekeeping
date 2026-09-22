@@ -473,13 +473,29 @@ export function manualTaskToResolvedTask(mt: ManualTask, scheduleOverride: TaskS
   };
 }
 
+/** Briefing "DEPARTURE/TURNOVER vereinheitlichen" (Punkt 8): sortierbarer String-Schluessel fuer
+ * den naechsten Zeitpunkt, zu dem das Apartment bezugsfertig sein muss - "YYYY-MM-DD HH:MM" ist
+ * lexikographisch exakt chronologisch sortierbar, kein Date-Parsing noetig. Same-Day-Turnover:
+ * die heutige, bereits vollstaendig aufgeloeste Anreisezeit (effectiveArrivalTime beruecksichtigt
+ * Early-Check-in UND manuelle Time-Overrides bereits, siehe resolveTasks()). Departure mit
+ * bekannter Folgebelegung: der naechste Anreisetag - die Uhrzeit DIESER kuenftigen Reservierung
+ * ist uns hier (noch) nicht bekannt, "00:00" ist deshalb bewusst konservativ (dringlicher
+ * eingeschaetzt als tatsaechlich bekannt), was den Vergleich nicht verfaelscht, da ein anderer Tag
+ * ohnehin immer nach "heute" sortiert. Ohne bekannte naechste Belegung das spaeteste denkbare
+ * Datum (am wenigsten dringend). */
+function nextRequiredAtKey(t: ResolvedTask): string {
+  if (t.type === 'turnover' && t.effectiveArrivalTime) return `${t.date} ${t.effectiveArrivalTime}`;
+  if (t.type === 'departure' && t.followingArrivalDate) return `${t.followingArrivalDate} 00:00`;
+  return '9999-12-31 23:59';
+}
+
 /** Priorisierung innerhalb eines Tages - kombiniert den Bearbeitungsstatus (Punkt "Sortierung
  * innerhalb eines Tages": kritische Turnovers/Zeitkonflikte zuerst, dann laufend, pausiert,
- * offen/zugewiesen, zuletzt fertig) mit der bestehenden Typ-/Zeitpriorisierung (Punkt 9/15): 1)
- * Turnover, 2) Departure mit bekannter naher Folgeanreise, 3) sonstige Departures, 4)
- * Stayover/Extra - und darunter nach der EFFEKTIVEN Anreisezeit (ein ECI-Turnover um 13:00 kommt
- * vor einem regulaeren um 16:00). Ein abgeschlossener kritischer Turnover gilt nicht mehr als
- * dringend und sinkt wie jede andere fertige Aufgabe ans Ende. */
+ * offen/zugewiesen, zuletzt fertig) mit der Typ-/Zeitpriorisierung (Punkt 9/15/"DEPARTURE/
+ * TURNOVER vereinheitlichen" Punkt 8): 1) jede "Reinigung nach Abreise" (Turnover ODER Departure,
+ * sortiert nach nextRequiredAtKey - NICHT mehr nach Type), 2) Stayover, 3) Extra, 4) manuelle
+ * Aufgabe. Ein abgeschlossener kritischer Turnover gilt nicht mehr als dringend und sinkt wie
+ * jede andere fertige Aufgabe ans Ende. */
 export function sortTasksForDay(tasks: ResolvedTask[]): ResolvedTask[] {
   function statusTier(t: ResolvedTask): number {
     if (t.status === 'completed') return 5;
@@ -488,20 +504,23 @@ export function sortTasksForDay(tasks: ResolvedTask[]): ResolvedTask[] {
     if (t.status === 'paused') return 3;
     return 4;
   }
+  // Briefing "DEPARTURE/TURNOVER vereinheitlichen" (Punkt 8): die operative Prioritaet zwischen
+  // Turnover und Departure ergibt sich nicht mehr aus dem Typ selbst (beide sind fuer
+  // Housekeeping primaer "Reinigung nach Abreise", siehe TASK_TYPE_CONFIG), sondern EIN
+  // gemeinsamer Rang - die tatsaechliche Reihenfolge innerhalb dieses Rangs entscheidet
+  // ausschliesslich nextRequiredAtKey() (der naechste Zeitpunkt, zu dem das Apartment
+  // bezugsfertig sein muss). Stayover/Extra/Manual bleiben unveraendert eigene, niedrigere Raenge.
   function typeTier(t: ResolvedTask): number {
-    if (t.type === 'departure' && t.followingArrivalDate) return 1;
+    if (t.type === 'turnover' || t.type === 'departure') return 0;
     return TYPE_TIER[t.type];
-  }
-  function arrivalMinutes(t: ResolvedTask): number {
-    return t.type === 'turnover' && t.effectiveArrivalTime ? timeToMinutes(t.effectiveArrivalTime) : Number.MAX_SAFE_INTEGER;
   }
   return tasks.slice().sort((a, b) => {
     const st = statusTier(a) - statusTier(b);
     if (st !== 0) return st;
     const tt = typeTier(a) - typeTier(b);
     if (tt !== 0) return tt;
-    const am = arrivalMinutes(a) - arrivalMinutes(b);
-    if (am !== 0) return am;
+    const rk = nextRequiredAtKey(a).localeCompare(nextRequiredAtKey(b));
+    if (rk !== 0) return rk;
     if (a.propertyCode !== b.propertyCode) return a.propertyCode.localeCompare(b.propertyCode);
     return a.unitName.localeCompare(b.unitName, undefined, { numeric: true });
   });
