@@ -473,6 +473,49 @@ export interface TaskTimeOverride {
 
 export type TaskTimeOverridesState = Record<string, TaskTimeOverride | null>;
 
+/** Ein Eintrag im Verschiebungsverlauf EINES TaskScheduleOverride (Punkt "Aenderungshistorie") -
+ * liegt, analog zu TaskAssignment.history, direkt EINGEBETTET auf dem jeweiligen Override-Datensatz
+ * statt in einer zweiten, globalen Audit-Struktur (Punkt "keine zweite Audit-Architektur"). */
+export interface TaskScheduleHistoryEntry {
+  from: string;
+  to: string;
+  changedBy: string;
+  changedByName: string;
+  changedAt: number;
+}
+
+/**
+ * Manueller Admin-Override des GEPLANTEN Housekeeping-Tags EINES Tasks (Redis
+ * housekeeping:task_schedule_overrides, Key = Task-ID) - komplett analog zu TaskTimeOverride, nur
+ * fuer das Datum statt die Uhrzeit. Trennt sauber zwei Datumsbegriffe (Briefing Punkt 1):
+ * `Task.date`/`ManualTask.date` bleiben das aus Apaleo abgeleitete bzw. urspruenglich gewaehlte
+ * Quelldatum (NIE ueberschrieben) - `scheduledDate` hier ist der davon unabhaengige, tatsaechlich
+ * geplante Reinigungs-/Aufgabentag. `propertyCode` wird serverseitig aus einer VERTRAUENSWUERDIGEN
+ * Quelle ermittelt (Task-ID selbst bei Apaleo-abgeleiteten Tasks, sonst der bestehende
+ * housekeeping:manual_tasks-Datensatz) und hier zusaetzlich gespeichert, weil eine manuelle
+ * Aufgaben-ID (siehe api/manual-tasks.js: "manual_<ts>_<rand>") die Property anders als eine
+ * Reinigungs-Task-ID NICHT selbst kodiert (siehe api/_permissions.js#propertyCodeFromTaskId-
+ * Kommentar) - exakt dasselbe Muster wie bei BookingChangeRecord.propertyCode
+ * (api/booking-changes.js), aus demselben Grund.
+ *
+ * `originalScheduledDate` ist das Quelldatum VOR der ALLERERSTEN Verschiebung und bleibt ueber
+ * beliebig viele weitere Verschiebungen hinweg unveraendert (Briefing Punkt 3) - wird der Task
+ * jemals wieder auf sein Quelldatum zurueckgestellt, wird der gesamte Override-Datensatz geloescht
+ * (siehe api/task-schedule-overrides.js), ein erneutes Verschieben beginnt dann wieder frisch.
+ */
+export interface TaskScheduleOverride {
+  taskId: string;
+  propertyCode: string;
+  scheduledDate: string;
+  originalScheduledDate: string;
+  changedBy: string;
+  changedByName: string;
+  changedAt: number;
+  history: TaskScheduleHistoryEntry[];
+}
+
+export type TaskScheduleOverridesState = Record<string, TaskScheduleOverride | null>;
+
 /**
  * Interner "Wichtiger Hinweis" pro Task (Redis housekeeping:task_notices, Key = Task-ID) - eine
  * VOM Apaleo-Reservierungskommentar (task.comment) komplett getrennte Datenquelle: nie in die

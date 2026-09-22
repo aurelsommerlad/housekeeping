@@ -35,6 +35,9 @@ function canClaimTeamTask(user, propertyCode, assignedTeamId) {
 
 const HASH_KEY = 'housekeeping:task_assignments';
 const LEGACY_HASH_KEY = 'hk:task_assignments';
+// Briefing "Tag ändern": nur GELESEN, nie geschrieben - siehe api/task-schedule-overrides.js fuer
+// die eigentliche Schreib-Route/Rechtepruefung dieses Hashes.
+const SCHEDULE_OVERRIDES_HASH_KEY = 'housekeeping:task_schedule_overrides';
 
 async function allTaskAssignments(redis) {
   const all = await redis.hGetAll(HASH_KEY);
@@ -210,11 +213,23 @@ module.exports = async (req, res) => {
       // Punkt 22: bezieht sich auf Tag + Property/Standortfilter, nicht mehr pauschal auf das
       // ganze Property - "date" ist Pflicht, "property" optional (leer/'all' = alle Properties,
       // fuer die der Aufrufer Standortverantwortlich ist).
+      //
+      // Briefing "Tag ändern" Punkt 13: `date` kommt vom Client als der gerade sichtbare Tag
+      // (state.selectedDay, also der EFFEKTIVE/geplante Tag) - ein Task, der per Schedule-Override
+      // auf einen anderen Tag verschoben wurde, muss deshalb anhand seines EFFEKTIVEN Tages
+      // (scheduledDate) geprueft werden, nicht anhand des in der ID eingebetteten Quelldatums
+      // (dateFromTaskId). Ohne diese Korrektur wuerde "Zuweisungen dieses Tages aufheben" nach
+      // einer Verschiebung entweder den falschen Tag treffen oder den richtigen verfehlen.
       const { date, property } = req.body;
       if (!date) { res.status(400).json({ error: 'date ist erforderlich.' }); return; }
-      const all = await redis.hGetAll(HASH_KEY);
+      const [all, scheduleOverridesRaw] = await Promise.all([
+        redis.hGetAll(HASH_KEY),
+        redis.hGetAll(SCHEDULE_OVERRIDES_HASH_KEY),
+      ]);
       const toDelete = Object.keys(all).filter((id) => {
-        if (dateFromTaskId(id) !== date) return false;
+        const override = parseJSON(scheduleOverridesRaw[id], null);
+        const effectiveDate = override?.scheduledDate || dateFromTaskId(id);
+        if (effectiveDate !== date) return false;
         const propertyCode = propertyCodeFromTaskId(id);
         if (property && property !== 'all' && propertyCode !== property) return false;
         return isPropertyManager(user, propertyCode);

@@ -29,22 +29,23 @@ import {
   getPropertyDisplayName, housekeepingTeamsApi, incidentPhotosApi, incidentsApi, linenItemsApi, loadBackendState,
   loadConsumableItems, loadHousekeepingTeams, loadIntegrationsStatus, loadLinenItems, loadManualTasks, loadNfcTagStatuses,
   loadProperties, loadReservations, loadReservationsRangeForProperties, loadTaskAssignments, loadTaskNotices,
-  loadTaskTimeOverrides, loadUnits, loadUnitsForProperties, manualTasksApi, nfcApi, setUnitCondition, syncBookingChanges,
-  taskAssignmentsApi, taskNoticesApi, taskTimeOverridesApi, usersApi, type IntegrationsStatus, type ManualTaskCreateInput,
-  type ReportIncidentInput,
+  loadTaskScheduleOverrides, loadTaskTimeOverrides, loadUnits, loadUnitsForProperties, manualTasksApi, nfcApi,
+  setUnitCondition, syncBookingChanges, taskAssignmentsApi, taskNoticesApi, taskScheduleOverridesApi, taskTimeOverridesApi,
+  usersApi, type IntegrationsStatus, type ManualTaskCreateInput, type ReportIncidentInput,
 } from './api';
 import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './rooms';
 import { managedPropertyCodes } from './permissions';
+import { dayHeadingLabel } from './dayLabel';
 import {
-  buildTasks, capacityForDay, daySummary, manualTaskToResolvedTask, requiresInspection, resolveTasks, sortTasksForDay,
-  teamCapacityForDay, type ResolvedTask, type TeamContext,
+  buildTasks, canRescheduleTask, capacityForDay, daySummary, manualTaskToResolvedTask, nextArrivalDateForTask,
+  requiresInspection, resolveTasks, sortTasksForDay, teamCapacityForDay, type ResolvedTask, type TeamContext,
 } from './tasks';
 import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, BookingChangeRecordsState, BreakEntry, CapacityEntry, Completion,
   ConsumableItem, ConsumableReport, DaySummary, DoubleupsState, HousekeepingIncident, HousekeepingTeam, LinenItem,
   ManualTask, ManualTasksState, NfcTagStatusesState, Property, ReservationsState, Room, RoomFilter, StaffUser,
-  TaskAssignmentsState, TaskNotice, TaskNoticeAcksState, TaskNoticesState, TaskStartSource, TaskTeamOverridesState,
-  TaskTimeOverridesState, TeamCapacityEntry, TeamPropertyDefaultsState,
+  TaskAssignmentsState, TaskNotice, TaskNoticeAcksState, TaskNoticesState, TaskScheduleOverridesState, TaskStartSource,
+  TaskTeamOverridesState, TaskTimeOverridesState, TeamCapacityEntry, TeamPropertyDefaultsState,
 } from './types';
 
 /** Key-Schema exakt wie api/_nfc.js#unitKey - EINZIGE Stelle im Client, die dieses Format kennt. */
@@ -113,6 +114,10 @@ interface AppState {
   /** Manueller Admin-Override der Abreise-/Anreisezeit (Prioritaet 1), Key = Task-ID - eigene,
    * vom Apaleo-Reservierungskommentar/gebuchten Service getrennte Datenquelle. */
   taskTimeOverrides: TaskTimeOverridesState;
+  /** Manueller Admin-Override des GEPLANTEN Housekeeping-Tags ("Tag ändern", Briefing), Key =
+   * Task-ID - komplett unabhaengig vom aus Apaleo abgeleiteten Quelldatum (Task.date), siehe
+   * lib/housekeeping/tasks.ts#resolveTasks/scheduledDate. */
+  taskScheduleOverrides: TaskScheduleOverridesState;
   /** NFC-Tag-Status je Apartment (Punkt "NFC-Verwaltung", Admin-only) - Key = "propertyCode|
    * unitId" (siehe nfcUnitKey oben). Wird nicht beim Login vorgeladen (nur fuer Admins relevant,
    * selten benoetigt), sondern erst, wenn die NFC-Einstellungen tatsaechlich geoeffnet werden. */
@@ -223,6 +228,7 @@ function initialState(): AppState {
     taskNotices: {},
     taskNoticeAcks: {},
     taskTimeOverrides: {},
+    taskScheduleOverrides: {},
     nfcTags: {},
     nfcTagsLoading: false,
     tasksLoadError: null,
@@ -339,19 +345,22 @@ export function useHousekeepingApp() {
       const [teamsData, linenItems, consumableItems] = await Promise.all([loadHousekeepingTeams(), loadLinenItems(), loadConsumableItems()]);
       patch({
         planningUnits: [], planningReservations: [], taskAssignments: {}, taskNotices: {}, taskNoticeAcks: {},
-        taskTimeOverrides: {}, planningDays: days, manualTasks: {}, bookingChanges: {},
+        taskTimeOverrides: {}, taskScheduleOverrides: {}, planningDays: days, manualTasks: {}, bookingChanges: {},
         teams: teamsData.teams, teamPropertyDefaults: teamsData.propertyDefaults, taskTeamOverrides: teamsData.taskTeamOverrides,
         linenItems, consumableItems,
       });
       return;
     }
-    const [units, reservations, taskAssignments, noticesData, taskTimeOverrides, teamsData, linenItems, consumableItems, manualTasks] =
-      await Promise.all([
+    const [
+      units, reservations, taskAssignments, noticesData, taskTimeOverrides, taskScheduleOverrides, teamsData, linenItems,
+      consumableItems, manualTasks,
+    ] = await Promise.all([
         loadUnitsForProperties(scopeCodes),
         loadReservationsRangeForProperties(scopeCodes, days[0], days[3]),
         loadTaskAssignments(),
         loadTaskNotices(),
         loadTaskTimeOverrides(),
+        loadTaskScheduleOverrides(),
         loadHousekeepingTeams(),
         loadLinenItems(),
         loadConsumableItems(),
@@ -376,7 +385,8 @@ export function useHousekeepingApp() {
     }
     patch({
       planningUnits: units, planningReservations: reservations, taskAssignments,
-      taskNotices: noticesData.notices, taskNoticeAcks: noticesData.acks, taskTimeOverrides, planningDays: days,
+      taskNotices: noticesData.notices, taskNoticeAcks: noticesData.acks, taskTimeOverrides, taskScheduleOverrides,
+      planningDays: days,
       teams: teamsData.teams, teamPropertyDefaults: teamsData.propertyDefaults, taskTeamOverrides: teamsData.taskTeamOverrides,
       linenItems, consumableItems, manualTasks, bookingChanges,
     });
@@ -775,25 +785,30 @@ export function useHousekeepingApp() {
     });
     const teamsById = Object.fromEntries(state.teams.map((tm) => [tm.id, tm]));
     const teamContext: TeamContext = { overrides: state.taskTeamOverrides, propertyDefaults: state.teamPropertyDefaults, teamsById };
-    const resolved = resolveTasks(raw, state.taskAssignments, state.taskTimeOverrides, state.now, teamContext);
+    const resolved = resolveTasks(raw, state.taskAssignments, state.taskTimeOverrides, state.now, teamContext, state.taskScheduleOverrides);
     // Manuelle Aufgaben (Punkt "Admin kann Aufgaben erstellen") - eigener Merge-Pfad statt durch
     // resolveTasks()/TaskAssignmentsState, siehe tasks.ts#manualTaskToResolvedTask. IMMER alle
     // (offen UND erledigt) - die Aufgabenliste (TasksScreen) gruppiert Reinigungen/Aufgaben/Fertig
     // selbst in eigene Abschnitte, statt erledigte Aufgaben hinter einem Filter zu verstecken.
     const manual = Object.values(state.manualTasks)
       .filter((mt): mt is ManualTask => !!mt)
-      .map(manualTaskToResolvedTask);
+      .map((mt) => manualTaskToResolvedTask(mt, state.taskScheduleOverrides[mt.id] || null));
     return [...resolved, ...manual];
   }, [
     state.properties, state.planningUnits, state.planningReservations, state.doubleups, state.planningDays,
-    state.taskAssignments, state.taskTimeOverrides, state.now, state.teams, state.taskTeamOverrides, state.teamPropertyDefaults,
-    state.bookingChanges, state.manualTasks,
+    state.taskAssignments, state.taskTimeOverrides, state.taskScheduleOverrides, state.now, state.teams,
+    state.taskTeamOverrides, state.teamPropertyDefaults, state.bookingChanges, state.manualTasks,
   ]);
 
   /** Aufgaben eines Tages, ungefiltert von "Meine Aufgaben" - fuer Tageszusammenfassung/
-   * Kapazitaetsuebersicht, die immer den vollen Stand des Tages zeigen sollen. */
+   * Kapazitaetsuebersicht, die immer den vollen Stand des Tages zeigen sollen. Briefing
+   * "Tag ändern" (Punkt 13): filtert nach `scheduledDate` (dem tatsaechlich geplanten Tag), NICHT
+   * nach `date` (dem unveraenderten Quelldatum) - das ist die einzige Stelle, an der eine
+   * Verschiebung tatsaechlich wirkt, siehe tasks.ts#ResolvedTask-Kommentar. Dadurch reagieren alle
+   * Tagesansichten (Zaehler/Kartenliste/Team-Auslastung) sofort auf eine Verschiebung, ohne
+   * Reload - derselbe bestehende State-/Neuberechnungs-Mechanismus wie ueberall sonst. */
   const tasksForDayAll = useCallback((date: string): ResolvedTask[] => {
-    return resolvedTasksAll().filter((task) => task.date === date);
+    return resolvedTasksAll().filter((task) => task.scheduledDate === date);
   }, [resolvedTasksAll]);
 
   /** Sichtbare, priorisierte Aufgabenliste fuer die Aufgaben-Ansicht - respektiert
@@ -1163,6 +1178,32 @@ export function useHousekeepingApp() {
     });
   }, [patch, runAction]);
 
+  // --- "Tag ändern" (Briefing): manueller Planungs-Override des geplanten Housekeeping-Tags -
+  // nur Admin darf schreiben (serverseitig erzwungen, siehe api/task-schedule-overrides.js).
+  // `nextArrivalDate` wird 1:1 aus tasks.ts#nextArrivalDateForTask durchgereicht, damit der Server
+  // die "nicht nach der naechsten Anreise"-Regel pruefen kann, ohne selbst Apaleo aufzurufen.
+  const rescheduleTask = useCallback(async (
+    taskId: string, scheduledDate: string, nextArrivalDate?: string | null, hadAssignee?: boolean,
+  ) => {
+    await runAction(async () => {
+      const { override } = await taskScheduleOverridesApi.set(taskId, scheduledDate, nextArrivalDate);
+      patch((s) => ({ taskScheduleOverrides: { ...s.taskScheduleOverrides, [taskId]: override } }));
+      // Punkt 11: dezenter Hinweis, dass die bestehende Zuweisung die Verschiebung uebersteht -
+      // dieselbe Tagesbeschriftung ("Heute"/"Morgen"/"Mo 21.") wie die Tagesnavigation. Der Zusatz
+      // "Zuweisung bleibt bestehen" erscheint nur, wenn tatsaechlich jemand zugewiesen war (sonst
+      // waere er irrefuehrend).
+      const label = dayHeadingLabel(t, stateRef.current.lang, scheduledDate, stateRef.current.planningDays);
+      showToast(t(hadAssignee ? 'schedule_change_saved_with_assignee' : 'schedule_change_saved', { date: label }));
+    });
+  }, [patch, runAction, showToast, t]);
+
+  const resetTaskSchedule = useCallback(async (taskId: string) => {
+    await runAction(async () => {
+      await taskScheduleOverridesApi.remove(taskId);
+      patch((s) => ({ taskScheduleOverrides: { ...s.taskScheduleOverrides, [taskId]: null } }));
+    });
+  }, [patch, runAction]);
+
   // --- NFC-Tag-Verwaltung (Admin-only) - anders als die uebrigen Aktionen NICHT ueber
   // runAction() (das schluckt Rueckgabewerte), da die aufrufende Komponente die frisch erzeugte/
   // abgefragte URL direkt zum Anzeigen/Kopieren braucht.
@@ -1289,6 +1330,9 @@ export function useHousekeepingApp() {
 
     // Manueller Zeiten-Override
     saveTaskTimeOverride, removeTaskTimeOverride,
+
+    // "Tag ändern" (manueller Planungs-Override des geplanten Housekeeping-Tags)
+    rescheduleTask, resetTaskSchedule,
 
     // NFC-Tag-Verwaltung
     loadNfcTags, createNfcTag, revealNfcTag, deactivateNfcTag, replaceNfcTag,

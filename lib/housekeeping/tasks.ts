@@ -20,7 +20,8 @@ import { unitCondition } from './rooms';
 import type {
   ApaleoReservation, ApaleoUnit, BookingChangeRecord, BookingChangeRecordsState, CapacityEntry, DaySummary, DoubleupsState,
   HousekeepingTeam, ManualTask, Task, TaskAssignmentsState, TaskHistoryEntry, TaskReservationSummary, TaskStatus,
-  TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState, TeamCapacityEntry, TeamPropertyDefaultsState, TaskType,
+  TaskScheduleOverride, TaskScheduleOverridesState, TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState,
+  TeamCapacityEntry, TeamPropertyDefaultsState, TaskType,
 } from './types';
 
 /** Standardzeiten (Prioritaet 3, ohne gebuchtes Extra/Override) - siehe Briefing Punkt 1.
@@ -315,6 +316,15 @@ export interface ResolvedTask extends Task {
    * einen Override versehentlich erzeugten Konflikt ab, ohne die beiden Faelle separat pflegen zu
    * muessen. */
   timeConflict: boolean;
+  /** Aktiver Planungs-Override (Briefing "Tag ändern") - `null`, wenn keiner gesetzt ist, sonst
+   * derselbe Datensatz wie in TaskScheduleOverridesState. */
+  scheduleOverride: TaskScheduleOverride | null;
+  /** Der TATSAECHLICH geplante Housekeeping-Tag - `scheduleOverride?.scheduledDate` falls gesetzt,
+   * sonst identisch zu `date` (dem unveraenderten Apaleo-/Quelldatum). ALLE Tagesansichten
+   * (tasksForDay/daySummary/capacityForDay/teamCapacityForDay) filtern nach DIESEM Feld, nicht nach
+   * `date` - das ist der einzige Ort, an dem eine Verschiebung tatsaechlich wirkt (siehe
+   * useHousekeepingApp.ts#tasksForDayAll). `date` selbst bleibt fuer IMMER das Quelldatum. */
+  scheduledDate: string;
 }
 
 /** Housekeeping Teams: Kontext fuer die Team-Ableitung in resolveTasks() - Override VOR
@@ -338,6 +348,7 @@ export function resolveTasks(
   overrides: TaskTimeOverridesState,
   now: number,
   teamContext: TeamContext = EMPTY_TEAM_CONTEXT,
+  scheduleOverrides: TaskScheduleOverridesState = {},
 ): ResolvedTask[] {
   return tasks.map((task) => {
     const a = assignments[task.id];
@@ -356,19 +367,23 @@ export function resolveTasks(
       cleaningWindowMinutes,
       timeConflict: cleaningWindowMinutes !== null && cleaningWindowMinutes <= 0,
     };
+    // Briefing "Tag ändern" (Punkt 1/3): `date` bleibt das unveraenderte Apaleo-/Quelldatum -
+    // `scheduledDate` ist der einzige Ort, an dem ein Planungs-Override tatsaechlich wirkt.
+    const scheduleOverride = scheduleOverrides[task.id] || null;
+    const scheduleMeta = { scheduleOverride, scheduledDate: scheduleOverride?.scheduledDate || task.date };
     const teamOverride = teamContext.overrides[task.id];
     const assignedTeamId = teamOverride ? teamOverride.teamId : (teamContext.propertyDefaults[task.propertyCode] || null);
     const assignedTeamName = assignedTeamId ? (teamContext.teamsById[assignedTeamId]?.name || teamOverride?.teamName || null) : null;
     const teamMeta = { assignedTeamId, assignedTeamName };
     if (!a) {
       return {
-        ...task, ...timeMeta, ...teamMeta, status: 'open', assignedUserId: null, assignedUserName: null,
+        ...task, ...timeMeta, ...scheduleMeta, ...teamMeta, status: 'open', assignedUserId: null, assignedUserName: null,
         cleaningStartedAt: null, elapsedSeconds: 0, completedAt: null, history: [],
       };
     }
     const elapsed = (a.elapsedSeconds || 0) + (a.cleaningStartedAt ? Math.round((now - a.cleaningStartedAt) / 1000) : 0);
     return {
-      ...task, ...timeMeta, ...teamMeta, status: a.status, assignedUserId: a.housekeeperId, assignedUserName: a.housekeeperName,
+      ...task, ...timeMeta, ...scheduleMeta, ...teamMeta, status: a.status, assignedUserId: a.housekeeperId, assignedUserName: a.housekeeperName,
       cleaningStartedAt: a.cleaningStartedAt, elapsedSeconds: elapsed, completedAt: a.completedAt || null,
       history: a.history || [],
     };
@@ -381,8 +396,13 @@ export function resolveTasks(
  * sortTasksForDay/tasksForDay sie ohne Sonderpfad mitrendern koennen. Bewusst KEIN Durchlauf durch
  * resolveTasks()/TaskAssignmentsState - eine manuelle Aufgabe hat keinen Reinigungs-Workflow
  * (kein Timer/Pause/Team), ihr Status kommt 1:1 aus dem ManualTask-Datensatz selbst (Punkt 3).
+ *
+ * Briefing "Tag ändern" (Punkt 3): `scheduleOverride` optional, exakt derselbe Datensatz-Typ wie
+ * bei einer Reinigung (dieselbe housekeeping:task_schedule_overrides-Hashmap, Key = mt.id) - `null`
+ * bedeutet "noch nie verschoben", `scheduledDate` faellt dann auf `mt.date` (das Datum, das beim
+ * Erstellen der Aufgabe gewaehlt wurde) zurueck, analog zu `task.date` bei einer Reinigung.
  */
-export function manualTaskToResolvedTask(mt: ManualTask): ResolvedTask {
+export function manualTaskToResolvedTask(mt: ManualTask, scheduleOverride: TaskScheduleOverride | null = null): ResolvedTask {
   return {
     id: mt.id,
     propertyId: mt.propertyCode,
@@ -435,6 +455,8 @@ export function manualTaskToResolvedTask(mt: ManualTask): ResolvedTask {
     arrivalOverridden: false,
     cleaningWindowMinutes: null,
     timeConflict: false,
+    scheduleOverride,
+    scheduledDate: scheduleOverride?.scheduledDate || mt.date,
   };
 }
 
@@ -472,8 +494,34 @@ export function sortTasksForDay(tasks: ResolvedTask[]): ResolvedTask[] {
   });
 }
 
+/** Briefing "Tag ändern" Punkt 12: ein bereits gestarteter/pausierter/abgeschlossener Task darf
+ * nicht mehr verschoben werden (nur 'open'/'assigned' sind verschiebbar) - fuer eine manuelle
+ * Aufgabe sinngemaess dasselbe ueber ihren eigenen, kleineren Status-Raum ('open'/'completed').
+ * EINE Stelle fuer diese Regel, von Server (api/task-schedule-overrides.js, dort dieselbe Pruefung
+ * nochmal serverseitig gegen den frischen Redis-Stand) UND Client (TaskDetailSheet.tsx, um die
+ * Aktion gar nicht erst anzubieten) genutzt.
+ */
+export function canRescheduleTask(status: TaskStatus): boolean {
+  return status === 'open' || status === 'assigned';
+}
+
+/** Briefing "Tag ändern" Punkt 7: das harte Referenzdatum, ab dem eine Verschiebung blockiert wird
+ * ("... kann nicht nach der nächsten Anreise geplant werden") bzw. bei Gleichheit eine deutliche
+ * Warnung ausloest - bei Turnover ist das der Task-Tag selbst (die naechste Anreise findet AM
+ * SELBEN Tag statt), bei Departure die bekannte Folgeanreise (falls schon bekannt), sonst gibt es
+ * keine Kollisionsgrenze (Zwischenreinigung/Aufgabe/Extra). */
+export function nextArrivalDateForTask(task: Task): string | null {
+  if (task.type === 'turnover') return task.date;
+  if (task.type === 'departure') return task.followingArrivalDate;
+  return null;
+}
+
 export function daySummary(date: string, tasks: ResolvedTask[]): DaySummary {
-  const dayTasks = tasks.filter((t) => t.date === date);
+  // Briefing "Tag ändern" (Punkt 13): filtert nach `scheduledDate` (dem TATSAECHLICH geplanten
+  // Tag), nicht nach `date` (dem unveraenderten Quelldatum) - sonst wuerde ein verschobener Task
+  // hier faelschlich verschwinden, obwohl der Aufrufer (useHousekeepingApp.ts#tasksForDayAll)
+  // bereits korrekt nach scheduledDate vorgefiltert hat.
+  const dayTasks = tasks.filter((t) => t.scheduledDate === date);
   return {
     date,
     total: dayTasks.length,
@@ -489,7 +537,8 @@ export function daySummary(date: string, tasks: ResolvedTask[]): DaySummary {
 /** Team-/Kapazitaetsuebersicht (Punkt 12): Anzahl Aufgaben je Housekeeper an diesem Tag, plus
  * "Nicht zugewiesen" als letzter Eintrag (housekeeperId: null). */
 export function capacityForDay(date: string, tasks: ResolvedTask[]): CapacityEntry[] {
-  const dayTasks = tasks.filter((t) => t.date === date);
+  // Siehe Kommentar in daySummary() - scheduledDate statt date.
+  const dayTasks = tasks.filter((t) => t.scheduledDate === date);
   const map = new Map<string, CapacityEntry>();
   let unassigned = 0;
   for (const t of dayTasks) {
@@ -509,7 +558,8 @@ export function capacityForDay(date: string, tasks: ResolvedTask[]): CapacityEnt
  * konfiguriertes Standard-Team) buendeln sich in einem abschliessenden `teamId: null`-Eintrag,
  * analog zum "Nicht zugewiesen"-Eintrag von capacityForDay(). */
 export function teamCapacityForDay(date: string, tasks: ResolvedTask[]): TeamCapacityEntry[] {
-  const dayTasks = tasks.filter((t) => t.date === date);
+  // Siehe Kommentar in daySummary() - scheduledDate statt date.
+  const dayTasks = tasks.filter((t) => t.scheduledDate === date);
   const map = new Map<string, TeamCapacityEntry>();
   const noTeamTasks: ResolvedTask[] = [];
   for (const t of dayTasks) {

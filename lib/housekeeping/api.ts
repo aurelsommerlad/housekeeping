@@ -14,8 +14,8 @@ import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, BookingChangeRecordsState, DoubleupsState, Completion, BreakEntry,
   ConsumableItem, ConsumableReport, HousekeepingIncident, HousekeepingTeam, LinenItem, ManualTasksState,
   NfcTagStatusesState, Property, ReservationSearchResult, ReservationsState, StaffUser, TaskAssignmentsState, TaskNotice,
-  TaskNoticeAck, TaskNoticeAcksState, TaskNoticesState, TaskStartSource, TaskTeamOverridesState, TaskTimeOverride,
-  TaskTimeOverridesState, TeamPropertyDefaultsState,
+  TaskNoticeAck, TaskNoticeAcksState, TaskNoticesState, TaskScheduleOverride, TaskScheduleOverridesState, TaskStartSource,
+  TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState, TeamPropertyDefaultsState,
 } from './types';
 
 // MINOR-Bump (2.5.0 -> 2.6.0): TaskCard-Redesign - klare Informationshierarchie (Apartment+Standort,
@@ -427,7 +427,71 @@ import type {
 // `xl:`-Klassen bzw. das neue, isolierte Nav-Element betroffen) + temporaerem CSS-Grid-Smoketest
 // (Produktionsbuild, 1280/1440/1920/2560px, vor dem Commit entfernt) + Playwright-Regressionslauf
 // der echten Login-Seite bei 375/390/430/1280/1440/1920/2560px ohne Konsolenfehler.
-export const APP_VERSION = '2.21.0';
+//
+// MINOR-Bump (2.21.0 -> 2.22.0): "Tag ändern" - Admin kann Reinigungen (Turnover/Abreise/
+// INTERCLEAN) UND manuelle Aufgaben auf einen anderen Tag innerhalb des bestehenden 4-Tage-
+// Planungsfensters (Heute+3) verschieben, ohne die zugrundeliegende Apaleo-Reservierung
+// (Anreise/Abreise/Unit/Service/Kommentar) jemals zu beruehren - Apaleo bleibt Source of Truth.
+//
+// Analyse vor der Implementierung (siehe ausfuehrliche Kommentare in den jeweiligen Dateien):
+// Task-IDs sind bereits deterministisch aus dem QUELLDATUM gebildet (taskId() in tasks.ts,
+// "<propertyCode>|<unitId>|<date>|<type>|<sourceReservationId>") und werden bei jedem Apaleo-Sync
+// exakt an diesem einen Tag neu abgeleitet - eine Verschiebung aendert diese ID nie, sondern setzt
+// ausschliesslich einen neuen `scheduledDate`-Wert (housekeeping:task_schedule_overrides, neue
+// Route api/task-schedule-overrides.js, komplett analog zu task-time-overrides.js). Alle
+// Tagesansichten (tasksForDay/daySummary/capacityForDay/teamCapacityForDay) filtern jetzt nach
+// `scheduledDate` statt `date` - dadurch verschwindet ein verschobener Task sofort vom alten Tag
+// und erscheint sofort am neuen, OHNE Dopplung (per Node-Testskript verifiziert, siehe unten).
+//
+// Datenmodell (types.ts#TaskScheduleOverride): `scheduledDate` (aktuell geplant),
+// `originalScheduledDate` (Quelldatum vor der ERSTEN Verschiebung, bleibt ueber beliebig viele
+// weitere Verschiebungen unveraendert), `changedBy`/`changedByName`/`changedAt` + eingebettetes
+// `history[]` (jede Verschiebung protokolliert, kein zweites Audit-System). Wird wieder exakt auf
+// das Quelldatum zurueckgestellt, loescht der Server den Override komplett (Normalfall: Quell- und
+// geplantes Datum sind identisch).
+//
+// Berechtigungen (Punkt 4): nur Admin darf schreiben (serverseitig in
+// api/task-schedule-overrides.js erzwungen, admin-only Aktion 'set'/'remove'), jeder mit
+// Property-Zugriff darf lesen - Standortverantwortliche/Team-Leads/Housekeeper sehen die
+// Verschiebung, koennen sie aber nicht durchfuehren (kein Stift-Icon im UI).
+//
+// Status-Guard (Punkt 12): eine laufende/pausierte/abgeschlossene Reinigung (bzw. eine erledigte
+// Aufgabe) kann nicht mehr verschoben werden (canRescheduleTask() in tasks.ts, serverseitig anhand
+// des frischen Redis-Standes erneut geprueft, nicht nur clientseitig).
+//
+// Kollisionslogik (Punkt 6/7): TaskDetailSheet.tsx zeigt vor dem Speichern die Abreise-/Naechste-
+// Anreise-Zeiten, warnt bei Kollision (Termin = naechste Anreise) und blockiert das Speichern hart,
+// wenn der gewaehlte Tag NACH der naechsten Anreise liegt - sowohl clientseitig (Save-Button
+// deaktiviert) als auch serverseitig (dieselbe String-Vergleichslogik in
+// api/task-schedule-overrides.js, ohne dass die Route selbst Apaleo aufruft).
+//
+// Buchungsaenderungs-Interaktion (Punkt 16): die bestehende Buchungsaenderungs-Erkennung
+// (api/booking-changes.js, unveraendert) wird NICHT dupliziert - TaskDetailSheet.tsx kreuzt
+// lediglich `bookingChange.departureFrom` gegen einen evtl. noch vorhandenen Schedule-Override auf
+// den DAMALIGEN Task (Best-Effort-Rekonstruktion der alten ID), damit ein bestehender manueller
+// Override nicht kommentarlos verschwindet, wenn sich die Reservierung danach in Apaleo aendert.
+//
+// UI: dezentes "Verschoben"-Icon (bestehendes IconRefresh) auf TaskCard neben Status/Zuweisung,
+// "Geplant für"/"Verschoben · ursprünglich ..." in TaskDetailSheet mit Admin-Edit-Stift (analog
+// zum bestehenden Zeiten-Editor - kein neues "•••"-Menue), Schnellauswahl aus den 4 Planungstagen
+// + bestehender nativer Date-Picker fuer "Anderes Datum" (bewusst auf das 4-Tage-Fenster begrenzt,
+// siehe Analyse-Kommentar in api/task-schedule-overrides.js), dezenter Toast nach dem Speichern
+// ("Auf {Tag} verschoben · Zuweisung bleibt bestehen" nur, wenn tatsaechlich zugewiesen war).
+//
+// Bugfix im Zuge der Analyse: api/task-assignments.js#clearScope ("Zuweisungen dieses Tages
+// aufheben") filterte bislang nach dem in der Task-ID eingebetteten Quelldatum statt dem
+// tatsaechlich sichtbaren/geplanten Tag - haette nach einer Verschiebung den falschen Tag
+// getroffen bzw. den richtigen verfehlt. Jetzt beruecksichtigt die Route denselben
+// Schedule-Override wie die Anzeige.
+//
+// Verifiziert per tsc/eslint/build + einem eigenstaendigen Node-Testskript (16 pruefbare
+// Logikfaelle: Verschiebung je Reinigungstyp/Aufgabe, stabile Task-ID, originalScheduledDate ueber
+// mehrere Verschiebungen, Zuweisung bleibt bestehen, Tageszaehler/Dedupe, Status-Sperre, Kollisions-
+// /Blockierlogik) + Playwright-Regression der Login-Seite. Admin-only-Durchsetzung, Redis-
+// Persistenz und Apaleo-Unveraendertheit sind per Code-Review verifiziert (kein Apaleo-Zugriff in
+// der neuen Route, siehe dortiger Kommentar) - ein voller Login-/Redis-/Apaleo-Rundlauf ist in
+// diesem Sandbox mangels Zugangsdaten nicht moeglich (bestehende Einschraenkung dieser Umgebung).
+export const APP_VERSION = '2.22.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -819,6 +883,24 @@ export const taskTimeOverridesApi = {
   set: (taskId: string, times: { departureTime?: string; arrivalTime?: string }) =>
     backendPost<{ override: TaskTimeOverride }>('task-time-overrides', { action: 'set', taskId, ...times }),
   remove: (taskId: string) => backendPost<{ ok: true }>('task-time-overrides', { action: 'remove', taskId }),
+};
+
+export async function loadTaskScheduleOverrides(): Promise<TaskScheduleOverridesState> {
+  const data = await backendGet<{ overrides?: TaskScheduleOverridesState }>('task-schedule-overrides');
+  return data.overrides || {};
+}
+
+/** Manueller Admin-Override des geplanten Housekeeping-Tags ("Tag ändern", siehe
+ * types.ts#TaskScheduleOverride) - siehe api/task-schedule-overrides.js fuer die serverseitige
+ * Rechtepruefung (nur Admin darf schreiben; jeder mit Property-Zugriff darf lesen). `nextArrivalDate`
+ * ist optional und dient ausschliesslich der serverseitigen Plausibilitaetspruefung "nicht nach der
+ * naechsten Anreise" (der Server ruft dafuer selbst nie Apaleo auf, siehe dortiger Kommentar). */
+export const taskScheduleOverridesApi = {
+  set: (taskId: string, scheduledDate: string, nextArrivalDate?: string | null) =>
+    backendPost<{ override: TaskScheduleOverride | null }>(
+      'task-schedule-overrides', { action: 'set', taskId, scheduledDate, ...(nextArrivalDate ? { nextArrivalDate } : {}) },
+    ),
+  remove: (taskId: string) => backendPost<{ ok: true }>('task-schedule-overrides', { action: 'remove', taskId }),
 };
 
 /** Manuell von Admin erstellte Aufgaben (Punkt "Admin kann Aufgaben erstellen") - siehe

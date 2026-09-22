@@ -383,7 +383,19 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
           {task.type === 'manual' ? <IconTask width={14} height={14} className="shrink-0 text-type-manual" aria-hidden="true" /> : null}
           <TonePill config={typeConfig} lang={lang} size="sm" />
         </span>
-        <WorkStatus task={task} lang={lang} shortName={shortName} />
+        <span className="flex min-w-0 items-center gap-1">
+          {/* Briefing "Tag ändern" Punkt 8: dezente Kennzeichnung einer manuell verschobenen
+           * Reinigung/Aufgabe - bestehendes Outline-Icon (IconRefresh, bereits fuer
+           * "booking_changed_badge" in TimeLine() verwendet, hier fuer denselben "etwas an der
+           * Planung wurde geaendert"-Sinngehalt in einer anderen Zeile/anderem Kontext), kein
+           * neues Icon, keine Kartenvergroesserung (bleibt in der bestehenden Statuszeile). */}
+          {task.scheduleOverride ? (
+            <span title={translate(lang, 'rescheduled_badge_label')}>
+              <IconRefresh width={13} height={13} className="shrink-0 text-muted" role="img" aria-label={translate(lang, 'rescheduled_badge_label')} />
+            </span>
+          ) : null}
+          <WorkStatus task={task} lang={lang} shortName={shortName} />
+        </span>
       </div>
 
       <TimeLine task={task} lang={lang} />

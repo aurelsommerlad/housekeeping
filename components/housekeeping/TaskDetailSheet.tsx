@@ -1,8 +1,10 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
+import { dayHeadingLabel } from '@/lib/housekeeping/dayLabel';
 import { isAdmin, isPropertyManager, isTeamLead } from '@/lib/housekeeping/permissions';
 import { TASK_STATUS_CONFIG, TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
-import type { TaskReservationSummary } from '@/lib/housekeeping/types';
+import { canRescheduleTask, nextArrivalDateForTask, taskId as buildTaskId } from '@/lib/housekeeping/tasks';
+import type { TaskReservationSummary, TaskScheduleOverride, TaskType } from '@/lib/housekeeping/types';
 import type { HousekeepingApp, ResolvedTask } from '@/lib/housekeeping/useHousekeepingApp';
 import { BottomSheet } from './BottomSheet';
 import { TonePill } from './TonePill';
@@ -117,7 +119,9 @@ function TimeBadge({ icon, tone, title, children }: { icon: Parameters<typeof Ti
  * Detailansicht - nur die housekeeping-relevanten Felder, die sich tatsaechlich geaendert haben
  * (siehe types.ts#BookingChangeRecord/api/booking-changes.js). Apaleo liefert nur den aktuellen
  * Stand; der Vorher-Wert kommt ausschliesslich aus dem separat gespeicherten Snapshot. */
-function BookingChangeDetail({ change, t }: { change: NonNullable<ResolvedTask['bookingChange']>; t: HousekeepingApp['t'] }) {
+function BookingChangeDetail({
+  change, orphanedSchedule, t,
+}: { change: NonNullable<ResolvedTask['bookingChange']>; orphanedSchedule: TaskScheduleOverride | null; t: HousekeepingApp['t'] }) {
   return (
     <div className="rounded-control border border-line bg-surface px-3.5 py-3">
       <div className="flex items-start gap-2">
@@ -143,6 +147,18 @@ function BookingChangeDetail({ change, t }: { change: NonNullable<ResolvedTask['
               </p>
             ) : null}
           </div>
+          {/* Briefing "Tag ändern" Punkt 16: die bestehende Buchungsaenderungs-Erkennung (Punkt
+           * "Buchungsaenderung sichtbar machen") erkennt bereits, dass sich die Abreise geaendert
+           * hat - hier wird das lediglich mit einem evtl. noch vorhandenen manuellen
+           * Planungs-Override auf den DAMALIGEN Termin gekreuzt (siehe TaskDetailSheet()
+           * #orphanedSchedule), damit ein bestehender Override nicht kommentarlos verschwindet,
+           * ohne eine zweite/konkurrierende Aenderungserkennung zu bauen. */}
+          {orphanedSchedule ? (
+            <p className="mt-1.5 flex items-start gap-1.5 text-[12px] text-status-attention">
+              <IconAlertCircle width={13} height={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+              {t('schedule_override_orphaned_note', { date: formatDayMonth(orphanedSchedule.scheduledDate) })}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>
@@ -161,7 +177,10 @@ function CleaningAssignmentSection({
   app, task, isManager, assignmentOpen, onToggleAssignment,
 }: { app: HousekeepingApp; task: ResolvedTask; isManager: boolean; assignmentOpen: boolean; onToggleAssignment: () => void }) {
   const { t, state, assignTask, releaseTask, workloadForPropertyDay, shortStaffName } = app;
-  const workload = workloadForPropertyDay(task.propertyCode, task.date);
+  // Briefing "Tag ändern" Punkt 13: die Auslastungsanzeige ("N Aufgaben heute") muss den
+  // EFFEKTIVEN Tag betrachten (scheduledDate), nicht das unveraenderte Quelldatum - sonst wuerde
+  // sie nach einer Verschiebung die Auslastung des falschen Tages zeigen.
+  const workload = workloadForPropertyDay(task.propertyCode, task.scheduledDate);
   // Housekeeping Teams: der Team-Verantwortliche des GENAU diesem Task zugeordneten Teams darf
   // hier zusaetzlich zu Standortverantwortlichen Personen zuweisen/umverteilen/freigeben - aber
   // ausschliesslich innerhalb des eigenen Teams (server-seitig identisch durchgesetzt, siehe
@@ -429,6 +448,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
     finishTaskDoubleup, showToast, shortStaffName,
     noticeForTask, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice,
     saveTaskTimeOverride, removeTaskTimeOverride, setTaskTeam,
+    rescheduleTask, resetTaskSchedule,
   } = app;
   const open = !!task;
   const [noticeFormOpen, setNoticeFormOpen] = useState(false);
@@ -438,6 +458,8 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   const [arrivalDraft, setArrivalDraft] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
   const [assignmentOpen, setAssignmentOpen] = useState(false);
+  const [scheduleFormOpen, setScheduleFormOpen] = useState(false);
+  const [scheduleDraft, setScheduleDraft] = useState('');
   // Punkt 7: kurzzeitige Hervorhebung der Notice-Card, wenn ein Housekeeper "Reinigung starten"
   // versucht, ohne den wichtigen Hinweis bestaetigt zu haben (siehe onNoticeBlocked unten).
   const noticeRef = useRef<HTMLDivElement>(null);
@@ -496,6 +518,57 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
     setTimeFormOpen(false);
   }
 
+  // --- "Tag ändern" (Briefing) ---------------------------------------------------------------
+  // Punkt 4: nur Admin darf tatsaechlich verschieben - Standortverantwortliche/Team-Leads/
+  // Housekeeper sehen "Geplant für"/"Verschoben" weiterhin (siehe JSX unten), aber ohne Stift-Icon.
+  // Punkt 12: eine laufende/pausierte/abgeschlossene Reinigung (bzw. eine erledigte Aufgabe) kann
+  // nicht mehr verschoben werden. Punkt: 'extra' (tagesaktuelle Zusatzausstattung ohne eigenen Tag)
+  // ist begrifflich nicht "verschiebbar" (siehe tasks.ts#buildTasks - wird taeglich neu nur fuer
+  // HEUTE abgeleitet) und deshalb bewusst ausgenommen.
+  const canScheduleType = task.type !== 'extra';
+  const canEditSchedule = canScheduleType && isAdmin(state.user) && canRescheduleTask(task.status);
+  // Punkt 7: das harte Referenzdatum fuer Warnung/Blockierung - nur bei Turnover/Departure gesetzt.
+  const nextArrivalDate = nextArrivalDateForTask(task);
+  // Punkt "vor Implementierung analysieren"/Server-Kommentar (api/task-schedule-overrides.js): das
+  // Planungsfenster ist unveraendert 4 Tage breit (Heute+3) - eine Verschiebung ausserhalb dieses
+  // Fensters wuerde den Task beim naechsten Tageswechsel verwaisen lassen (sein Quelldatum faellt
+  // aus dem rollierenden Fenster, buildTasks() erzeugt ihn dann gar nicht mehr). Schnellauswahl UND
+  // freies Datum werden deshalb bewusst auf genau dieses Fenster begrenzt.
+  const scheduleMin = state.planningDays[0] || task.scheduledDate;
+  const scheduleMax = state.planningDays[state.planningDays.length - 1] || task.scheduledDate;
+  const scheduleBlocked = !!(nextArrivalDate && scheduleDraft && scheduleDraft > nextArrivalDate);
+  const scheduleCollision = !!(nextArrivalDate && scheduleDraft && scheduleDraft === nextArrivalDate);
+
+  function openScheduleForm() {
+    setScheduleDraft(task!.scheduledDate);
+    setScheduleFormOpen(true);
+  }
+  async function handleSaveSchedule() {
+    if (!scheduleDraft || scheduleBlocked) return;
+    if (scheduleDraft === task!.scheduledDate) { setScheduleFormOpen(false); return; }
+    await rescheduleTask(task!.id, scheduleDraft, nextArrivalDate, !!task!.assignedUserId);
+    setScheduleFormOpen(false);
+  }
+  async function handleResetSchedule() {
+    if (typeof window !== 'undefined' && !window.confirm(t('reset_schedule_confirm'))) return;
+    await resetTaskSchedule(task!.id);
+    setScheduleFormOpen(false);
+  }
+  // Briefing Punkt 16: bestehende Buchungsaenderungs-Erkennung (task.bookingChange, siehe oben)
+  // gegen einen evtl. noch vorhandenen manuellen Override auf den DAMALIGEN Termin kreuzen - reine
+  // Best-Effort-Anzeige (Reinigung/Turnover sind die einzigen Typen, deren Abreisedatum sich per
+  // Buchungsaenderung verschieben laesst), keine zweite Aenderungserkennung.
+  const orphanedSchedule = (() => {
+    if (!task.bookingChange?.departureFrom || !task.sourceReservationId) return null;
+    const candidateTypes: TaskType[] = ['turnover', 'departure'];
+    for (const ty of candidateTypes) {
+      const oldId = buildTaskId(task.propertyCode, task.unitId, task.bookingChange.departureFrom, ty, task.sourceReservationId);
+      const found = state.taskScheduleOverrides[oldId];
+      if (found) return found;
+    }
+    return null;
+  })();
+
   // Punkt 7: EINMALIGE, transiente Rueckmeldung statt eines dauerhaft sichtbaren Erklaerungstextes
   // ueber dem Start-Button - zusaetzlich wird die Notice-Card selbst kurz optisch hervorgehoben und
   // ins Bild gescrollt (nichts Neues erklaert, derselbe Text steht bereits in der Notice-Card).
@@ -536,6 +609,111 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           {isManualTask ? <IconTask width={15} height={15} className="shrink-0 text-type-manual" aria-hidden="true" /> : null}
           <TonePill config={TASK_TYPE_CONFIG[task.type]} lang={state.lang} size="sm" />
         </span>
+
+        {/* "Tag ändern" (Briefing Punkt 5/9): "Geplant für" mit Admin-Edit-Stift, analog zum
+         * bestehenden Zeitfenster-Editor darunter (Pencil -> inline Formular -> Speichern/
+         * Abbrechen/Zuruecksetzen) statt eines neuen "•••"-Menues. Fuer Nicht-Admin/nicht
+         * verschiebbare Tasks (Punkt 4/12) erscheint nur die reine Anzeige, kein Stift. Punkt 9:
+         * "Verschoben"-Zeile zeigt das URSPRUENGLICHE Datum, die tatsaechliche Reservierung
+         * (Abreise/Naechste Anreise) steht unveraendert weiter unten separat - nie der Eindruck,
+         * die Reservierung selbst waere geaendert worden. */}
+        {canScheduleType ? (
+          <div className="flex flex-col gap-1">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('schedule_title')}</p>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[13px] font-medium text-ink">{formatFullDate(task.scheduledDate)}</span>
+              {canEditSchedule ? (
+                <button
+                  type="button"
+                  onClick={() => (scheduleFormOpen ? setScheduleFormOpen(false) : openScheduleForm())}
+                  aria-label={t('schedule_change_action')}
+                  title={t('schedule_change_action')}
+                  className="rounded-full p-1 text-muted transition-colors hover:bg-surface hover:text-ink"
+                >
+                  <IconEdit width={15} height={15} aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+            {task.scheduleOverride ? (
+              <p className="flex items-center gap-1.5 text-[12px] text-muted">
+                <IconRefresh width={13} height={13} className="shrink-0" aria-hidden="true" />
+                {t('rescheduled_from', { date: formatFullDate(task.scheduleOverride.originalScheduledDate) })}
+              </p>
+            ) : null}
+
+            {canEditSchedule && scheduleFormOpen ? (
+              <div className="rounded-control border border-line bg-warm-white px-3.5 py-3">
+                {/* Punkt 6: Sicherheitsinformation - kompakter Reservierungskontext, BEVOR
+                 * gespeichert wird. Die volle Reservierungskarte steht ohnehin weiter unten. */}
+                {nextArrivalDate ? (
+                  <p className="mb-2.5 text-[12px] text-muted">
+                    {t('label_departure')} {formatFullDate(task.date)}{task.effectiveDepartureTime ? ` · ${task.effectiveDepartureTime}` : ''}
+                    {' · '}{t('next_arrival_label')} {formatFullDate(nextArrivalDate)}
+                    {task.type === 'turnover' && task.effectiveArrivalTime ? ` · ${task.effectiveArrivalTime}` : ''}
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap gap-1.5">
+                  {state.planningDays.map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setScheduleDraft(d)}
+                      className={cn(
+                        'rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors',
+                        scheduleDraft === d ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
+                      )}
+                    >
+                      {dayHeadingLabel(t, state.lang, d, state.planningDays)}
+                    </button>
+                  ))}
+                </div>
+                {/* Punkt 5: "Anderer Datum ..." - bestehender nativer Date-Picker (wie beim
+                 * Zeitfenster-Editor `type="time"` oben) statt einer neuen Datepicker-Komponente.
+                 * Auf das 4-Tage-Planungsfenster begrenzt (siehe Kommentar bei scheduleMin/Max
+                 * oben) - jenseits dessen wuerde der Task beim naechsten Tageswechsel verwaisen. */}
+                <label className="mt-2.5 flex flex-col gap-1 text-[12.5px] font-medium text-muted">
+                  {t('schedule_custom_date')}
+                  <input
+                    type="date"
+                    value={scheduleDraft}
+                    min={scheduleMin}
+                    max={scheduleMax}
+                    onChange={(e) => setScheduleDraft(e.target.value)}
+                    className="rounded-control border border-line bg-warm-white px-2.5 py-1.5 text-[13px] text-ink"
+                  />
+                </label>
+
+                {/* Punkt 7: Warnung bei Kollision mit der naechsten Anreise, HARTE Blockierung
+                 * (Speichern deaktiviert), wenn der gewaehlte Tag NACH der naechsten Anreise
+                 * liegt - serverseitig zusaetzlich durchgesetzt (siehe rescheduleTask/
+                 * api/task-schedule-overrides.js). */}
+                {scheduleBlocked ? (
+                  <p className="mt-2.5 flex items-start gap-1.5 text-[12.5px] font-medium text-status-attention">
+                    <IconAlertCircle width={14} height={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    {t('schedule_after_arrival_blocked')}
+                  </p>
+                ) : scheduleCollision ? (
+                  <p className="mt-2.5 flex items-start gap-1.5 text-[12.5px] text-status-attention">
+                    <IconAlertCircle width={14} height={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    {t('schedule_arrival_collision_warning')}
+                  </p>
+                ) : null}
+
+                <div className="mt-2.5 flex items-center justify-between gap-2">
+                  {task.scheduleOverride ? (
+                    <button type="button" onClick={handleResetSchedule} className="text-[12px] font-medium text-muted hover:text-ink">
+                      {t('reset_schedule')}
+                    </button>
+                  ) : <span />}
+                  <div className="flex gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => setScheduleFormOpen(false)}>{t('cancel')}</Button>
+                    <Button variant="primary" size="sm" disabled={scheduleBlocked} onClick={handleSaveSchedule}>{t('save')}</Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* Zeitfenster (Punkt 1/2/3) - EINE Zeile: Uhr-Icon + Kernzeit prominent, Edit-Stift nur
          * fuer Admin direkt daneben statt eines Textlinks, LCO/ECI/Konflikt/Override kompakt mit
@@ -687,7 +865,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
 
         {/* Buchungsaenderung (Punkt 9) - nur fuer Apaleo-abgeleitete Tasks (turnover/departure/
          * stayover) ueberhaupt moeglich, siehe types.ts#BookingChangeRecord. */}
-        {task.bookingChange ? <BookingChangeDetail change={task.bookingChange} t={t} /> : null}
+        {task.bookingChange ? <BookingChangeDetail change={task.bookingChange} orphanedSchedule={orphanedSchedule} t={t} /> : null}
 
         {/* Wichtiger Hinweis - NIE aus dem Apaleo-Kommentar abgeleitet/ueberschrieben (Punkt 12),
          * sehr helle warme Flaeche statt roter Warnbox. Punkt 7: ref+Hervorhebung fuer den
