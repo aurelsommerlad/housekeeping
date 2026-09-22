@@ -12,9 +12,11 @@ const { getRedis, parseJSON } = require('./_redis');
 const { requireSession } = require('./_auth');
 const { getUserRawById } = require('./_users');
 const { hasPropertyAccess, isPropertyManager } = require('./_permissions');
+const { buildFreeTextTranslation } = require('./_translate');
 
 const HASH_KEY = 'housekeeping:manual_tasks';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const VALID_SOURCE_LANGUAGES = ['de', 'en', 'pl', 'ro'];
 
 // Punkt "Wieder aktivieren": derselbe Verlaufsmechanismus wie bei Reinigungs-Tasks (siehe
 // api/task-assignments.js#appendHistory), hier additiv auf `task.history` statt auf einem
@@ -63,7 +65,7 @@ module.exports = async (req, res) => {
       }
       const {
         propertyCode, propertyName, unitId, unitName, date, title, description,
-        assignedUserId, assignedUserName,
+        assignedUserId, assignedUserName, sourceLanguage,
       } = req.body;
       if (!propertyCode || typeof propertyCode !== 'string') {
         res.status(400).json({ error: 'propertyCode ist erforderlich.' });
@@ -82,6 +84,13 @@ module.exports = async (req, res) => {
         return;
       }
       const id = `manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const trimmedDescription = typeof description === 'string' ? description.trim() : '';
+      // Briefing "automatische Uebersetzung frei eingegebener operativer Texte": gleiches Muster
+      // wie bei api/task-notices.js#set - state.lang des Erstellers ist die Quellsprache, Fallback
+      // 'de'. Es gibt aktuell keine "Aufgabe bearbeiten"-Aktion, daher entsteht die Uebersetzung
+      // ausschliesslich hier bei der Erstellung.
+      const lang = VALID_SOURCE_LANGUAGES.includes(sourceLanguage) ? sourceLanguage : 'de';
+      const descriptionTranslation = await buildFreeTextTranslation(trimmedDescription, lang);
       const task = {
         id,
         propertyCode,
@@ -90,7 +99,8 @@ module.exports = async (req, res) => {
         unitName: unitId ? (unitName || unitId) : null,
         date,
         title: title.trim(),
-        description: typeof description === 'string' ? description.trim() : '',
+        description: trimmedDescription,
+        descriptionTranslation,
         assignedUserId: assignedUserId || null,
         assignedUserName: assignedUserId ? (assignedUserName || null) : null,
         status: 'open',

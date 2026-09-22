@@ -19,6 +19,7 @@ import type {
   TaskSeenRecord, TaskSeenState, TaskStartSource, TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState,
   TeamPropertyDefaultsState,
 } from './types';
+import type { Lang } from './i18n';
 
 // MINOR-Bump (2.5.0 -> 2.6.0): TaskCard-Redesign - klare Informationshierarchie (Apartment+Standort,
 // Typ+Arbeitsstatus, Zeitfenster, Gast/Buchung+Extras) statt vieler gleichwertiger Badges/Zeilen,
@@ -768,7 +769,49 @@ import type {
 // in TaskDetailSheet.tsx haengte "T00:00:00" direkt an eine bereits vollstaendige ISO-Datumszeit
 // an, was ein ungueltiges Datum ergab - jetzt wird zuerst auf "YYYY-MM-DD" normalisiert
 // (slice(0, 10), bei einem bereits reinen Datumsstring wirkungslos).
-export const APP_VERSION = '2.27.1';
+//
+// v2.28.0 - MINOR: automatische Uebersetzung frei eingegebener operativer Texte ("Wichtiger
+// Hinweis", Beschreibung einer manuellen Aufgabe) in die vier App-Sprachen (DE/EN/PL/RO).
+// Architektur: neuer, additiver Typ FreeTextTranslation (types.ts) mit sourceLanguage/sourceText/
+// translations/translationStatus/translatedAt - haengt an TaskNotice.translation bzw.
+// ManualTask.descriptionTranslation, NIEMALS ein Ersatz fuer text/description (Originaltext bleibt
+// unveraendert die alleinige Quelle der Wahrheit, keine Migration bestehender Datensaetze noetig).
+// Provider hinter einer kleinen serverseitigen Abstraktion (api/_translate.js#translateTextBatch/
+// buildFreeTextTranslation) versteckt - aktuell Anthropic Messages API per rohem fetch (kein neues
+// npm-Package, konsistent zum bestehenden "kein SDK"-Muster), striktes Anti-Halluzinations-
+// System-Prompt (keine Infos hinzufuegen/entfernen, Zahlen/Uhrzeiten/Eigennamen/Codes
+// unveraendert lassen). Neue, aktuell bewusst leere Terminologie-Schicht (api/_translation-
+// glossary.js) fuer spaeter feste Uebersetzungen einzelner Housekeeping-Begriffe. Quellsprache =
+// die aktuell im Client angezeigte App-Sprache (state.lang) - server-seitig neu mitgesendet bei
+// task-notices.js#set und manual-tasks.js#create, Fallback 'de'. Uebersetzungen entstehen
+// ausschliesslich beim Speichern (nie live beim Oeffnen der Detailansicht); jede inhaltliche
+// Bearbeitung eines Hinweises (die die bestehende Versions-/Bestaetigungs-Invalidierung ohnehin
+// unveraendert durchlaeuft) erzeugt alle Uebersetzungen neu aus dem neuen Text - alte
+// Uebersetzungen werden nie mit neuem Quelltext kombiniert. Anzeige faellt bei fehlender/
+// fehlgeschlagener Uebersetzung immer automatisch auf den Originaltext zurueck (nie eine leere
+// Notiz); ein neuer, dezenter "Original anzeigen"/"Übersetzung anzeigen"-Umschalter erscheint nur,
+// wenn die aktuelle Sprache von der Quellsprache abweicht. Admin/Standortverantwortliche sehen bei
+// einer fehlgeschlagenen Uebersetzung zusaetzlich einen kurzen Hinweis mit "Übersetzung erneut
+// versuchen" (neue task-notices.js-Aktion 'retryTranslation' - aendert weder Text noch Version
+// noch Bestaetigungen). Ein nicht erreichbarer/fehlerhaft antwortender Provider blockiert nie das
+// Speichern des Originaltexts (Fehler werden ausschliesslich als translationStatus:'failed' pro
+// Zielsprache abgebildet). Normale UI-i18n-Texte (i18n.ts) durchlaufen weiterhin unveraendert das
+// bestehende System und werden nie an den Uebersetzungs-Provider geschickt. Neue Environment
+// Variable ANTHROPIC_API_KEY (ausschliesslich serverseitig, siehe README.md) - ohne gesetzten Wert
+// gilt jede Zielsprache als fehlgeschlagen, der Originaltext wird trotzdem normal gespeichert.
+// Scoping-Hinweis: es existiert aktuell keine "Aufgabe bearbeiten"-Aktion fuer manuelle Aufgaben -
+// die Uebersetzung einer Aufgabenbeschreibung entsteht daher ausschliesslich bei der Erstellung;
+// keine neue Bearbeiten-Funktion wurde dafuer eingefuehrt.
+// Verifiziert per tsc/eslint/build (alle sauber) sowie einem eigenstaendigen Node-Integrationstest
+// (36 Assertions: DE-Quelltext -> EN/PL/RO, Anzeige je nach state.lang inkl. Fallback auf das
+// Original bei fehlender/fehlgeschlagener Uebersetzung, Provider unerreichbar/Provider-Fehler
+// blockieren das Speichern nicht, Bearbeitung erzeugt neue Uebersetzungen UND loescht alte
+// Bestaetigungen, Admin-Retry aendert weder Text/Version/Bestaetigungen, manuelle Aufgabe wird
+// ebenfalls uebersetzt, i18n.ts referenziert den Uebersetzungs-Provider nicht) gegen
+// api/task-notices.js und api/manual-tasks.js mit gemocktem Redis/fetch (kein Live-Redis/
+// -Anthropic in der Sandbox). Keine Aenderung an Kartengroesse/Mobile-Layout/bestehender
+// Housekeeping-Logik, keine geloeschten Daten.
+export const APP_VERSION = '2.28.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -1145,9 +1188,15 @@ export async function loadTaskNotices(): Promise<TaskNoticesData> {
  * die serverseitige Rechtepruefung (nur Admin/Standortverantwortlich duerfen set/remove, jeder
  * mit Property-Zugriff darf acknowledge). */
 export const taskNoticesApi = {
-  set: (taskId: string, text: string) => backendPost<{ notice: TaskNotice }>('task-notices', { action: 'set', taskId, text }),
+  /** `sourceLanguage` = die aktuell im Client angezeigte Sprache (state.lang) - einzige
+   * zuverlaessige Quelle fuer die Ausgangssprache der automatischen Uebersetzung (Briefing
+   * "automatische Uebersetzung frei eingegebener operativer Texte", Punkt 3). */
+  set: (taskId: string, text: string, sourceLanguage: Lang) =>
+    backendPost<{ notice: TaskNotice }>('task-notices', { action: 'set', taskId, text, sourceLanguage }),
   remove: (taskId: string) => backendPost<{ ok: true }>('task-notices', { action: 'remove', taskId }),
   acknowledge: (taskId: string) => backendPost<{ ack: TaskNoticeAck }>('task-notices', { action: 'acknowledge', taskId }),
+  /** Punkt 12: admin-seitiger Retry einer fehlgeschlagenen Uebersetzung. */
+  retryTranslation: (taskId: string) => backendPost<{ notice: TaskNotice }>('task-notices', { action: 'retryTranslation', taskId }),
 };
 
 export interface TaskViewsData {
@@ -1222,6 +1271,10 @@ export interface ManualTaskCreateInput {
   description: string;
   assignedUserId?: string | null;
   assignedUserName?: string | null;
+  /** Siehe taskNoticesApi.set - dieselbe Quellsprachen-Herleitung (state.lang) fuer die
+   * automatische Uebersetzung von `description`. Optional: useHousekeepingApp.ts#createManualTask
+   * traegt state.lang automatisch nach, falls der Aufrufer (ManualTaskFormSheet.tsx) es weglaesst. */
+  sourceLanguage?: Lang;
 }
 
 export async function loadManualTasks(): Promise<ManualTasksState> {

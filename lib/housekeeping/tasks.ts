@@ -448,6 +448,7 @@ export function manualTaskToResolvedTask(mt: ManualTask, scheduleOverride: TaskS
     nextReservationInfo: null,
     manualTitle: mt.title,
     manualDescription: mt.description,
+    manualDescriptionTranslation: mt.descriptionTranslation,
     bookingChange: null,
     // Punkt 3: bewusst nur Offen/Erledigt, kein Reinigungs-Zwischenstatus (assigned/in_progress/
     // paused/inspection gibt es fuer eine manuelle Aufgabe nicht).

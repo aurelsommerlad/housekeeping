@@ -107,6 +107,7 @@ wurden durch dieses Update nicht angefasst.
 | `NFC_TOKEN_SECRET` | Schluessel zur Verschluesselung der NFC-Tag-Tokens (siehe unten) |
 | `BLOB_READ_WRITE_TOKEN` | Zugriff auf den Vercel-Blob-Store fuer Vorfall-Fotos (i. d. R. automatisch gesetzt) |
 | `SLACK_INCIDENT_WEBHOOK_URL` | Incoming-Webhook-URL fuer die Slack-Benachrichtigung bei "Vorfall melden" |
+| `ANTHROPIC_API_KEY` | API-Key fuer die automatische Uebersetzung frei eingegebener operativer Texte (siehe unten) |
 
 Fuer Login/Session/Passwort-Hashing sind **keine neuen Environment Variables** noetig: Sessions
 sind zufaellige, in Redis gespeicherte Tokens (kein JWT-Secret erforderlich) und bcrypt braucht
@@ -135,6 +136,18 @@ resultierende URL hier eintragen. Ohne gesetzten Wert wird ein gemeldeter Vorfal
 normal gespeichert (siehe `housekeeping:incidents`), lediglich der Slack-Versand wird
 uebersprungen (`slackDeliveryStatus: 'skipped'`) - der Webhook wird ausschliesslich serverseitig
 aufgerufen, nie an den Client ausgeliefert.
+
+`ANTHROPIC_API_KEY` wird fuer die automatische Uebersetzung frei eingegebener operativer Texte
+gebraucht ("Wichtiger Hinweis", Beschreibung einer manuellen Aufgabe): beim Speichern erzeugt die
+App serverseitig ueber die Anthropic Messages API Uebersetzungen des Originaltexts in die jeweils
+fehlenden der vier App-Sprachen (DE/EN/PL/RO), siehe `api/_translate.js`. Der Key wird
+ausschliesslich serverseitig gelesen, nie an den Client ausgeliefert. Ohne gesetzten Wert wird der
+eingegebene Text weiterhin ganz normal gespeichert - lediglich alle Uebersetzungen gelten als
+fehlgeschlagen (`translationStatus: 'failed'`) und Housekeeper sehen stattdessen automatisch den
+Originaltext (nie eine leere Notiz). Ein einzelner API-Aufruf schlaegt fehl -> auch das blockiert
+nie das Speichern des Originaltexts, nur die betroffene(n) Zielsprache(n) gelten als
+fehlgeschlagen; Admin/Standortverantwortliche koennen eine fehlgeschlagene Uebersetzung ueber
+"Übersetzung erneut versuchen" gezielt neu anstossen.
 
 ## Backend-Routen
 

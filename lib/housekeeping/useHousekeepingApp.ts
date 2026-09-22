@@ -1110,11 +1110,14 @@ export function useHousekeepingApp() {
 
   const createManualTask = useCallback(async (input: ManualTaskCreateInput) => {
     await runAction(async () => {
-      const { manualTasks } = await manualTasksApi.create(input);
+      // Briefing "automatische Uebersetzung frei eingegebener operativer Texte" Punkt 3: state.lang
+      // (die tatsaechlich angezeigte App-Sprache) ist die zuverlaessige Quellsprache fuer die
+      // automatische Uebersetzung von `description` - der Aufrufer muss das nicht selbst wissen.
+      const { manualTasks } = await manualTasksApi.create({ ...input, sourceLanguage: input.sourceLanguage || state.lang });
       patch({ manualTasks, manualTaskFormOpen: false });
       showToast(t('saved'));
     });
-  }, [patch, runAction, showToast, t]);
+  }, [patch, runAction, showToast, t, state.lang]);
 
   // Schliesst die Detailansicht bewusst NICHT (anders als finishTask()) - Punkt 3: nach dem
   // Erledigen soll "✓ Aufgabe erledigt" inkl. Mitarbeiter/Zeitpunkt direkt in derselben Ansicht
@@ -1177,11 +1180,22 @@ export function useHousekeepingApp() {
 
   const saveTaskNotice = useCallback(async (taskId: string, text: string) => {
     await runAction(async () => {
-      const { notice } = await taskNoticesApi.set(taskId, text);
+      // Punkt 3: state.lang (aktuell angezeigte App-Sprache) ist die Quellsprache der
+      // automatischen Uebersetzung - siehe api/task-notices.js#set.
+      const { notice } = await taskNoticesApi.set(taskId, text, state.lang);
       patch((s) => ({ taskNotices: { ...s.taskNotices, [taskId]: notice } }));
       showToast(t('saved'));
     });
-  }, [patch, runAction, showToast, t]);
+  }, [patch, runAction, showToast, t, state.lang]);
+
+  /** Punkt 12: admin-seitiger Retry einer fehlgeschlagenen Uebersetzung ("Übersetzung erneut
+   * versuchen") - aendert weder Text noch Version noch Acks. */
+  const retryTaskNoticeTranslation = useCallback(async (taskId: string) => {
+    await runAction(async () => {
+      const { notice } = await taskNoticesApi.retryTranslation(taskId);
+      patch((s) => ({ taskNotices: { ...s.taskNotices, [taskId]: notice } }));
+    });
+  }, [patch, runAction]);
 
   const removeTaskNotice = useCallback(async (taskId: string) => {
     await runAction(async () => {
@@ -1413,7 +1427,7 @@ export function useHousekeepingApp() {
     activeCleaningTask,
 
     // Wichtiger Hinweis
-    noticeForTask, isNoticeAcknowledgedBy, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice,
+    noticeForTask, isNoticeAcknowledgedBy, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice, retryTaskNoticeTranslation,
 
     // Briefing "Reinigungskarten ueberarbeiten": "gesehen" + "Buchungsaenderung zur Kenntnis
     // genommen" - zwei getrennte userbezogene Zustaende.

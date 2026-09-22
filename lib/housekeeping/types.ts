@@ -344,6 +344,9 @@ export interface Task {
    * fachlich weder Gast noch Reservierung. */
   manualTitle?: string;
   manualDescription?: string;
+  /** Automatische Uebersetzung von `manualDescription` (Briefing "automatische Uebersetzung frei
+   * eingegebener operativer Texte") - 1:1 aus ManualTask.descriptionTranslation uebernommen. */
+  manualDescriptionTranslation?: FreeTextTranslation;
   /** Housekeeping-relevante Aenderung der zugrundeliegenden Apaleo-Reservierung seit dem letzten
    * bekannten Stand (Punkt "Buchungsaenderung sichtbar machen") - `null`, wenn keine relevante
    * Aenderung bekannt ist oder der Task keine eigene Reservierung hat (manual/extra). Wird beim
@@ -387,6 +390,10 @@ export interface ManualTask {
    * skalaren completedAt/completedByUserId/completedByUserName-Felder rekonstruiert (siehe
    * tasks.ts#manualTaskToResolvedTask), NIE ueberschrieben. */
   history?: TaskHistoryEntry[];
+  /** Automatische Uebersetzung von `description` (Briefing "automatische Uebersetzung frei
+   * eingegebener operativer Texte") - additiv, `description` bleibt unveraendert die Quelle der
+   * Wahrheit. Fehlt bei aelteren, vor diesem Feature erstellten Aufgaben. */
+  descriptionTranslation?: FreeTextTranslation;
 }
 
 export type ManualTasksState = Record<string, ManualTask | null>;
@@ -522,6 +529,28 @@ export interface TaskScheduleOverride {
 export type TaskScheduleOverridesState = Record<string, TaskScheduleOverride | null>;
 
 /**
+ * Automatische Uebersetzung EINES frei eingegebenen operativen Textes (Briefing "automatische
+ * Uebersetzung frei eingegebener operativer Texte") - additiv an TaskNotice/ManualTask angehaengt,
+ * NIEMALS ein Ersatz fuer das jeweilige Quellfeld (text/description). `sourceText` ist eine
+ * bewusste Kopie des Quelltextes zum Zeitpunkt der Uebersetzung (Punkt 2: "Originaltext MUSS immer
+ * unveraendert gespeichert bleiben") - so bleibt "Original anzeigen" (Punkt 9) auch dann korrekt,
+ * wenn das Quellfeld selbst spaeter durch eine erneute Bearbeitung ueberschrieben wird, ohne dass
+ * die alte Uebersetzung dafuer extra aufgehoben werden muesste. `translations`/`translationStatus`
+ * enthalten hoechstens die drei jeweils NICHT der Quellsprache entsprechenden Zielsprachen (Punkt
+ * 4). Ein Fehlschlag einer einzelnen Sprache (`translationStatus[lang] === 'failed'`) blockiert nie
+ * das Speichern des Quelltexts (Punkt 12) - Anzeige faellt dann auf `sourceText` zurueck.
+ */
+export type FreeTextLanguage = 'de' | 'en' | 'pl' | 'ro';
+
+export interface FreeTextTranslation {
+  sourceLanguage: FreeTextLanguage;
+  sourceText: string;
+  translations: Partial<Record<FreeTextLanguage, string>>;
+  translationStatus: Partial<Record<FreeTextLanguage, 'ready' | 'failed'>>;
+  translatedAt: number;
+}
+
+/**
  * Interner "Wichtiger Hinweis" pro Task (Redis housekeeping:task_notices, Key = Task-ID) - eine
  * VOM Apaleo-Reservierungskommentar (task.comment) komplett getrennte Datenquelle: nie in die
  * Apaleo-Reservierung zurueckgeschrieben, nie von dort ueberschrieben. `id` ist bewusst identisch
@@ -540,6 +569,10 @@ export interface TaskNotice {
   createdBy: string;
   createdAt: number;
   updatedAt: number;
+  /** Automatische Uebersetzung von `text` (Briefing "automatische Uebersetzung frei eingegebener
+   * operativer Texte") - additiv, `text` bleibt unveraendert die einzige Quelle der Wahrheit.
+   * Fehlt bei aelteren, vor diesem Feature erstellten Hinweisen (siehe FreeTextTranslation). */
+  translation?: FreeTextTranslation;
 }
 
 export type TaskNoticesState = Record<string, TaskNotice | null>;

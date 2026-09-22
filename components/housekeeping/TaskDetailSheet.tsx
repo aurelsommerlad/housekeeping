@@ -4,6 +4,7 @@ import { dayHeadingLabel } from '@/lib/housekeeping/dayLabel';
 import { isAdmin, isPropertyManager, isTeamLead } from '@/lib/housekeeping/permissions';
 import { TASK_STATUS_CONFIG, TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
 import { canRescheduleTask, nextArrivalDateForTask, taskId as buildTaskId } from '@/lib/housekeeping/tasks';
+import { canShowOriginal, resolveFreeText, translationFailedFor } from '@/lib/housekeeping/translation';
 import type { TaskReservationSummary, TaskScheduleOverride, TaskType } from '@/lib/housekeeping/types';
 import type { HousekeepingApp, ResolvedTask } from '@/lib/housekeeping/useHousekeepingApp';
 import { BottomSheet } from './BottomSheet';
@@ -533,7 +534,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   const {
     state, t, closeTaskModal, toggleTaskDoubleType,
     finishTaskDoubleup, showToast, shortStaffName,
-    noticeForTask, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice,
+    noticeForTask, saveTaskNotice, removeTaskNotice, acknowledgeTaskNotice, retryTaskNoticeTranslation,
     saveTaskTimeOverride, removeTaskTimeOverride, setTaskTeam,
     rescheduleTask, resetTaskSchedule,
     markTaskSeen, isTaskSeenByMe, isBookingChangeAckedByMe, acknowledgeBookingChange,
@@ -552,6 +553,11 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   // versucht, ohne den wichtigen Hinweis bestaetigt zu haben (siehe onNoticeBlocked unten).
   const noticeRef = useRef<HTMLDivElement>(null);
   const [noticeHighlight, setNoticeHighlight] = useState(false);
+  // Briefing "automatische Uebersetzung frei eingegebener operativer Texte" Punkt 9: zwei
+  // getrennte "Original anzeigen"-Toggles (Hinweis/Aufgaben-Beschreibung), rein clientseitiger
+  // UI-Zustand - keine eigene Persistenz noetig, faellt beim Schliessen des Sheets zurueck.
+  const [noticeShowOriginal, setNoticeShowOriginal] = useState(false);
+  const [descriptionShowOriginal, setDescriptionShowOriginal] = useState(false);
 
   // Briefing "Reinigungskarten ueberarbeiten" Punkt 5: "gesehen" gilt GENAU dann, wenn die
   // Detailansicht fuer DIESEN Task tatsaechlich geoeffnet wurde - nicht schon beim Laden/Scrollen
@@ -972,7 +978,32 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
         {isManualTask && task.manualDescription ? (
           <div className="rounded-control border border-line bg-surface px-3.5 py-3 text-[13px] text-ink">
             <p className="mb-1 font-medium text-muted">{t('manual_task_description_title')}</p>
-            <p className="whitespace-pre-wrap">{task.manualDescription}</p>
+            <p className="whitespace-pre-wrap">
+              {descriptionShowOriginal
+                ? task.manualDescriptionTranslation?.sourceText || task.manualDescription
+                : resolveFreeText(task.manualDescriptionTranslation, task.manualDescription, state.lang)}
+            </p>
+            {canShowOriginal(task.manualDescriptionTranslation, state.lang) ? (
+              <button
+                type="button"
+                onClick={() => setDescriptionShowOriginal((v) => !v)}
+                className="mt-1.5 text-[12px] font-medium text-muted underline decoration-dotted hover:text-ink"
+              >
+                {descriptionShowOriginal
+                  ? t('show_translation_action')
+                  : t('show_original_action')}
+              </button>
+            ) : null}
+            {descriptionShowOriginal && task.manualDescriptionTranslation ? (
+              <p className="mt-1 text-[11px] uppercase tracking-wide text-muted">
+                {t('original_text_label', { lang: task.manualDescriptionTranslation.sourceLanguage.toUpperCase() })}
+              </p>
+            ) : null}
+            {isManager && translationFailedFor(task.manualDescriptionTranslation, state.lang) ? (
+              <p className="mt-1.5 text-[12px] text-muted">
+                {t('translation_failed_admin_hint', { lang: state.lang.toUpperCase() })}
+              </p>
+            ) : null}
           </div>
         ) : null}
 
@@ -1000,7 +1031,37 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
               <IconAlertCircle width={18} height={18} className="mt-0.5 shrink-0 text-muted" aria-hidden="true" />
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-medium text-ink">{t('important_notice_title')}</p>
-                <p className="mt-1 whitespace-pre-wrap text-[13px] text-ink">{notice.text}</p>
+                <p className="mt-1 whitespace-pre-wrap text-[13px] text-ink">
+                  {noticeShowOriginal
+                    ? notice.translation?.sourceText || notice.text
+                    : resolveFreeText(notice.translation, notice.text, state.lang)}
+                </p>
+                {canShowOriginal(notice.translation, state.lang) ? (
+                  <button
+                    type="button"
+                    onClick={() => setNoticeShowOriginal((v) => !v)}
+                    className="mt-1 text-[12px] font-medium text-muted underline decoration-dotted hover:text-ink"
+                  >
+                    {noticeShowOriginal ? t('show_translation_action') : t('show_original_action')}
+                  </button>
+                ) : null}
+                {noticeShowOriginal && notice.translation ? (
+                  <p className="mt-1 text-[11px] uppercase tracking-wide text-muted">
+                    {t('original_text_label', { lang: notice.translation.sourceLanguage.toUpperCase() })}
+                  </p>
+                ) : null}
+                {isManager && translationFailedFor(notice.translation, state.lang) ? (
+                  <div className="mt-1.5 flex items-center gap-2 text-[12px] text-muted">
+                    <span>{t('translation_failed_admin_hint', { lang: state.lang.toUpperCase() })}</span>
+                    <button
+                      type="button"
+                      onClick={() => retryTaskNoticeTranslation(task!.id)}
+                      className="font-medium text-ink hover:text-sage"
+                    >
+                      {t('translation_retry_action')}
+                    </button>
+                  </div>
+                ) : null}
                 <div className="mt-2.5">
                   {currentUserAckCurrent && currentUserAck ? (
                     <span className="inline-flex items-center gap-1.5 text-[12.5px] text-muted">

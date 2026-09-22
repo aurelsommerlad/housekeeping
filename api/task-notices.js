@@ -12,6 +12,9 @@ const { requireSession } = require('./_auth');
 const { getUserRawById } = require('./_users');
 const { hasPropertyAccess, isPropertyManager, propertyCodeFromTaskId } = require('./_permissions');
 const { NOTICES_HASH_KEY, ACKS_HASH_KEY, ackKey, getNotice, clearAcksForTask } = require('./_task-notices');
+const { buildFreeTextTranslation } = require('./_translate');
+
+const VALID_SOURCE_LANGUAGES = ['de', 'en', 'pl', 'ro'];
 
 const LEGACY_NOTICES_KEY = 'hk:task_notices';
 const LEGACY_ACKS_KEY = 'hk:task_notice_acks';
@@ -55,7 +58,7 @@ module.exports = async (req, res) => {
     const { action } = req.body || {};
 
     if (action === 'set') {
-      const { taskId, text } = req.body;
+      const { taskId, text, sourceLanguage } = req.body;
       if (!taskId || typeof text !== 'string' || !text.trim()) {
         res.status(400).json({ error: 'taskId und text sind erforderlich.' });
         return;
@@ -67,19 +70,51 @@ module.exports = async (req, res) => {
       }
       const existing = await getNotice(redis, taskId);
       const now = Date.now();
+      const trimmedText = text.trim();
+      // Briefing "automatische Uebersetzung frei eingegebener operativer Texte" Punkt 3: die
+      // aktuell im Client angezeigte Sprache (state.lang) ist die einzige zuverlaessige Quelle fuer
+      // die Quellsprache - StaffUser.lang (Server-Praeferenz) kann davon abweichen. Ungueltiger/
+      // fehlender Wert faellt auf 'de' zurueck (bisheriges Verhalten, alle bestehenden Hinweise sind
+      // deutsch). Punkt 11: JEDE inhaltliche Aenderung (auch reine Bearbeitung) erzeugt neue
+      // Uebersetzungen aus dem neuen Text - alte Uebersetzungen werden nie mit neuem Quelltext
+      // kombiniert.
+      const lang = VALID_SOURCE_LANGUAGES.includes(sourceLanguage) ? sourceLanguage : 'de';
+      const translation = await buildFreeTextTranslation(trimmedText, lang);
       const notice = {
         id: taskId,
         taskId,
-        text: text.trim(),
+        text: trimmedText,
         version: existing ? existing.version + 1 : 1,
         createdBy: existing ? existing.createdBy : user.id,
         createdAt: existing ? existing.createdAt : now,
         updatedAt: now,
+        translation,
       };
       await redis.hSet(NOTICES_HASH_KEY, taskId, JSON.stringify(notice));
       // Punkt 8: neue Version -> ALLE bisherigen Lesebestaetigungen fuer diesen Task werden
       // ungueltig (aktiv geloescht statt nur "veraltet stehen zu lassen").
       await clearAcksForTask(redis, taskId);
+      res.status(200).json({ notice });
+      return;
+    }
+
+    // Punkt 12: admin-seitiger Retry fuer eine einzelne fehlgeschlagene Uebersetzung ("Übersetzung
+    // erneut versuchen") - aendert weder Text noch Version noch Acks, nur `translation` wird neu
+    // erzeugt (aus demselben, bereits gespeicherten Quelltext/derselben Quellsprache).
+    if (action === 'retryTranslation') {
+      const { taskId } = req.body;
+      if (!taskId) { res.status(400).json({ error: 'taskId ist erforderlich.' }); return; }
+      const propertyCode = propertyCodeFromTaskId(taskId);
+      if (!isPropertyManager(user, propertyCode)) {
+        res.status(403).json({ error: 'Nur für Admin oder Standortverantwortliche dieses Property.' });
+        return;
+      }
+      const existing = await getNotice(redis, taskId);
+      if (!existing) { res.status(404).json({ error: 'Kein Hinweis vorhanden.' }); return; }
+      const lang = existing.translation?.sourceLanguage || 'de';
+      const translation = await buildFreeTextTranslation(existing.text, lang);
+      const notice = { ...existing, translation };
+      await redis.hSet(NOTICES_HASH_KEY, taskId, JSON.stringify(notice));
       res.status(200).json({ notice });
       return;
     }

@@ -256,6 +256,11 @@ export const I18N = {
     crib_prep_label: 'Babybett vorbereiten',
     scope_all_properties: 'Alle Standorte', summary_cleanings_label: 'Reinigungen',
     notice_start_hint: 'Erst nach Bestätigung des Hinweises verfügbar',
+    // Briefing "automatische Uebersetzung frei eingegebener operativer Texte" Punkt 9/12.
+    show_original_action: 'Original anzeigen', show_translation_action: 'Übersetzung anzeigen',
+    original_text_label: 'Original ({{lang}})',
+    translation_retry_action: 'Übersetzung erneut versuchen',
+    translation_failed_admin_hint: '{{lang}}-Übersetzung konnte nicht erstellt werden.',
   },
   en: {
     app_name: 'Housekeeping', login_title: 'Sign in', username: 'Username', password: 'Password',
@@ -472,6 +477,10 @@ export const I18N = {
     crib_prep_label: 'Prepare crib',
     scope_all_properties: 'All properties', summary_cleanings_label: 'Cleanings',
     notice_start_hint: 'Available only after confirming the notice',
+    show_original_action: 'Show original', show_translation_action: 'Show translation',
+    original_text_label: 'Original ({{lang}})',
+    translation_retry_action: 'Retry translation',
+    translation_failed_admin_hint: '{{lang}} translation could not be created.',
   },
   pl: {
     app_name: 'Housekeeping', login_title: 'Zaloguj sie', username: 'Nazwa uzytkownika', password: 'Haslo',
@@ -688,6 +697,10 @@ export const I18N = {
     crib_prep_label: 'Przygotuj lozeczko',
     scope_all_properties: 'Wszystkie lokalizacje', summary_cleanings_label: 'Sprzatania',
     notice_start_hint: 'Dostepne dopiero po potwierdzeniu informacji',
+    show_original_action: 'Pokaz oryginal', show_translation_action: 'Pokaz tlumaczenie',
+    original_text_label: 'Oryginal ({{lang}})',
+    translation_retry_action: 'Sprobuj ponownie przetlumaczyc',
+    translation_failed_admin_hint: 'Nie udalo sie utworzyc tlumaczenia na {{lang}}.',
   },
   ro: {
     app_name: 'Housekeeping', login_title: 'Autentificare', username: 'Utilizator', password: 'Parola',
@@ -904,6 +917,10 @@ export const I18N = {
     crib_prep_label: 'Pregateste patutul',
     scope_all_properties: 'Toate locatiile', summary_cleanings_label: 'Curatenii',
     notice_start_hint: 'Disponibil doar dupa confirmarea instiintarii',
+    show_original_action: 'Afiseaza originalul', show_translation_action: 'Afiseaza traducerea',
+    original_text_label: 'Original ({{lang}})',
+    translation_retry_action: 'Reincearca traducerea',
+    translation_failed_admin_hint: 'Traducerea in {{lang}} nu a putut fi creata.',
   },
 } as const;
 
