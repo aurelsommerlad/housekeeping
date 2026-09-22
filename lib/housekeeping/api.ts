@@ -949,7 +949,16 @@ import type { Lang } from './i18n';
 // Tagesansichten filtern unveraendert nach scheduledDate). Verifiziert per tsc/eslint/build sowie
 // einem Node-Logiktest gegen die transpilierte tasks.ts (11 Faelle: Bug reproduziert ohne Fix,
 // Fix behebt ihn, keine Dopplung, Regressionscheck fuer unveraenderte Ruecklauftag-Tasks).
-export const APP_VERSION = '2.31.2';
+// v2.31.3 - PATCH: Nutzerfeedback zur "BUCHUNG GEÄNDERT"-Karte ("nicht schoen dargestellt"), keine
+// Aenderung an Business-Logik. Titel/Datum standen bisher in einer eigenen, durch das Icon
+// eingerueckten Zeile, waehrend die eigentliche Aenderung (Abreise/Anreise/Personen/Einheit)
+// darunter bei der Karten-Innenkante begann - beide Bloecke hatten dadurch unterschiedliche linke
+// Kanten (optisch zerrissen). Jetzt EINE gemeinsame, neben dem Icon eingerueckte Spalte, alles auf
+// derselben Kante ausgerichtet. Jede Aenderung steht zudem als eigene Zeile mit fixer Label-Breite
+// (klare Tabellen-Anmutung: Alt-Wert -> Pfeil-Icon -> Neu-Wert, hervorgehoben statt gleich
+// schwerer "Label: Wert"-Flieszeilen) - neues IconArrowRight statt eines reinen Textpfeils.
+// Verifiziert per tsc/eslint/build.
+export const APP_VERSION = '2.31.3';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

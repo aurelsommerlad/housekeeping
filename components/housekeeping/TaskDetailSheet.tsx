@@ -13,8 +13,8 @@ import { TimeFlag } from './TimeFlag';
 import { OccupancyLine, WorkStatus } from './TaskCard';
 import { Button } from '@/components/ui/Button';
 import {
-  DoubleupIcon, IconAlertCircle, IconCalendar, IconCalendarClock, IconCheck, IconChevronDown, IconCircle, IconClock, IconClose,
-  IconEdit, IconGlobe, IconMessageCircle, IconPlus, IconRefresh, IconRotateCcw, IconTask, IconUser,
+  DoubleupIcon, IconAlertCircle, IconArrowRight, IconCalendar, IconCalendarClock, IconCheck, IconChevronDown, IconCircle, IconClock,
+  IconClose, IconEdit, IconGlobe, IconMessageCircle, IconPlus, IconRefresh, IconRotateCcw, IconTask, IconUser,
 } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
@@ -143,49 +143,59 @@ function BookingChangeDetail({
    * bekannt ist - siehe TaskDetailSheet()#unitDisplayName. */
   unitLabel: (unitId: string | undefined) => string;
 }) {
+  // Nutzerfeedback "nicht schoen dargestellt": Titel/Datum standen bisher in einer eigenen,
+  // durch das Icon eingerueckten Zeile, waehrend die eigentliche Aenderung (Abreise/Anreise/
+  // Personen/Einheit) darunter bei der Karten-Innenkante begann - beide Bloecke hatten dadurch
+  // unterschiedliche linke Kanten (optisch "zerrissen"). Jetzt EINE gemeinsame Spalte neben dem
+  // Icon, alles auf derselben Kante ausgerichtet; die eigentliche Aenderung (der Grund, warum die
+  // Karte ueberhaupt da ist) ist zusaetzlich als klar hervorgehobene Zeile(n) mit einem Pfeil-Icon
+  // statt eines reinen Textpfeils gestaltet, statt mehrerer gleich schwerer "Label: Wert"-Zeilen.
+  const changedFields: { label: string; from: string; to: string }[] = [];
+  if (change.arrivalFrom !== undefined || change.arrivalTo !== undefined) {
+    changedFields.push({ label: t('label_arrival'), from: formatDayMonth(change.arrivalFrom || null), to: formatDayMonth(change.arrivalTo || null) });
+  }
+  if (change.departureFrom !== undefined || change.departureTo !== undefined) {
+    changedFields.push({ label: t('label_departure'), from: formatDayMonth(change.departureFrom || null), to: formatDayMonth(change.departureTo || null) });
+  }
+  if (change.guestsFrom !== undefined || change.guestsTo !== undefined) {
+    changedFields.push({ label: t('booking_changed_guests_label'), from: String(change.guestsFrom ?? '–'), to: String(change.guestsTo ?? '–') });
+  }
+  if (change.unitFrom !== undefined || change.unitTo !== undefined) {
+    changedFields.push({ label: t('booking_changed_unit_label'), from: unitLabel(change.unitFrom), to: unitLabel(change.unitTo) });
+  }
   return (
     <div className="rounded-control border border-status-progress/25 bg-status-progress-bg px-3.5 py-3">
-      <div className="flex min-w-0 items-start gap-2">
+      <div className="flex items-start gap-2">
         <IconRefresh width={16} height={16} className="mt-0.5 shrink-0 text-status-progress" aria-hidden="true" />
-        <div className="min-w-0">
-          <p className="text-[11.5px] font-semibold uppercase tracking-wide text-status-progress">{t('booking_changed_title')}</p>
-          <p className="text-[11.5px] text-muted">{formatDateShort(change.changedAt)} · {formatClock(change.changedAt)}</p>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <p className="text-[11.5px] font-semibold uppercase tracking-wide text-status-progress">{t('booking_changed_title')}</p>
+            <p className="text-[11.5px] text-muted">{formatDateShort(change.changedAt)} · {formatClock(change.changedAt)}</p>
+          </div>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {changedFields.map((field) => (
+              <div key={field.label} className="flex items-center gap-2 text-[13px]">
+                <span className="w-[82px] shrink-0 text-[11px] uppercase tracking-wide text-muted">{field.label}</span>
+                <span className="font-medium text-ink">{field.from}</span>
+                <IconArrowRight width={13} height={13} className="shrink-0 text-status-progress" aria-hidden="true" />
+                <span className="font-semibold text-ink">{field.to}</span>
+              </div>
+            ))}
+          </div>
+          {/* Briefing "Tag ändern" Punkt 16: die bestehende Buchungsaenderungs-Erkennung (Punkt
+           * "Buchungsaenderung sichtbar machen") erkennt bereits, dass sich die Abreise geaendert
+           * hat - hier wird das lediglich mit einem evtl. noch vorhandenen manuellen
+           * Planungs-Override auf den DAMALIGEN Termin gekreuzt (siehe TaskDetailSheet()
+           * #orphanedSchedule), damit ein bestehender Override nicht kommentarlos verschwindet,
+           * ohne eine zweite/konkurrierende Aenderungserkennung zu bauen. */}
+          {orphanedSchedule ? (
+            <p className="mt-1.5 flex items-start gap-1.5 text-[12px] text-status-attention">
+              <IconAlertCircle width={13} height={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+              {t('schedule_override_orphaned_note', { date: formatDayMonth(orphanedSchedule.scheduledDate) })}
+            </p>
+          ) : null}
         </div>
       </div>
-      <div className="mt-2 flex flex-col gap-1">
-        {change.arrivalFrom !== undefined || change.arrivalTo !== undefined ? (
-          <p className="text-[12.5px] text-ink">
-            <span className="text-muted">{t('label_arrival')}:</span> {formatDayMonth(change.arrivalFrom || null)} → {formatDayMonth(change.arrivalTo || null)}
-          </p>
-        ) : null}
-        {change.departureFrom !== undefined || change.departureTo !== undefined ? (
-          <p className="text-[12.5px] text-ink">
-            <span className="text-muted">{t('label_departure')}:</span> {formatDayMonth(change.departureFrom || null)} → {formatDayMonth(change.departureTo || null)}
-          </p>
-        ) : null}
-        {change.guestsFrom !== undefined || change.guestsTo !== undefined ? (
-          <p className="text-[12.5px] text-ink">
-            <span className="text-muted">{t('booking_changed_guests_label')}:</span> {change.guestsFrom ?? '–'} → {change.guestsTo ?? '–'}
-          </p>
-        ) : null}
-        {change.unitFrom !== undefined || change.unitTo !== undefined ? (
-          <p className="text-[12.5px] text-ink">
-            <span className="text-muted">{t('booking_changed_unit_label')}:</span> {unitLabel(change.unitFrom)} → {unitLabel(change.unitTo)}
-          </p>
-        ) : null}
-      </div>
-      {/* Briefing "Tag ändern" Punkt 16: die bestehende Buchungsaenderungs-Erkennung (Punkt
-       * "Buchungsaenderung sichtbar machen") erkennt bereits, dass sich die Abreise geaendert
-       * hat - hier wird das lediglich mit einem evtl. noch vorhandenen manuellen
-       * Planungs-Override auf den DAMALIGEN Termin gekreuzt (siehe TaskDetailSheet()
-       * #orphanedSchedule), damit ein bestehender Override nicht kommentarlos verschwindet,
-       * ohne eine zweite/konkurrierende Aenderungserkennung zu bauen. */}
-      {orphanedSchedule ? (
-        <p className="mt-1.5 flex items-start gap-1.5 text-[12px] text-status-attention">
-          <IconAlertCircle width={13} height={13} className="mt-0.5 shrink-0" aria-hidden="true" />
-          {t('schedule_override_orphaned_note', { date: formatDayMonth(orphanedSchedule.scheduledDate) })}
-        </p>
-      ) : null}
     </div>
   );
 }

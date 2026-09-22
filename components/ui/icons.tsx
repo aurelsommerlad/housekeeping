@@ -355,6 +355,18 @@ export function IconRefresh(props: IconProps) {
   );
 }
 
+/** Fuer Vorher->Nachher-Aenderungen (Nutzerfeedback "Buchung geändert" Kartenlayout) - schlichter
+ * Pfeil nach rechts statt eines reinen Textzeichens ("->" bzw. "→"), damit ein Wertepaar (z. B.
+ * "23.09. -> 24.09.") klar als Uebergang statt als Fliesstext lesbar bleibt. */
+export function IconArrowRight(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 12h16" />
+      <path d="M13 6l7 6-7 6" />
+    </svg>
+  );
+}
+
 /** Fuer "Wieder aktiviert" (Briefing "Statuskorrektur Icons") - EIN umlaufender Gegenuhrzeiger-
  * Pfeil (Undo/Rueckgaengig-Sprache), bewusst optisch UNTERSCHIEDLICH von IconRefresh (zwei
  * gegenlaeufige Pfeile, dort fuer "etwas hat sich veraendert"/Buchungsaenderung) - "Wieder
