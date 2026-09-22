@@ -75,6 +75,13 @@ export default function HousekeepingPage() {
     // PropertyChips) kollabiert automatisch auf 0, `minmax(0,1fr)` fuer den Hauptbereich fuellt den
     // frei werdenden Platz. `xl:max-w-[1800px] xl:mx-auto` verhindert das "endlose Auseinander-
     // ziehen" auf sehr breiten Monitoren (Punkt 18: 1920/2560).
+    //
+    // Feinschliff Runde 7 (Punkt 8, gemeinsame Grid-Achse): der Header spannt jetzt Spalte 2 UND 3
+    // (`grid-column:2/4`, siehe StaffHeader.tsx), die Sidebar beginnt dafuer erst in Zeile 3
+    // (`grid-row:3`, siehe DesktopAdminSidebar.tsx) statt wie zuvor ueber die volle Hoehe (1/-1) -
+    // Sidebar und Hauptbereich starten dadurch strukturell auf derselben Zeile/Achse, statt per
+    // Zufall/Padding aehnlich hoch zu wirken. Nur die linke Navigation bleibt ueber die volle Hoehe
+    // (1/-1), da sie unabhaengig vom Header als durchgehende Leiste gedacht ist.
     <div className="flex min-h-dvh flex-col bg-page xl:mx-auto xl:grid xl:h-dvh xl:max-w-[1800px] xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:grid-rows-[auto_auto_1fr] xl:overflow-hidden">
       <DesktopNavRail app={app} />
       <StaffHeader app={app} onOpenSettings={() => setSettingsOpen(true)} onOpenSearch={() => setSearchOpen(true)} />

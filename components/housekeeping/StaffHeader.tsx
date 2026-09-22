@@ -77,11 +77,13 @@ export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderPr
 
   return (
     // Desktop-Admin-Layout (>= 1280px): der fruehere eigene xl:mx-auto/max-w-Wrapper ist entfallen
-    // (Breite/Zentrierung kommt jetzt einmalig vom Grid in app/page.tsx) - stattdessen platziert
-    // `xl:[grid-column:2] xl:[grid-row:1]` diesen Header direkt in die Hauptbereich-Spalte des
-    // dortigen Grids (neben der linken Navigation, ueber Toolbar/Inhalt). Reine Platzierung, an
-    // Inhalt/Klassen des Headers selbst aendert sich nichts.
-    <header className="shrink-0 border-b border-line bg-warm-white pt-[max(env(safe-area-inset-top),0.5rem)] pl-[max(env(safe-area-inset-left),1rem)] pr-[max(env(safe-area-inset-right),1rem)] xl:[grid-column:2] xl:[grid-row:1]">
+    // (Breite/Zentrierung kommt jetzt einmalig vom Grid in app/page.tsx) - Feinschliff Runde 7
+    // (Punkt 8): der Header spannt jetzt `xl:[grid-column:2/4]` (Hauptbereich UND Sidebar-Spalte),
+    // damit er ueber die gesamte Breite rechts vom Nav-Rail sichtbar bleibt, waehrend die Sidebar
+    // selbst erst ab Zeile 3 beginnt (siehe DesktopAdminSidebar.tsx) - so starten Sidebar und
+    // Hauptinhalt auf derselben Zeile/Achse. Reine Platzierung, an Inhalt/Klassen des Headers
+    // selbst aendert sich nichts.
+    <header className="shrink-0 border-b border-line bg-warm-white pt-[max(env(safe-area-inset-top),0.5rem)] pl-[max(env(safe-area-inset-left),1rem)] pr-[max(env(safe-area-inset-right),1rem)] xl:[grid-column:2/4] xl:[grid-row:1]">
       <div className="flex items-center justify-between gap-2 py-2">
         <div className="min-w-0 leading-none">
           {/* Dieselbe Marken-Typografie wie auf Login-/Admin-Einrichtungsseite (siehe

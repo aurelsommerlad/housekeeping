@@ -141,10 +141,20 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
        * Klassen - fasst Standortfilter/Tagesnavigation/Kennzahlen/Adminaktionen zu EINER
        * kompakten Desktop-Steuerungszeile zusammen (Punkt 4-6), unterhalb von xl bleibt jeder
        * der vier Bloecke exakt in seiner bisherigen Position/Groesse (kein `xl:`-Praefix = kein
-       * Effekt unterhalb 1280px). */}
-      <div className="xl:flex xl:flex-wrap xl:items-center xl:pt-2">
+       * Effekt unterhalb 1280px).
+       *
+       * Feinschliff Runde 7 (Punkt 1/8): Zeile 1 = Standort + Tagesnavigation + Aktionen
+       * (rechtsbuendig via xl:ml-auto auf den Aktionen), Zeile 2 (xl:basis-full) = die drei
+       * Kennzahlen - vorher standen Kennzahlen/Aktionen in umgekehrter Reihenfolge. Die
+       * horizontale Aussenabstand-Verdopplung (jeder Block hatte fuer sein eigenes mobiles
+       * `px-4` volle Randabstaende, die als direkte Flex-Geschwister auf Desktop addiert
+       * wurden) ist behoben, indem `xl:px-4` einmalig auf den Wrapper wandert und jeder Block
+       * ein `xl:px-0`/`xl:py-0` bekommt - dieselbe Technik wie bei SummaryStat (xl:-Overrides
+       * derselben Property gewinnen ab diesem Breakpoint, ohne die mobilen Klassen zu
+       * entfernen). */}
+      <div className="xl:flex xl:flex-wrap xl:items-center xl:gap-x-3 xl:gap-y-2 xl:px-4 xl:pb-1 xl:pt-3">
       {showScopeRow ? (
-        <div className="flex gap-2 px-4 py-2.5 xl:order-1 xl:flex-none">
+        <div className="flex gap-2 px-4 py-2.5 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
           {!isManagerHere ? (
             <div className="relative min-w-0 flex-1 xl:w-[260px] xl:flex-none">
               <select
@@ -176,10 +186,11 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         </div>
       ) : null}
 
-      {/* Punkt 5: Tagesnavigation bleibt, aber kompakter und als Grid gleichmaessig ueber die
-       * Breite verteilt statt einer potenziell scrollenden Flex-Zeile - passt auf Mobile in eine
-       * Zeile. */}
-      <div className="grid grid-cols-4 gap-1.5 px-4 pt-1 xl:order-2 xl:w-[560px] xl:flex-none">
+      {/* Punkt 5 (Runde 6) / Punkt 1 (Feinschliff Runde 7): auf Mobile weiterhin ein 4-Spalten-
+       * Grid ueber die volle Breite - auf Desktop stattdessen eine kompakte, inhaltsbreite
+       * Pillen-Reihe (`xl:flex xl:w-auto`) statt eines starr auf 560px gestreckten Grids, damit
+       * die Tagesnavigation nicht breiter wirkt als ihr eigentlicher Inhalt. */}
+      <div className="grid grid-cols-4 gap-1.5 px-4 pt-1 xl:order-2 xl:flex xl:w-auto xl:flex-none xl:gap-1.5 xl:px-0 xl:pt-0">
         {state.planningDays.map((d, i) => (
           <button
             key={d}
@@ -187,7 +198,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             onClick={() => selectDay(d)}
             aria-pressed={date === d}
             className={cn(
-              'flex flex-col items-center rounded-control border px-2 py-1.5 text-center transition-colors',
+              'flex flex-col items-center rounded-control border px-2 py-1.5 text-center transition-colors xl:px-3',
               date === d ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
             )}
           >
@@ -198,38 +209,13 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         ))}
       </div>
 
-      {/* Punkt 6/7/8: genau drei Kennzahlen (Reinigungen/Aufgaben/Fertig) statt der frueheren
-       * Statuszeile - beziehen sich auf `visible` (bereits nach Tag/Ansicht/Standort gefiltert,
-       * siehe tasksForDay), Icon direkt neben der Zahl, dezente, dem Task-Typsystem entlehnte
-       * Farbakzente (nie eine farbige Flaeche hinter der ganzen Kennzahl). Auf Desktop (Punkt 5)
-       * rutscht dieselbe Kennzahlenzeile kompakt/inline an den rechten Rand derselben Steuerungs-
-       * zeile (xl:ml-auto), siehe SummaryStat fuer die dortige Inline-Darstellung. */}
-      {visible.length > 0 ? (
-        <div className="grid grid-cols-3 gap-2 px-4 pt-3 xl:order-3 xl:ml-auto xl:flex xl:w-auto xl:flex-none xl:gap-5">
-          <SummaryStat
-            value={cleaningTasks.length}
-            label={t(cleaningTasks.length === 1 ? 'noun_cleaning_one' : 'noun_cleaning_many')}
-            icon={IconSparkles}
-            toneClass="text-type-turnover"
-          />
-          <SummaryStat
-            value={openManualTasks.length}
-            label={t(openManualTasks.length === 1 ? 'noun_task_one' : 'noun_task_many')}
-            icon={IconTask}
-            toneClass="text-type-departure"
-          />
-          <SummaryStat value={doneTasks.length} label={t('wf_done')} icon={IconCheck} toneClass="text-status-clean" />
-        </div>
-      ) : null}
-
-      {/* Punkt 9: Admin-/Manageraktionen kompakt hinter "Auswaehlen" + "Weitere Aktionen" statt
-       * dauerhaft sichtbarer Einzelbuttons - fuer normale Housekeeper vollstaendig ausgeblendet.
-       * "+ Aufgabe erstellen" (Punkt "Admin kann Aufgaben erstellen") ist bewusst NUR fuer Admin
-       * sichtbar (serverseitig ebenso durchgesetzt, siehe api/manual-tasks.js) - Standort-
-       * verantwortliche/Team-Leads sehen weiterhin nur die bestehenden Aktionen. Auf Desktop
-       * (Punkt 6) eigene, rechtsbuendige Zeile unter der Steuerungszeile (xl:basis-full). */}
+      {/* Punkt 9 (Runde 6, jetzt Zeile 1 rechtsbuendig statt Zeile 2, siehe Kommentar oben):
+       * Admin-/Manageraktionen kompakt hinter "Auswaehlen" + "Weitere Aktionen" statt dauerhaft
+       * sichtbarer Einzelbuttons - fuer normale Housekeeper vollstaendig ausgeblendet.
+       * "+ Aufgabe erstellen" ist bewusst NUR fuer Admin sichtbar (serverseitig ebenso
+       * durchgesetzt, siehe api/manual-tasks.js). */}
       {isManagerHere ? (
-        <div className="flex flex-wrap items-center gap-2 px-4 pt-3 xl:order-4 xl:basis-full xl:justify-end">
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-3 xl:order-3 xl:ml-auto xl:flex-none xl:px-0 xl:pt-0">
           <Button variant={state.taskMultiSelect ? 'primary' : 'secondary'} size="sm" onClick={toggleTaskMultiSelect}>
             <IconCheckSquare width={14} height={14} aria-hidden="true" />
             {state.taskMultiSelect ? t('multiselect_on') : t('select_tasks_action')}
@@ -248,6 +234,30 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
           >
             <span aria-hidden="true" className="text-[15px] leading-none tracking-[0.05em]">&bull;&bull;&bull;</span>
           </button>
+        </div>
+      ) : null}
+
+      {/* Punkt 6/7/8 (Runde 6): genau drei Kennzahlen (Reinigungen/Aufgaben/Fertig) - beziehen
+       * sich auf `visible` (bereits nach Tag/Ansicht/Standort gefiltert, siehe tasksForDay),
+       * Icon direkt neben der Zahl, dezente, dem Task-Typsystem entlehnte Farbakzente. Feinschliff
+       * Runde 7 (Punkt 1): jetzt eigene, volle Desktop-Zeile UNTER Standort/Tagesnav/Aktionen
+       * (`xl:basis-full`) statt rechts in derselben Zeile, damit die erste Zeile kurz/uebersicht-
+       * lich bleibt und die Kennzahlen als eigener, klar lesbarer Tagesstatus darunter stehen. */}
+      {visible.length > 0 ? (
+        <div className="grid grid-cols-3 gap-2 px-4 pt-3 xl:order-4 xl:mt-1 xl:flex xl:basis-full xl:gap-5 xl:px-0 xl:pt-0">
+          <SummaryStat
+            value={cleaningTasks.length}
+            label={t(cleaningTasks.length === 1 ? 'noun_cleaning_one' : 'noun_cleaning_many')}
+            icon={IconSparkles}
+            toneClass="text-type-turnover"
+          />
+          <SummaryStat
+            value={openManualTasks.length}
+            label={t(openManualTasks.length === 1 ? 'noun_task_one' : 'noun_task_many')}
+            icon={IconTask}
+            toneClass="text-type-departure"
+          />
+          <SummaryStat value={doneTasks.length} label={t('wf_done')} icon={IconCheck} toneClass="text-status-clean" />
         </div>
       ) : null}
       </div>

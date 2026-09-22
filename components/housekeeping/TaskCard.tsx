@@ -335,7 +335,11 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
       type="button"
       onClick={onOpen}
       className={cn(
-        'relative flex flex-col gap-1.5 rounded-card-lg border p-4 text-left transition-colors',
+        // Feinschliff Runde 7 (Punkt 6): auf Desktop etwas grosszuegigerer Innenraum (~12%
+        // mehr Padding, minimal mehr Zeilenabstand) fuer schnellere Erfassbarkeit auf grossen
+        // Bildschirmen - Kartenbreite/-design/Mobile-Masse bleiben unveraendert (kein `p-4`/
+        // `gap-1.5` unterhalb `xl` betroffen).
+        'relative flex flex-col gap-1.5 rounded-card-lg border p-4 text-left transition-colors xl:gap-2 xl:p-[18px]',
         // Punkt "Fertig": Karte deutlich zurueckgenommen, aber die Ursprungsfarbe des Aufgabentyps
         // bleibt als duenner linker Rand erkennbar (statt vollflaechig, statt komplett ausgegraut).
         isCompleted

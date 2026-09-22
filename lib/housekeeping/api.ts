@@ -386,7 +386,27 @@ import type {
 // Screenshots bei 375/390/430/1280/1440/1920/2560px) - Mobile-Darstellung/-Verhalten
 // unveraendert, Business-Logik (Apaleo/Task-Ermittlung/INTERCLEAN/Assignments/Timer/Notice/
 // Berechtigungen) nicht angefasst.
-export const APP_VERSION = '2.19.0';
+//
+// Feinschliff Runde 7 (nur `xl:`-Klassen, dieselbe Additiv-Technik wie oben, kein Mobile-
+// Eingriff): (1) Desktop-Steuerungszeile im Hauptbereich neu geordnet - Zeile 1 jetzt Standort +
+// Tagesnavigation + Admin-Aktionen (rechtsbuendig), Zeile 2 die drei Kennzahlen darunter statt
+// wie zuvor Kennzahlen/Aktionen vermischt in umgekehrter Reihenfolge; die durch mehrere direkte
+// Flex-Geschwister jeweils eigene `px-4` verdoppelten Randabstaende sind behoben (Padding jetzt
+// einmalig auf dem Wrapper, `xl:px-0` auf den einzelnen Bloecken). (2) Tagesnavigation auf
+// Desktop nicht mehr auf 560px gestreckt, sondern kompakte, inhaltsbreite Pillenreihe. (3) Rechte
+// Admin-Sidebar von 320px auf 288px verschmalert, die "HEUTE"-Kennzahlensektion (Duplikat der
+// Kennzahlenzeile im Hauptbereich) entfernt, "TEAM"-Ueberschrift und Team-Link zu einem einzigen
+// klickbaren Element zusammengefuehrt (kein doppeltes "Team"), der noch nicht implementierte
+// "Operations"-Platzhalter ausgeblendet statt dauerhaft "Noch nicht verfuegbar" zu zeigen -
+// Sidebar beginnt jetzt in Grid-Zeile 3 (statt ueber die volle Hoehe), Header spannt dafuer
+// Spalte 2 UND 3, damit Sidebar und Hauptbereich auf derselben Zeile/Achse starten. (4) Linke
+// Desktop-Navigation minimal breiter (96px statt 80px), aktive Markierung jetzt eine Flaeche um
+// Icon+Label zusammen statt nur hinter dem Icon. (5) Reinigungskarten auf Desktop mit etwas mehr
+// Innenraum (18px Padding, etwas mehr Zeilenabstand) fuer schnellere Erfassbarkeit, Kartenbreite/
+// Mobile-Masse unveraendert. Erneut per Sourcecode-Diff-Audit + temporaerem CSS-Grid-Smoketest
+// (375/390/430/1280/1440/1920/2560px, vor dem Commit entfernt) verifiziert - keine Aenderung an
+// Business-Logik, Mobile-Darstellung oder -Verhalten.
+export const APP_VERSION = '2.20.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
