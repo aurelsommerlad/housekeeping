@@ -694,7 +694,10 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
             {task.scheduleOverride ? (
               <p className="flex items-center gap-1.5 text-[12px] text-muted">
                 <IconRefresh width={13} height={13} className="shrink-0" aria-hidden="true" />
-                {t('rescheduled_from', { date: formatFullDate(task.scheduleOverride.originalScheduledDate) })}
+                {t('rescheduled_from', {
+                  from: formatFullDate(task.scheduleOverride.originalScheduledDate),
+                  to: formatFullDate(task.scheduleOverride.scheduledDate),
+                })}
               </p>
             ) : null}
 

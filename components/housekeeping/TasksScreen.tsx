@@ -40,8 +40,16 @@ function SummaryStat({ value, label, icon: Icon, toneClass }: { value: number; l
 /** Korrektur (UX-Feinschliff Runde 3): keine farbige Grossbuchstaben-Ueberschrift mehr - nur
  * noch die Anzahl in normaler Textfarbe ("3 Reinigungen"), optional mit demselben kleinen
  * Outline-Icon wie die zugehoerige Kennzahl oben (in deren dezentem Akzent) fuer den visuellen
- * Bezug. Text selbst bleibt in `text-ink`, nie vollstaendig eingefaerbt. */
-function TaskGroup({ text, icon: Icon, toneClass, children }: { text: string; icon?: typeof IconCheck; toneClass?: string; children: ReactNode }) {
+ * Bezug. Text selbst bleibt in `text-ink`, nie vollstaendig eingefaerbt.
+ *
+ * Desktop-Feinschliff (Claude-Befehl 2): auf Mobile bleibt exakt diese Zeile ("3 Reinigungen")
+ * bestehen - ab `xl` zeigt eine ZWEITE, per `hidden xl:flex`/`xl:hidden` umgeschaltete Variante
+ * stattdessen "[Icon] REINIGUNGEN 3" (ruhige Grossbuchstaben-Kategorie VOR der Zahl, bestehendes
+ * Icon unveraendert wiederverwendet) - dieselben Werte (`count`/dasselbe Icon/derselbe toneClass),
+ * nur umsortierte Darstellung fuer den Breakpoint, kein zweiter Text-Bau-Mechanismus. */
+function TaskGroup({
+  text, count, categoryLabel, icon: Icon, toneClass, children,
+}: { text: string; count: number; categoryLabel: string; icon?: typeof IconCheck; toneClass?: string; children: ReactNode }) {
   return (
     <div>
       {/* Desktop-Toolbar-Redesign (Punkt 9/10): auf Desktop bewusst etwas kleiner/ruhiger
@@ -52,9 +60,14 @@ function TaskGroup({ text, icon: Icon, toneClass, children }: { text: string; ic
        * zur Toolbar darueber (Punkt 8: kein doppelter Kennzahlen-Bereich mehr, also auch kein
        * grosser Leerraum mehr noetig). Mobile bleibt unveraendert (keine der `xl:`-Klassen wirkt
        * unterhalb 1280px). */}
-      <p className="flex items-center gap-1.5 px-4 pt-4 pb-1 text-[13px] font-medium text-ink xl:pt-2 xl:text-[11.5px] xl:font-normal xl:text-muted">
+      <p className="flex items-center gap-1.5 px-4 pt-4 pb-1 text-[13px] font-medium text-ink xl:hidden">
         {Icon ? <Icon width={14} height={14} className={cn('shrink-0', toneClass)} aria-hidden="true" /> : null}
         {text}
+      </p>
+      <p className="hidden items-center gap-1.5 px-4 pt-2 pb-1 text-[11px] font-normal uppercase tracking-wide text-muted xl:flex">
+        {Icon ? <Icon width={13} height={13} className={cn('shrink-0', toneClass)} aria-hidden="true" /> : null}
+        {categoryLabel}
+        <span className="font-medium normal-case text-ink">{count}</span>
       </p>
       {/* Punkt 8 (Desktop): ab xl eine minmax()-basierte Grid-Regel statt fester 3-Spalten, damit
        * Cards auf sehr breiten Monitoren nicht unnoetig auseinandergezogen werden (Karte selbst
@@ -164,7 +177,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       {showScopeRow ? (
         <div className="flex gap-2 px-4 py-2.5 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
           {!isManagerHere ? (
-            <div className="relative min-w-0 flex-1 xl:w-[230px] xl:flex-none">
+            <div className="relative min-w-0 flex-1 xl:w-[210px] xl:flex-none">
               <select
                 value={state.myTasksOnly ? 'mine' : 'all'}
                 onChange={(e) => (e.target.value === 'mine' ? selectMine() : selectAllTasks())}
@@ -177,7 +190,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             </div>
           ) : null}
           {showPropertyChips ? (
-            <div className="relative min-w-0 flex-1 xl:w-[230px] xl:flex-none">
+            <div className="relative min-w-0 flex-1 xl:w-[210px] xl:flex-none">
               <select
                 value={state.propertyScope}
                 onChange={(e) => selectScope(e.target.value)}
@@ -375,6 +388,8 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
           {cleaningTasks.length > 0 ? (
             <TaskGroup
               text={countLabel(t, cleaningTasks.length, 'noun_cleaning_one', 'noun_cleaning_many')}
+              count={cleaningTasks.length}
+              categoryLabel={t('noun_cleaning_many')}
               icon={IconSparkles}
               toneClass="text-type-turnover"
             >
@@ -396,6 +411,8 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
           {openManualTasks.length > 0 ? (
             <TaskGroup
               text={countLabel(t, openManualTasks.length, 'noun_task_one', 'noun_task_many')}
+              count={openManualTasks.length}
+              categoryLabel={t('noun_task_many')}
               icon={IconTask}
               // Feinschliff Runde 8 (Punkt 3/4): derselbe Farbtoken-Fix wie bei der Kennzahl oben,
               // fuer denselben Aufgabentyp - nur auf Desktop (`xl:`), Mobile unveraendert.
@@ -427,9 +444,17 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                 onClick={() => setDoneOpen((v) => !v)}
                 className="flex w-full items-center justify-between gap-1.5 px-4 pt-4 pb-1 text-left"
               >
-                <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
+                <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink xl:hidden">
                   <IconCheck width={14} height={14} className="shrink-0 text-status-clean" aria-hidden="true" />
                   {doneTasks.length} {t('section_done_suffix')}
+                </span>
+                {/* Desktop-Feinschliff (Claude-Befehl 2): dieselbe "[Icon] KATEGORIE Zahl"-Form wie
+                 * TaskGroup oben ("FERTIG 2" statt "2 erledigt") - bestehendes IconCheck
+                 * unveraendert wiederverwendet, Chevron/Auf-Zuklapp-Funktion unveraendert. */}
+                <span className="hidden items-center gap-1.5 text-[11px] font-normal uppercase tracking-wide text-muted xl:flex">
+                  <IconCheck width={13} height={13} className="shrink-0 text-status-clean" aria-hidden="true" />
+                  {t('wf_done')}
+                  <span className="font-medium normal-case text-ink">{doneTasks.length}</span>
                 </span>
                 <IconChevronDown width={14} height={14} className={cn('shrink-0 text-muted transition-transform', doneOpen && 'rotate-180')} aria-hidden="true" />
               </button>

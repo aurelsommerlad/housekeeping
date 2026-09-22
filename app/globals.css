@@ -124,6 +124,65 @@ body {
   color: var(--color-ink);
 }
 
+/*
+ * Globaler Fokus-/Hover-Reset (UI-Konsistenz, kein Layout-/Business-Logik-Aendern).
+ * ------------------------------------------------------------------
+ * Ursache des blauen Rings/Outlines: viele Buttons/Links/Selects in den housekeeping-
+ * Komponenten sind schlichte, direkt im JSX geschriebene <button>/<a>/<select>-Elemente OHNE
+ * eigene focus-Klassen (z. B. Tagesnav-Tabs, Edit-Stifte, "•••"-Menu, Chevron-Toggles,
+ * Standortfilter-<select> in TasksScreen.tsx/TaskDetailSheet.tsx/DesktopNavRail.tsx/
+ * StaffNavBar.tsx/StaffHeader.tsx u.a.) - diese fallen mangels eigenem Styling auf den
+ * BROWSER-Standard zurueck (blauer Fokusring bei Klick/Tastatur, teils zusaetzlich ein blauer
+ * Tap-Highlight auf Touch-Geraeten). Die bereits vorhandenen gemeinsamen UI-Primitiven (Button.tsx/
+ * Card.tsx/Chip.tsx/PropertySwitcher.tsx/Header.tsx) haben BEREITS einen korrekten, salbeifarbenen
+ * `focus-visible:ring-sage`-Ring - dieser globale Reset aendert an ihnen nichts (ihre eigenen,
+ * spezifischeren Utility-Klassen gewinnen weiterhin), er greift ausschliesslich als Fallback fuer
+ * alle uebrigen, bislang ungestylten interaktiven Elemente.
+ *
+ * Bewusst KEIN blindes globales `outline: none` (siehe Anforderung) - `:focus-visible` bleibt die
+ * alleinige Quelle einer sichtbaren Fokusdarstellung und wird über Tastaturnavigation zuverlaessig
+ * ausgeloest (Browser-Heuristik: `:focus-visible` matcht bei Tab-Fokus, i. d. R. NICHT bei einem
+ * reinen Mausklick) - Keyboard Accessibility bleibt dadurch vollstaendig erhalten, waehrend ein
+ * Mausklick keinen dauerhaften Ring mehr hinterlaesst. Salbeigruen (`--color-sage`, #87977E) statt
+ * Blau, duenn (2px) mit ausreichend Abstand (2px Offset) - passend zur bestehenden UNIQUE-PLACES-
+ * Palette und bereits identisch zum Farbton der eigenen Button/Card/Chip-Fokusringe.
+ */
+/*
+ * `!important` ist hier bewusst und notwendig, nicht optional: Tailwind v4 legt fuer JEDES Element
+ * bereits vorab eine eigene `--tw-outline-style`-Custom-Property an (Teil seines internen Ring-/
+ * Outline-Utility-Systems, siehe generiertes CSS) und einzelne Utility-Klassen wie `outline-none`
+ * setzen zusaetzlich gezielt einzelne Outline-Teileigenschaften. Ohne `!important` gewinnt bei
+ * gleicher/aehnlicher Spezifitaet teils Tailwind's eigener Wert fuer EINZELNE Teileigenschaften der
+ * Outline-Kurzschreibweise (z. B. bleibt outline-color auf dem dortigen Default haengen), obwohl
+ * outline-style bereits korrekt von dieser Regel kommt - ein sonst inkonsistentes Zwischenergebnis.
+ * `!important` stellt sicher, dass BEIDE Regeln (aus/an) immer vollstaendig und einheitlich
+ * gewinnen, in beide Richtungen (kein Ring bei Maus, salbeifarbener Ring bei Tastatur) - das ist
+ * das Gegenteil eines blinden globalen `outline: none`, das nie durch `:focus-visible` ersetzt wuerde.
+ */
+a, button, select, input, textarea, [role="button"], [tabindex] {
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+a:focus-visible,
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-sage) !important;
+  outline-offset: 2px !important;
+  border-radius: inherit;
+}
+
+/* Dunkle/gefuellte Flaechen (z. B. eine aktive, dunkel gefuellte Tagesnav-Pille oder ein primaerer
+   Button auf `bg-ink`): der helle Salbeiton haette dort direkt AUF der Flaeche zu wenig Kontrast -
+   `data-focus-dark` markiert genau diese Faelle fuer den dunkleren Forest-Ton (#52664E). Rein additiv,
+   wirkt nur, wenn das Attribut explizit gesetzt ist - kein bestehendes Element aendert sich dadurch. */
+[data-focus-dark]:focus-visible {
+  outline-color: var(--color-forest) !important;
+}
+
 /* UNIQUE PLACES wird nie kursiv dargestellt - als globale Absicherung. */
 .brand-wordmark {
   font-style: normal;

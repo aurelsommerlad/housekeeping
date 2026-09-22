@@ -147,6 +147,15 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
   const bookingChangeFlag = task.bookingChange ? (
     <TimeFlag icon={IconRefresh}>{translate(lang, 'booking_changed_badge')}</TimeFlag>
   ) : null;
+  // Claude-Befehl 3 ("Information zeigen, nicht Datenfelder beschriften"): ersetzt das fruehere,
+  // rein tooltip-basierte Icon im Kopfbereich (nur bei Hover/Long-Press erkennbar) durch eine
+  // kleine, IMMER sichtbare Sekundaerinfo in derselben Zeitzeile wie die uebrigen Badges - "verschoben
+  // von {Datum}" statt des vorherigen Verwaltungs-Labels "GEPLANT FÜR" (das steht nirgends auf der
+  // Karte). Nur das URSPRUENGLICHE Datum, die ausfuehrliche Vorher/Nachher-Historie bleibt exklusiv
+  // der Detailansicht vorbehalten (TaskDetailSheet.tsx).
+  const rescheduledFlag = task.scheduleOverride ? (
+    <TimeFlag icon={IconRefresh}>{translate(lang, 'rescheduled_from_badge', { date: formatDayMonth(task.scheduleOverride.originalScheduledDate) })}</TimeFlag>
+  ) : null;
 
   if (task.type === 'turnover') {
     return (
@@ -158,6 +167,7 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
         {flags}
         {overrideFlag}
         {bookingChangeFlag}
+        {rescheduledFlag}
       </div>
     );
   }
@@ -165,7 +175,7 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
   if (task.type === 'departure') {
     return (
       <div className="flex flex-wrap items-center justify-between gap-x-2.5 gap-y-1 border-t border-line/70 pt-2">
-        <span className="flex items-center gap-2.5">
+        <span className="flex flex-wrap items-center gap-2.5">
           <span className="flex items-center gap-1.5 text-[15px] font-semibold tabular-nums text-ink">
             <IconClock width={15} height={15} className="shrink-0 text-muted" aria-hidden="true" />
             {task.effectiveDepartureTime}
@@ -173,6 +183,7 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
           {flags}
           {overrideFlag}
           {bookingChangeFlag}
+          {rescheduledFlag}
         </span>
         {task.followingArrivalDate ? (
           <span className="text-right text-[11px] leading-tight text-muted">
@@ -183,7 +194,7 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
     );
   }
 
-  if (task.type === 'stayover' && (task.nights || task.bookingChange)) {
+  if (task.type === 'stayover' && (task.nights || task.bookingChange || task.scheduleOverride)) {
     return (
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-line/70 pt-2">
         {task.nights ? (
@@ -192,13 +203,17 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
           </p>
         ) : null}
         {bookingChangeFlag}
+        {rescheduledFlag}
       </div>
     );
   }
 
-  if (task.type === 'manual' && task.manualTitle) {
+  if (task.type === 'manual' && (task.manualTitle || task.scheduleOverride)) {
     return (
-      <p className="truncate border-t border-line/70 pt-2 text-[13px] text-ink">{task.manualTitle}</p>
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-line/70 pt-2">
+        {task.manualTitle ? <p className="min-w-0 flex-1 truncate text-[13px] text-ink">{task.manualTitle}</p> : null}
+        {rescheduledFlag}
+      </div>
     );
   }
 
@@ -386,16 +401,10 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
           <TonePill config={typeConfig} lang={lang} size="sm" />
         </span>
         <span className="flex min-w-0 items-center gap-1">
-          {/* Briefing "Tag ändern" Punkt 8: dezente Kennzeichnung einer manuell verschobenen
-           * Reinigung/Aufgabe - bestehendes Outline-Icon (IconRefresh, bereits fuer
-           * "booking_changed_badge" in TimeLine() verwendet, hier fuer denselben "etwas an der
-           * Planung wurde geaendert"-Sinngehalt in einer anderen Zeile/anderem Kontext), kein
-           * neues Icon, keine Kartenvergroesserung (bleibt in der bestehenden Statuszeile). */}
-          {task.scheduleOverride ? (
-            <span title={translate(lang, 'rescheduled_badge_label')}>
-              <IconRefresh width={13} height={13} className="shrink-0 text-muted" role="img" aria-label={translate(lang, 'rescheduled_badge_label')} />
-            </span>
-          ) : null}
+          {/* Claude-Befehl 3: die fruehere, hier stehende reine Tooltip-Kennzeichnung ("nur bei
+           * Hover erkennbar") wurde durch eine IMMER sichtbare Sekundaerinfo in der Zeitzeile
+           * ersetzt (siehe TimeLine()#rescheduledFlag - "verschoben von {Datum}"), damit die
+           * Information tatsaechlich "gezeigt" statt nur ueber ein Icon versteckt wird. */}
           {/* Briefing "Wieder aktivieren": dezentes, bereits vorhandenes Outline-Icon (kein neues
            * Icon, keine Warnfarbe, keine zusaetzliche Kartenflaeche) - verschwindet automatisch
            * wieder, sobald die Reinigung erneut gestartet wurde (siehe tasks.ts#ResolvedTask.reopened:

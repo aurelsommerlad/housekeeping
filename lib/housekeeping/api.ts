@@ -560,7 +560,58 @@ import type {
 // 375/1280/1920px (keine Konsolenfehler). Ein voller Login-/Redis-/Apaleo-Rundlauf durch die
 // eigentliche Planungsansicht ist in dieser Sandbox mangels Zugangsdaten weiterhin nicht moeglich
 // (bestehende Einschraenkung dieser Umgebung, siehe fruehere Versionskommentare).
-export const APP_VERSION = '2.23.0';
+// v2.24.0 - UI-Politur in drei Schritten, ausdruecklich ohne Layout-/Business-Logik-Aenderungen:
+//
+// (1) Globaler Fokus-/Hover-Reset (app/globals.css): der bislang sichtbare BLAUE Ring bei Hover/
+// Klick/Fokus kam vom Browser-Standard-Outline (`-webkit-focus-ring-color`), nicht von einer
+// eigenen Farbklasse (im gesamten Code existierte kein einziges "blue"-Utility) - viele direkt im
+// JSX geschriebene <button>/<a>/<select>-Elemente (Tagesnav-Tabs, Edit-Stifte, "•••"-Menu,
+// Chevron-Toggles, Standortfilter-<select>, Sprachpillen u. v. a.) hatten schlicht KEINE eigene
+// Fokusdarstellung und fielen deshalb auf den Browser zurueck; die bereits vorhandenen
+// gemeinsamen UI-Primitiven (Button/Card/Chip/PropertySwitcher/Header) hatten dagegen laengst
+// einen korrekten salbeifarbenen `focus-visible:ring-sage` und sind unveraendert. Zentrale Loesung:
+// EIN globales Regelpaar in app/globals.css - `outline:none` fuer alle interaktiven Elemente,
+// ausschliesslich uber `:focus-visible` ersetzt durch einen duennen (2px), versetzten (2px Offset)
+// Salbeiton (`--color-sage`, #87977E); bewusst KEIN blindes globales `outline:none` ohne Ersatz -
+// `:focus-visible` matcht bei Chromium/Firefox zuverlaessig fuer Tastaturfokus, i. d. R. NICHT fuer
+// einen reinen Mausklick, wodurch Keyboard Accessibility vollstaendig erhalten bleibt, waehrend ein
+// Mausklick keinen dauerhaften Ring mehr hinterlaesst (per Playwright-Screenshot-Vergleich
+// Maus-Klick vs. Tab-Taste verifiziert). `!important` ist hier bewusst gesetzt, da Tailwind v4
+// selbst pro Element bereits Ring-/Outline-bezogene Custom Properties anlegt und einzelne
+// Utility-Klassen (z. B. `outline-none`) sonst einzelne Teileigenschaften der Outline-Kurzschreibweise
+// uneinheitlich gewinnen liessen. Ein optionaler `[data-focus-dark]`-Hook fuer einen dunkleren
+// Forest-Ton (`--color-forest`, #52664E) auf sehr dunklen/gefuellten Flaechen steht bereit, wird
+// aber (noch) nirgends gesetzt, da der bestehende 2px-Offset bereits auf JEDER Flaeche ausreichend
+// Kontrast zur hellen Seitenflaeche liefert.
+//
+// (2) Feinschliff der Desktop-Toolbar (TasksScreen.tsx, weiterhin ausschliesslich `xl:`, Mobile
+// unveraendert): Standortfilter auf ~210px verschmaelert (echtes <select>, Funktion unveraendert),
+// die Abschnittsueberschriften ueber den Kartenreihen ("3 Reinigungen") zeigen ab `xl` zusaetzlich
+// eine zweite, per `xl:hidden`/`hidden xl:flex` umgeschaltete Kurzform "[Icon] REINIGUNGEN 3" /
+// "[Icon] AUFGABEN 1" / "[Icon] FERTIG 2" (Kategorie-Label vor der Zahl, GENAU dieselben,
+// bestehenden Icons/Werte, keine neue Ableitung) - die bisherige Mobile-Zeile bleibt exakt
+// bestehen. Tagesnav/KPI-Zeile/schwarze "Heute"-Flaeche waren bereits in der Vorrunde entfernt/auf
+// Text-Tabs umgestellt und blieben unangetastet.
+//
+// (3) Task-Card-Feinschliff (TaskCard.tsx/TaskDetailSheet.tsx): die fruehere, rein Tooltip-basierte
+// (nur bei Hover erkennbare) "Verschoben"-Kennzeichnung auf der Karte wurde durch eine IMMER
+// sichtbare, kompakte Sekundaerinfo in der bestehenden Zeitzeile ersetzt ("verschoben von 22.09."
+// statt eines reinen Icons) - Kartenhoehe/-layout unveraendert (dieselbe TimeFlag-Badge-Reihe wie
+// LCO/ECI/Zeitkonflikt/Buchungsaenderung, die bereits per Flex-Wrap ohne Hoehenwachstum umbricht).
+// Die ausfuehrliche Vorher/Nachher-Information bleibt exklusiv der Detailansicht vorbehalten, dort
+// jetzt praeziser als "Termin geändert · 22.09. → 23.09." (vorher nur das Ursprungsdatum ohne
+// Zieldatum). Bestaetigt: die Karte selbst zeigte nie ein "GEPLANT FÜR"-Verwaltungslabel oder einen
+// dauerhaft sichtbaren Edit-Stift (das Datum wird ausschliesslich ueber den bereits bestehenden
+// Stift in der Detailansicht geaendert) - keine unnoetigen Datenfeld-Label wie "ZUGEWIESEN AN"/
+// "ABREISEZEIT"/"STATUS" auf der Karte, Icon/Position/Kontext vermitteln die Bedeutung bereits.
+//
+// Verifiziert per tsc/eslint/build + Source-Diff-Audit (jede zuvor mobile-relevante Klasse in
+// TasksScreen.tsx/TaskCard.tsx bleibt woertlich erhalten) + Playwright-Screenshots der Login-Seite:
+// Mausklick auf Sprachpille/Submit-Button zeigt keinerlei Ring, Tab-Navigation durch Eingabefeld/
+// Anmelden-Button/Sprachpillen zeigt durchgehend den duennen salbeifarbenen Fokusring, keine
+// Konsolenfehler. Ein voller Login-/Redis-/Apaleo-Rundlauf durch Toolbar/Task-Card selbst ist in
+// dieser Sandbox mangels Zugangsdaten weiterhin nicht moeglich (bestehende Einschraenkung).
+export const APP_VERSION = '2.24.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
