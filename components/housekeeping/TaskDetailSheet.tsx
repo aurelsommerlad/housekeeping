@@ -763,10 +763,11 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   const openPreparationCount = requiredPrepIds.filter((id) => !task.preparationCompletions[id]).length;
 
   // Nutzerfeedback "keine konkurrierende Meldung am Start-Button": KEIN Toast mehr (der erschien
-  // optisch wie ein zweiter, schwarzer Hinweis direkt neben dem schwarzen Start-Button) - die
-  // Erklaerung steht stattdessen dauerhaft (solange unbestaetigt) direkt in der Hinweis-Karte
-  // selbst (siehe notice_confirm_hint unten). Hier bleibt nur Scroll+kurzes Highlight, damit die
-  // Reinigungskraft dorthin gefuehrt wird, ohne dass irgendwo sonst eine Meldung aufploppt.
+  // optisch wie ein zweiter, schwarzer Hinweis direkt neben dem schwarzen Start-Button) und KEIN
+  // zusaetzlicher, dauerhaft eingeblendeter Erklaerungstext in der Hinweis-Karte (Nutzerfeedback:
+  // die Variante ohne diesen Text war klarer) - ein blockierter Start-Versuch fuehrt ausschliesslich
+  // per Scroll+kurzem Rahmen-Highlight zur Hinweis-Karte, ohne dass irgendwo sonst eine Meldung
+  // aufploppt oder zusaetzlicher Text erscheint.
   function handleNoticeBlocked() {
     setNoticeHighlight(true);
     noticeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1176,13 +1177,18 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
          * als eine normale Info-Karte (warme, aber nicht grellrote Flaeche + Akzentfarbe/-linie,
          * Outline-Icon, GROSSGESCHRIEBENER Titel) - visuell klar wichtiger als "Buchung"/der
          * Reservierungskommentar. Punkt 7: ref+Hervorhebung fuer den blockierten Start-Versuch
-         * (siehe handleNoticeBlocked oben). */}
+         * (siehe handleNoticeBlocked oben) - Nutzerfeedback: NUR der Rahmen wird beim Highlight
+         * dunkler/kraeftiger (border-status-attention statt der gedaempften /25-Variante), bewusst
+         * OHNE zusaetzlichen `ring` (frueher `ring-2 ring-status-attention/30` daneben) - ein
+         * zweiter, separat gerenderter Ring-Schatten direkt neben dem eigentlichen Rahmen konnte je
+         * nach Geraet/Browser wie ein zusaetzlicher, dunkler zweiter Rand wirken. Genau EIN Rahmen,
+         * keine zwei uebereinanderliegenden Umrandungen. */}
         {notice ? (
           <div
             ref={noticeRef}
             className={cn(
-              'rounded-control border px-3.5 py-3 transition-shadow',
-              noticeHighlight ? 'border-status-attention bg-status-attention-bg ring-2 ring-status-attention/30' : 'border-status-attention/25 bg-status-attention-bg',
+              'rounded-control border px-3.5 py-3 transition-colors',
+              noticeHighlight ? 'border-status-attention bg-status-attention-bg' : 'border-status-attention/25 bg-status-attention-bg',
             )}
           >
             <div className="flex items-start justify-between gap-2">
@@ -1233,13 +1239,6 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                       {t('translation_retry_action')}
                     </button>
                   </div>
-                ) : null}
-                {/* Nutzerfeedback "keine konkurrierende Meldung am Start-Button": die Erklaerung
-                 * steht jetzt dauerhaft HIER (statt als transienter Toast beim blockierten
-                 * Start-Versuch) - sichtbar GENAU solange die Bestaetigung fehlt, verschwindet
-                 * automatisch mit ihr. */}
-                {!currentUserAckCurrent ? (
-                  <p className="mt-2 text-[12.5px] text-ink">{t('notice_confirm_hint')}</p>
                 ) : null}
                 <div className="mt-2.5">
                   {currentUserAckCurrent && currentUserAck ? (

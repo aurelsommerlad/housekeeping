@@ -894,7 +894,17 @@ import type { Lang } from './i18n';
 // Zeitfenster - jetzt in einer Zeile auf gleicher Hoehe/Schriftgroesse wie die Zeit, mit einem
 // neuen, schlichten Kalender-Icon (IconCalendar, bewusst unterschieden vom bestehenden
 // IconCalendarClock des "Termin verschoben"-Badges). Verifiziert per tsc/eslint/build.
-export const APP_VERSION = '2.30.1';
+// v2.30.2 - PATCH: Nutzerfeedback zur Notice-Bestaetigung, keine Aenderung an Business-Logik.
+// Der in v2.30.0 ergaenzte, dauerhaft in der WICHTIGER-HINWEIS-Karte eingeblendete Erklaerungstext
+// ("Bitte bestätige diesen Hinweis. Danach kannst du die Reinigung starten.") ist wieder entfernt -
+// die Karte zeigt bei unbestaetigtem Hinweis wieder ausschliesslich den Hinweistext selbst plus die
+// "Gelesen und verstanden"-Aktion, wie vor v2.30.0. Scroll+kurzes Rahmen-Highlight bei einem
+// blockierten Start-Versuch bleiben bestehen (kein Toast). Der Highlight-Zustand nutzte bisher
+// zusaetzlich zum kraeftigeren Rahmen (border-status-attention) noch einen separaten
+// `ring-2 ring-status-attention/30` daneben - dieser zusaetzliche Ring-Schatten ist entfernt, sodass
+// beim Highlight nur noch GENAU ein (dunklerer, roter) Rahmen erscheint statt zweier dicht
+// uebereinanderliegender Umrandungen. Verifiziert per tsc/eslint/build.
+export const APP_VERSION = '2.30.2';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
