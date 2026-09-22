@@ -296,6 +296,11 @@ export interface ResolvedTask extends Task {
   elapsedSeconds: number;
   completedAt: number | null;
   history: TaskHistoryEntry[];
+  /** true, wenn der LETZTE Verlaufseintrag 'reopened' ist (Briefing "Wieder aktivieren") - fällt
+   * automatisch wieder auf `false`, sobald ein nachfolgender 'restarted'/'started'-Eintrag
+   * angehaengt wird, damit die dezente Kennzeichnung nicht dauerhaft prominent bleibt, sobald die
+   * Reinigung wieder laeuft. Rein abgeleitet aus `history`, keine eigene Persistenz. */
+  reopened: boolean;
   /** Aktiver manueller Override (Prioritaet 1) - `null`, wenn keiner gesetzt ist. */
   timeOverride: TaskTimeOverride | null;
   /** Operative Abreise-/Anreisezeit NACH Anwendung der vollen Prioritaetskette (1: Override, 2:
@@ -378,14 +383,15 @@ export function resolveTasks(
     if (!a) {
       return {
         ...task, ...timeMeta, ...scheduleMeta, ...teamMeta, status: 'open', assignedUserId: null, assignedUserName: null,
-        cleaningStartedAt: null, elapsedSeconds: 0, completedAt: null, history: [],
+        cleaningStartedAt: null, elapsedSeconds: 0, completedAt: null, history: [], reopened: false,
       };
     }
     const elapsed = (a.elapsedSeconds || 0) + (a.cleaningStartedAt ? Math.round((now - a.cleaningStartedAt) / 1000) : 0);
+    const history = a.history || [];
     return {
       ...task, ...timeMeta, ...scheduleMeta, ...teamMeta, status: a.status, assignedUserId: a.housekeeperId, assignedUserName: a.housekeeperName,
       cleaningStartedAt: a.cleaningStartedAt, elapsedSeconds: elapsed, completedAt: a.completedAt || null,
-      history: a.history || [],
+      history, reopened: history.length > 0 && history[history.length - 1].action === 'reopened',
     };
   });
 }
@@ -403,6 +409,14 @@ export function resolveTasks(
  * Erstellen der Aufgabe gewaehlt wurde) zurueck, analog zu `task.date` bei einer Reinigung.
  */
 export function manualTaskToResolvedTask(mt: ManualTask, scheduleOverride: TaskScheduleOverride | null = null): ResolvedTask {
+  // Punkt "Wieder aktivieren": bevorzugt den persistierten Verlauf (mt.history), falls vorhanden -
+  // aeltere Datensaetze ohne dieses Feld werden weiterhin aus den skalaren completedAt/
+  // completedByUserId/-Name-Feldern rekonstruiert (identisches Fallback-Verhalten wie zuvor).
+  const history = mt.history && mt.history.length > 0
+    ? mt.history
+    : (mt.completedAt && mt.completedByUserId
+      ? [{ action: 'completed' as const, at: mt.completedAt, byUserId: mt.completedByUserId, byUserName: mt.completedByUserName || '' }]
+      : []);
   return {
     id: mt.id,
     propertyId: mt.propertyCode,
@@ -445,9 +459,8 @@ export function manualTaskToResolvedTask(mt: ManualTask, scheduleOverride: TaskS
     cleaningStartedAt: null,
     elapsedSeconds: 0,
     completedAt: mt.completedAt || null,
-    history: mt.completedAt && mt.completedByUserId
-      ? [{ action: 'completed', at: mt.completedAt, byUserId: mt.completedByUserId, byUserName: mt.completedByUserName || '' }]
-      : [],
+    history,
+    reopened: history.length > 0 && history[history.length - 1].action === 'reopened',
     timeOverride: null,
     effectiveDepartureTime: '',
     effectiveArrivalTime: null,
@@ -503,6 +516,14 @@ export function sortTasksForDay(tasks: ResolvedTask[]): ResolvedTask[] {
  */
 export function canRescheduleTask(status: TaskStatus): boolean {
   return status === 'open' || status === 'assigned';
+}
+
+/** Briefing "Wieder aktivieren" Punkt 1: nur eine ABGESCHLOSSENE Reinigung/Aufgabe darf reaktiviert
+ * werden - EINE Stelle fuer diese Regel, von Server (api/task-assignments.js/api/manual-tasks.js,
+ * dort dieselbe Pruefung nochmal serverseitig gegen den frischen Redis-Stand) UND Client
+ * (TaskDetailSheet.tsx) genutzt. */
+export function canReopenTask(status: TaskStatus): boolean {
+  return status === 'completed';
 }
 
 /** Briefing "Tag ändern" Punkt 7: das harte Referenzdatum, ab dem eine Verschiebung blockiert wird

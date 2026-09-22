@@ -44,7 +44,15 @@ function SummaryStat({ value, label, icon: Icon, toneClass }: { value: number; l
 function TaskGroup({ text, icon: Icon, toneClass, children }: { text: string; icon?: typeof IconCheck; toneClass?: string; children: ReactNode }) {
   return (
     <div>
-      <p className="flex items-center gap-1.5 px-4 pt-4 pb-1 text-[13px] font-medium text-ink">
+      {/* Desktop-Toolbar-Redesign (Punkt 9/10): auf Desktop bewusst etwas kleiner/ruhiger
+       * (kleinere Schrift, normales statt medium Gewicht, gedaempfte Textfarbe) als zuvor, damit
+       * sich die inhaltlich redundante Doppelung mit der KPI-Zeile im Toolbar nicht aufdraengt -
+       * die Zeile bleibt trotzdem bestehen (andere Funktion: Tages-Kennzahl vs. Abschnittsanfang,
+       * siehe Briefing), nur ihr visuelles Gewicht sinkt. `xl:pt-2` verkuerzt zugleich den Abstand
+       * zur Toolbar darueber (Punkt 8: kein doppelter Kennzahlen-Bereich mehr, also auch kein
+       * grosser Leerraum mehr noetig). Mobile bleibt unveraendert (keine der `xl:`-Klassen wirkt
+       * unterhalb 1280px). */}
+      <p className="flex items-center gap-1.5 px-4 pt-4 pb-1 text-[13px] font-medium text-ink xl:pt-2 xl:text-[11.5px] xl:font-normal xl:text-muted">
         {Icon ? <Icon width={14} height={14} className={cn('shrink-0', toneClass)} aria-hidden="true" /> : null}
         {text}
       </p>
@@ -156,7 +164,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       {showScopeRow ? (
         <div className="flex gap-2 px-4 py-2.5 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
           {!isManagerHere ? (
-            <div className="relative min-w-0 flex-1 xl:w-[260px] xl:flex-none">
+            <div className="relative min-w-0 flex-1 xl:w-[230px] xl:flex-none">
               <select
                 value={state.myTasksOnly ? 'mine' : 'all'}
                 onChange={(e) => (e.target.value === 'mine' ? selectMine() : selectAllTasks())}
@@ -169,7 +177,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             </div>
           ) : null}
           {showPropertyChips ? (
-            <div className="relative min-w-0 flex-1 xl:w-[260px] xl:flex-none">
+            <div className="relative min-w-0 flex-1 xl:w-[230px] xl:flex-none">
               <select
                 value={state.propertyScope}
                 onChange={(e) => selectScope(e.target.value)}
@@ -196,7 +204,15 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
        * Zeile - vorher `rounded-control` (eckigere 12px-Rundung), das sichtbar von den
        * pillenfoermigen Nachbar-Controls abwich. Mobile behaelt `rounded-control`/die eigene
        * Hoehe unveraendert (kein `xl:`-Praefix wirkt unterhalb 1280px). */}
-      <div className="grid grid-cols-4 gap-1.5 px-4 pt-1 xl:order-2 xl:flex xl:w-auto xl:flex-none xl:gap-1.5 xl:px-0 xl:pt-0">
+      {/* Desktop-Toolbar-Redesign (Punkt 3): auf Desktop keine gefuellte schwarze Pille mehr,
+       * sondern kompakte TEXT-Tabs - aktiv nur ueber einen dunklen Unterstrich (`xl:border-b-2`)
+       * + etwas fetterer Text gekennzeichnet, inaktiv vollstaendig ohne sichtbaren Rahmen/Hintergrund
+       * (nur ein dezenter Hover). `xl:border-0 xl:border-b-2` cancelt gezielt nur die drei anderen
+       * Seiten des mobilen `border`, die Unterstrichfarbe kommt aus derselben border-color-Klasse
+       * wie zuvor die volle Umrandung (xl: gewinnt fuer denselben CSS-Property spaeter in der
+       * generierten Stylesheet-Reihenfolge, exakt dieselbe Technik wie bei den bisherigen `xl:`-
+       * Overrides in dieser Datei). Mobile bleibt die bisherige gefuellte Pille unveraendert. */}
+      <div className="grid grid-cols-4 gap-1.5 px-4 pt-1 xl:order-2 xl:flex xl:w-auto xl:flex-none xl:gap-3 xl:px-0 xl:pt-0">
         {state.planningDays.map((d, i) => (
           <button
             key={d}
@@ -204,11 +220,13 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             onClick={() => selectDay(d)}
             aria-pressed={date === d}
             className={cn(
-              'flex flex-col items-center rounded-control border px-2 py-1.5 text-center transition-colors xl:h-9 xl:flex-row xl:justify-center xl:rounded-full xl:px-3 xl:py-0',
-              date === d ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
+              'flex flex-col items-center rounded-control border px-2 py-1.5 text-center transition-colors xl:h-9 xl:flex-row xl:items-center xl:justify-center xl:rounded-none xl:border-0 xl:border-b-2 xl:bg-transparent xl:px-1 xl:py-0',
+              date === d
+                ? 'border-ink bg-ink text-warm-white xl:border-ink xl:bg-transparent xl:text-ink'
+                : 'border-line bg-warm-white text-muted hover:text-ink xl:border-transparent xl:bg-transparent xl:text-muted xl:hover:text-ink xl:hover:border-line',
             )}
           >
-            <span className="truncate text-[12.5px] font-medium">
+            <span className={cn('truncate text-[12.5px] font-medium', date === d ? 'xl:font-semibold' : 'xl:font-normal')}>
               {i < DAY_LABEL_KEYS.length ? t(DAY_LABEL_KEYS[i]) : shortDayLabel(d, DAY_LOCALES[state.lang] || 'de-DE')}
             </span>
           </button>
@@ -243,14 +261,17 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         </div>
       ) : null}
 
-      {/* Punkt 6/7/8 (Runde 6): genau drei Kennzahlen (Reinigungen/Aufgaben/Fertig) - beziehen
-       * sich auf `visible` (bereits nach Tag/Ansicht/Standort gefiltert, siehe tasksForDay),
-       * Icon direkt neben der Zahl, dezente, dem Task-Typsystem entlehnte Farbakzente. Feinschliff
-       * Runde 7 (Punkt 1): jetzt eigene, volle Desktop-Zeile UNTER Standort/Tagesnav/Aktionen
-       * (`xl:basis-full`) statt rechts in derselben Zeile, damit die erste Zeile kurz/uebersicht-
-       * lich bleibt und die Kennzahlen als eigener, klar lesbarer Tagesstatus darunter stehen. */}
+      {/* Desktop-Toolbar-Redesign (Punkt 4/8): die Kennzahlen stehen jetzt standardmaessig IN
+       * derselben Zeile wie Standort/Tagesnavigation, rechtsbuendig (`xl:ml-auto` - wirkt
+       * unabhaengig davon, ob die Adminaktionen ueberhaupt gerendert werden, siehe deren eigenes
+       * `xl:ml-auto` weiter oben) statt einer erzwungenen eigenen Zeile (`xl:basis-full` entfernt).
+       * Der responsive Fallback (Punkt 12: bei zu wenig Platz darf NUR diese Gruppe in eine zweite
+       * Zeile umbrechen) ergibt sich automatisch aus dem bereits vorhandenen `xl:flex-wrap` auf dem
+       * Toolbar-Wrapper - als letztes Element in der Flex-Reihenfolge (`xl:order-4`) ist die
+       * Kennzahlengruppe die einzige, die bei Platzmangel umbricht, waehrend Standort+Tagesnav
+       * (order 1/2) immer in Zeile 1 bleiben. */}
       {visible.length > 0 ? (
-        <div className="grid grid-cols-3 gap-2 px-4 pt-3 xl:order-4 xl:mt-1 xl:flex xl:basis-full xl:gap-5 xl:px-0 xl:pt-0">
+        <div className="grid grid-cols-3 gap-2 px-4 pt-3 xl:order-4 xl:flex xl:flex-none xl:ml-auto xl:items-center xl:gap-5 xl:px-0 xl:pt-0">
           <SummaryStat
             value={cleaningTasks.length}
             label={t(cleaningTasks.length === 1 ? 'noun_cleaning_one' : 'noun_cleaning_many')}
@@ -331,7 +352,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       ) : state.taskMultiSelect ? (
         // Mehrfachauswahl (Bulk-Zuweisen) bleibt bewusst eine flache Liste ueber ALLE sichtbaren
         // Aufgaben statt der neuen Abschnitte - Punkt 12 "Assignment-Logik nicht veraendern".
-        <div className="grid grid-cols-1 gap-3 px-4 pt-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]">
+        <div className="grid grid-cols-1 gap-3 px-4 pt-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))] xl:pt-2">
           {visible.map((task) => (
             <TaskCard
               key={task.id}

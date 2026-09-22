@@ -491,7 +491,76 @@ import type {
 // Persistenz und Apaleo-Unveraendertheit sind per Code-Review verifiziert (kein Apaleo-Zugriff in
 // der neuen Route, siehe dortiger Kommentar) - ein voller Login-/Redis-/Apaleo-Rundlauf ist in
 // diesem Sandbox mangels Zugangsdaten nicht moeglich (bestehende Einschraenkung dieser Umgebung).
-export const APP_VERSION = '2.22.0';
+// v2.23.0 - zwei unabhaengige Themen in einer Runde:
+//
+// (1) Desktop-Toolbar-Redesign (>= 1280px, ausschliesslich `xl:`-Klassen, Mobile/Tablet
+// unveraendert): Standortfilter/Tagesnavigation/Kennzahlen zu EINER kompakten Zeile
+// zusammengefuehrt statt zweier Zeilen. Der Standortfilter-Select ist auf ~230px verschmaelert
+// (weiterhin ein echtes `<select>`, Funktion unveraendert). Die Tagesnavigation ist von grossen
+// gefuellten Pillen-Buttons zu schlichten TEXT-Tabs geworden: aktiv = etwas fetterer Text +
+// dunkler Unterstrich (`xl:border-b-2`), inaktiv = kein sichtbarer Rahmen/Hintergrund, nur ein
+// dezenter Hover - dieselbe Tagesauswahl-Logik (selectDay) unveraendert. Die drei Kennzahlen
+// (Reinigungen/Aufgaben/Fertig) stehen jetzt standardmaessig IN derselben Zeile (rechtsbuendig
+// via `xl:ml-auto`, vorher eine erzwungene eigene Zeile mit `xl:basis-full`) - der responsive
+// Fallback (bei zu wenig Platz bricht NUR die Kennzahlengruppe in eine zweite Zeile um) ergibt
+// sich automatisch aus dem bereits vorhandenen `xl:flex-wrap`, da die Kennzahlen als letztes
+// Element in der Flex-Reihenfolge (`xl:order-4`) auch als erstes umbrechen. Admin-Aktionen
+// (Auswaehlen/+ Aufgabe erstellen/•••) bleiben bewusst an ihrer bisherigen Position (separate,
+// spaetere Entscheidung). Die "3 Reinigungen"/"1 Aufgabe"-Abschnittsueberschriften ueber den
+// Karten bleiben bestehen (andere Funktion: Abschnittsanfang vs. Tages-Kennzahl in der Toolbar),
+// sind auf Desktop aber kleiner/ruhiger (kleinere, normalgewichtige, gedaempfte Schrift statt
+// medium/text-ink) und ruecken naeher an die Toolbar heran (`xl:pt-2` statt `pt-4`), da keine
+// zweite, redundante Kennzahlenzeile mehr direkt darueber steht. Keine Aenderung an Apaleo,
+// Redis, Task-Ableitung, Zuweisung, Timern oder Rollen - ausschliesslich Desktop-CSS.
+//
+// (2) "Wieder aktivieren" (Reaktivierung einer abgeschlossenen Reinigung/Aufgabe), admin-only:
+// vorab analysiert, ob startedAt/completedAt/Pausen als einzelne Felder gespeichert sind - JA
+// (TaskAssignment.cleaningStartedAt/elapsedSeconds/completedAt sind Skalare) - aber der
+// bestehende elapsedSeconds-Akkumulator schliesst jede Phase mit cleaningStartedAt===null (also
+// auch die Luecke zwischen einem "completed" und einem spaeteren "reopened"/erneuten Start)
+// bereits automatisch von der aktiven Zeit aus, ohne jede Aenderung an der Akkumulationslogik -
+// ein neues sessions[]-Schema war deshalb NICHT noetig (verifiziert per Node-Testskript, siehe
+// unten). Neue Server-Aktionen: api/task-assignments.js#reopen (nur Admin, nur bei
+// status==='completed', setzt 'assigned' wenn ein housekeeperId vorhanden ist sonst 'open', NIE
+// 'in_progress' - der normale Start-/NFC-Weg bleibt Pflicht) und api/manual-tasks.js#reopen
+// (analog, setzt 'open'). Beide haengen einen neuen `'reopened'`-Verlaufseintrag an denselben,
+// bestehenden Verlaufsmechanismus an (KEIN zweites Audit-System). `TaskHistoryAction` um
+// 'reopened'/'restarted' erweitert - startTimer erkennt einen unmittelbar vorausgehenden
+// 'reopened'-Eintrag und protokolliert den naechsten Start als 'restarted' ("Reinigung erneut
+// gestartet") statt faelschlich 'resumed'. `claimTask()` bekam einen Fallback fuer den Fall, dass
+// ein reaktivierter, aber unzugewiesener Task bereits einen Redis-Datensatz besitzt (status:
+// 'open') - der bisherige reine HSETNX-Pfad blieb dabei fuer den haeufigen Fall (brandneuer Task)
+// unangetastet. `assign` bewahrt jetzt elapsedSeconds/history eines bestehenden Datensatzes statt
+// sie blind zu ueberschreiben (relevant, sobald nach einer Reaktivierung neu zugewiesen wird).
+// `ManualTask` bekam ein additives `history?: TaskHistoryEntry[]` (mirror von
+// TaskAssignment.history) - `manualTaskToResolvedTask()` bevorzugt es, faellt bei aelteren
+// Datensaetzen ohne dieses Feld weiterhin auf die synthetisierten skalaren Felder zurueck. Neues,
+// rein abgeleitetes `ResolvedTask.reopened` (true, wenn der letzte Verlaufseintrag 'reopened'
+// ist) treibt sowohl das dezente TaskCard-Badge (bestehendes IconRefresh, verschwindet
+// automatisch wieder nach dem naechsten Start/Neustart) als auch die Detailansicht ("Wieder
+// geöffnet · Name · HH:MM Uhr" in der Reinigung-Sektion). UI: neuer "Wieder aktivieren"-Button
+// (admin-only, `isAdmin` - bewusst NICHT `isManager`, Standortverantwortliche/Team-Leads/
+// Housekeeper duerfen laut Vorgabe nicht reaktivieren) unter dem deaktivierten
+// "abgeschlossen"-Button in TaskDetailSheet.tsx, mit spezifischem Bestaetigungsdialog fuer
+// Reinigung und Aufgabe. Nebenbei behobener Bug: die "Aufgabe erledigt"-Anzeige verwendete
+// bislang `history[0]` (den ALLERERSTEN Verlaufseintrag) statt des letzten 'completed'-Eintrags -
+// nach einem Reopen+erneutem Abschluss haette das faelschlich die Daten der ERSTEN statt der
+// AKTUELLEN Fertigstellung gezeigt. Ebenso zeigt "In Reinigung · seit HH:MM" nach einem
+// Reopen+Neustart jetzt die Startzeit DIESER Sitzung statt des historischen allerersten Starts.
+// Bestehende Redis-Daten bleiben unangetastet - ausschliesslich additive Felder/Aktionen, keine
+// Migration, keine Loeschung. Reopening aendert nie das geplante Datum (komplett unabhaengig von
+// "Tag ändern") und ruft nie Apaleo auf.
+//
+// Verifiziert per tsc/eslint/build + einem eigenstaendigen Node-Testskript (25 pruefbare
+// Logikfaelle: canReopenTask-Statusgate, Reopen mit/ohne Zuweisung, Verlaufslaenge/-reihenfolge,
+// reopened-Flag-Ableitung inkl. automatischem Zuruecksetzen nach Neustart, elapsedSeconds-
+// Ausschluss der Reopen-Luecke, zweite Fertigstellung nach Neustart, manuelle Aufgabe mit/ohne
+// persistiertes history[]) + Source-Diff-Audit (jede zuvor mobile-relevante Klasse in
+// TasksScreen.tsx bleibt woertlich erhalten) + Playwright-Regression der Login-Seite bei
+// 375/1280/1920px (keine Konsolenfehler). Ein voller Login-/Redis-/Apaleo-Rundlauf durch die
+// eigentliche Planungsansicht ist in dieser Sandbox mangels Zugangsdaten weiterhin nicht moeglich
+// (bestehende Einschraenkung dieser Umgebung, siehe fruehere Versionskommentare).
+export const APP_VERSION = '2.23.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -846,6 +915,8 @@ export const taskAssignmentsApi = {
     backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'complete', taskId, requiresInspection: requiresInspectionFlag, linenItems }),
   completeInspection: (taskId: string) =>
     backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'completeInspection', taskId }),
+  /** Briefing "Wieder aktivieren" - admin-only, siehe api/task-assignments.js#reopen. */
+  reopen: (taskId: string) => backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'reopen', taskId }),
 };
 
 export const completionsApi = {
@@ -927,6 +998,8 @@ export const manualTasksApi = {
   create: (input: ManualTaskCreateInput) =>
     backendPost<{ manualTasks: ManualTasksState }>('manual-tasks', { action: 'create', ...input }),
   complete: (taskId: string) => backendPost<{ manualTasks: ManualTasksState }>('manual-tasks', { action: 'complete', taskId }),
+  /** Briefing "Wieder aktivieren" - admin-only, siehe api/manual-tasks.js#reopen. */
+  reopen: (taskId: string) => backendPost<{ manualTasks: ManualTasksState }>('manual-tasks', { action: 'reopen', taskId }),
 };
 
 /** Housekeeping-relevante Buchungsaenderungen (Punkt "Buchungsaenderung sichtbar machen") - siehe

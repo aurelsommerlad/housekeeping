@@ -39,6 +39,7 @@ function formatDateShort(ms: number): string {
 
 const HISTORY_LABEL_KEYS = {
   started: 'history_started', paused: 'history_paused', resumed: 'history_resumed', completed: 'history_completed',
+  reopened: 'history_reopened', restarted: 'history_restarted',
 } as const;
 
 function formatFullDate(iso: string | null): string {
@@ -197,8 +198,25 @@ function CleaningAssignmentSection({
   // nicht mit teamRole vermischte Zustaendigkeit).
   const propHks = isManager ? propHksAll : propHksAll.filter((u) => u.housekeepingTeamId === task.assignedTeamId);
   const assigneeWorkload = task.assignedUserId ? workload[task.assignedUserId] || 0 : null;
-  const firstStartedAt = task.history.find((h) => h.action === 'started')?.at ?? task.cleaningStartedAt ?? null;
+  // Punkt "Wieder aktivieren": nach einem Reopen+Neustart soll "In Reinigung · seit HH:MM" die
+  // Startzeit DIESER (neuen) Sitzung zeigen, nicht die des historischen allerersten Starts vor der
+  // vorherigen Fertigstellung - deshalb wird ab dem letzten 'reopened'-Eintrag gesucht, falls
+  // vorhanden. Ohne jemals reaktivierte Vorgeschichte bleibt das Verhalten exakt wie zuvor (erster
+  // 'started'-Eintrag insgesamt).
+  const lastReopenedIndex = (() => {
+    for (let i = task.history.length - 1; i >= 0; i -= 1) if (task.history[i].action === 'reopened') return i;
+    return -1;
+  })();
+  const firstStartedAt = lastReopenedIndex >= 0
+    ? (task.history.slice(lastReopenedIndex + 1).find((h) => h.action === 'started' || h.action === 'restarted')?.at ?? task.cleaningStartedAt ?? null)
+    : (task.history.find((h) => h.action === 'started')?.at ?? task.cleaningStartedAt ?? null);
   const lastPausedAt = [...task.history].reverse().find((h) => h.action === 'paused')?.at ?? null;
+  // Briefing "Wieder aktivieren": "Wieder geöffnet / Aurel · 11:40 Uhr" - sobald die Reinigung
+  // erneut gestartet wurde, tritt task.reopened automatisch wieder zurueck (letzter Verlaufseintrag
+  // ist dann 'restarted', nicht mehr 'reopened' - siehe tasks.ts#ResolvedTask.reopened) und der
+  // aktuelle Status (statusNode oben) uebernimmt wieder die visuelle Prioritaet, ohne dass diese
+  // Zeile hier extra ausgeblendet werden muesste.
+  const reopenedEntry = task.reopened ? [...task.history].reverse().find((h) => h.action === 'reopened') : null;
 
   let statusNode: ReactNode;
   if (task.status === 'completed') {
@@ -255,11 +273,21 @@ function CleaningAssignmentSection({
         <button type="button" onClick={onToggleAssignment} className="flex flex-col gap-0.5 rounded-control py-0.5 text-left transition-colors hover:bg-surface">
           {summaryRow}
           {assigneeWorkload != null ? <p className="pl-6 text-[11.5px] text-muted">{t('task_count_today', { n: assigneeWorkload })}</p> : null}
+          {reopenedEntry ? (
+            <p className="pl-6 text-[11.5px] text-muted">
+              {t('reopened_detail_by', { name: shortStaffName(reopenedEntry.byUserName), time: formatClock(reopenedEntry.at) })}
+            </p>
+          ) : null}
         </button>
       ) : (
         <div className="flex flex-col gap-0.5">
           {summaryRow}
           {assigneeWorkload != null ? <p className="pl-6 text-[11.5px] text-muted">{t('task_count_today', { n: assigneeWorkload })}</p> : null}
+          {reopenedEntry ? (
+            <p className="pl-6 text-[11.5px] text-muted">
+              {t('reopened_detail_by', { name: shortStaffName(reopenedEntry.byUserName), time: formatClock(reopenedEntry.at) })}
+            </p>
+          ) : null}
         </div>
       )}
 
@@ -313,9 +341,21 @@ function PrimaryAction({
 }: { app: HousekeepingApp; task: ResolvedTask; isManager: boolean; mine: boolean; onNoticeBlocked: () => void }) {
   const {
     t, claimTask, releaseTask, startTaskTimer, pauseTaskTimer, openLinenCompletion, completeTaskInspection, noticeForTask,
-    completeManualTask, shortStaffName, state,
+    completeManualTask, reopenTask, reopenManualTask, shortStaffName, state,
   } = app;
   const canAct = isManager || mine;
+  // Briefing "Wieder aktivieren": ausschliesslich echter Admin (server-seitig identisch
+  // durchgesetzt, siehe api/task-assignments.js#reopen/api/manual-tasks.js#reopen) - bewusst NICHT
+  // `isManager` (Standortverantwortliche duerfen laut Briefing ausdruecklich NICHT reaktivieren).
+  const canReopen = isAdmin(state.user);
+  function handleReopenCleaning() {
+    if (typeof window !== 'undefined' && !window.confirm(t('reopen_confirm_cleaning', { unit: task.unitName || task.propertyName }))) return;
+    reopenTask(task.id);
+  }
+  function handleReopenManual() {
+    if (typeof window !== 'undefined' && !window.confirm(t('reopen_confirm_manual', { title: task.manualTitle || task.propertyName }))) return;
+    reopenManualTask(task.id);
+  }
   const notice = noticeForTask(task.id);
   const currentUserId = state.user?.id || null;
   const currentUserAck = currentUserId ? state.taskNoticeAcks[`${task.id}|${currentUserId}`] : null;
@@ -326,7 +366,10 @@ function PrimaryAction({
   // Zweige unten (insb. 'open'/'assigned' faellt sonst mit dem Claim-Flow zusammen) je greift.
   if (task.type === 'manual') {
     if (task.status === 'completed') {
-      const doneEntry = task.history[0];
+      // Punkt "Wieder aktivieren": nach einem Reopen+erneutem Abschluss kann der Verlauf mehrere
+      // 'completed'-Eintraege enthalten (z. B. [completed, reopened, completed]) - hier zaehlt
+      // immer der LETZTE (der aktuell gueltige Abschluss), nicht mehr history[0].
+      const doneEntry = [...task.history].reverse().find((h) => h.action === 'completed') || null;
       return (
         <div className="flex flex-col gap-1.5">
           <Button variant="secondary" className="w-full" disabled>
@@ -337,6 +380,12 @@ function PrimaryAction({
             <p className="text-center text-[12px] text-muted">
               {doneEntry.byUserName ? `${shortStaffName(doneEntry.byUserName)} · ` : ''}{formatDateShort(doneEntry.at)} {formatClock(doneEntry.at)}
             </p>
+          ) : null}
+          {canReopen ? (
+            <Button variant="ghost" className="w-full" onClick={handleReopenManual}>
+              <IconRefresh width={15} height={15} aria-hidden="true" />
+              {t('reopen_action')}
+            </Button>
           ) : null}
         </div>
       );
@@ -361,10 +410,18 @@ function PrimaryAction({
 
   if (task.status === 'completed') {
     return (
-      <Button variant="secondary" className="w-full" disabled>
-        <IconCheck width={15} height={15} className="text-sage" aria-hidden="true" />
-        {t('cleaning_completed_status')}
-      </Button>
+      <div className="flex flex-col gap-1.5">
+        <Button variant="secondary" className="w-full" disabled>
+          <IconCheck width={15} height={15} className="text-sage" aria-hidden="true" />
+          {t('cleaning_completed_status')}
+        </Button>
+        {canReopen ? (
+          <Button variant="ghost" className="w-full" onClick={handleReopenCleaning}>
+            <IconRefresh width={15} height={15} aria-hidden="true" />
+            {t('reopen_action')}
+          </Button>
+        ) : null}
+      </div>
     );
   }
 

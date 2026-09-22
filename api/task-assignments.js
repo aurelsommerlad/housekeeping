@@ -59,7 +59,25 @@ async function allTaskAssignments(redis) {
 // HSETNX ist ein Kernprotokoll-Befehl wie jeder andere Hash-Befehl auch).
 async function claimTask(redis, taskId, record) {
   const created = await redis.hSetNX(HASH_KEY, taskId, JSON.stringify(record));
-  return !!created;
+  if (created) return true;
+  // Punkt "Wieder aktivieren": eine reaktivierte, aber (noch) niemandem zugewiesene Aufgabe hat
+  // weiterhin einen bestehenden Redis-Datensatz (status: 'open', siehe reopen-Aktion unten) - der
+  // urspruengliche Datensatz MUSS erhalten bleiben, um Verlauf/elapsedSeconds nicht zu verlieren,
+  // weshalb HSETNX oben (setzt nur, wenn der Schluessel komplett FEHLT) hier fehlschlaegt, obwohl
+  // der Task fachlich frei ist. Fallback: lesen und nur uebernehmen, wenn der bestehende Datensatz
+  // tatsaechlich noch 'open' ist - ein bewusst in Kauf genommenes, schmales Race-Fenster fuer
+  // diesen deutlich selteneren Fall (der haeufige Fall, ein brandneuer Task, bleibt vollstaendig
+  // ueber den atomaren HSETNX-Pfad oben abgesichert - siehe dessen Kommentar fuer den Grund, warum
+  // hier bewusst kein WATCH/MULTI/EXEC bzw. Lua/EVAL verwendet wird).
+  const raw = await redis.hGet(HASH_KEY, taskId);
+  const existing = raw ? parseJSON(raw, null) : null;
+  if (!existing || existing.status !== 'open') return false;
+  const merged = {
+    ...existing, housekeeperId: record.housekeeperId, housekeeperName: record.housekeeperName,
+    since: record.since, status: 'assigned', cleaningStartedAt: null,
+  };
+  await redis.hSet(HASH_KEY, taskId, JSON.stringify(merged));
+  return true;
 }
 
 // Fuer Selbstbedienungs-Aktionen (release/startTimer/stopTimer): erlaubt fuer Admin, fuer
@@ -186,9 +204,19 @@ module.exports = async (req, res) => {
           return;
         }
       }
+      // Punkt "Wieder aktivieren": bewahrt einen evtl. bereits bestehenden Datensatz (elapsedSeconds/
+      // history/completedAt) statt ihn blind mit einem frischen Objektliteral zu ueberschreiben -
+      // relevant, sobald ein Admin nach einer Reaktivierung separat neu zuweist ("Der Admin kann
+      // danach separat neu zuweisen", siehe Briefing), aber auch fuer jede sonstige Umverteilung
+      // eines bereits einmal begonnenen/pausierten Tasks (der bisherige, blinde Overwrite haette
+      // dort ebenso Verlauf/Zeit verloren).
+      const existingForAssign = await redis.hGet(HASH_KEY, taskId).then((raw) => (raw ? parseJSON(raw, null) : null));
       await redis.hSet(HASH_KEY, taskId, JSON.stringify({
+        ...(existingForAssign || {}),
         taskId, housekeeperId, housekeeperName: housekeeperName || '',
-        since: Date.now(), status: 'assigned', cleaningStartedAt: null, elapsedSeconds: 0,
+        since: Date.now(), status: 'assigned', cleaningStartedAt: null,
+        elapsedSeconds: existingForAssign ? (existingForAssign.elapsedSeconds || 0) : 0,
+        history: existingForAssign ? (existingForAssign.history || []) : [],
       }));
     } else if (action === 'bulkAssign') {
       const { taskIds, housekeeperId, housekeeperName } = req.body;
@@ -262,7 +290,18 @@ module.exports = async (req, res) => {
       // Punkt "Reinigungsverlauf": ein bereits einmal begonnener Task (elapsedSeconds > 0, z. B.
       // nach einer Pause) wird beim erneuten Start als "Fortgesetzt" statt "Reinigung gestartet"
       // protokolliert - reine Ableitung aus dem ohnehin vorhandenen Feld, kein zweiter Zaehler.
-      appendHistory(existing, (existing.elapsedSeconds || 0) > 0 ? 'resumed' : 'started', user, source);
+      //
+      // Punkt "Wieder aktivieren": folgt auf den Start unmittelbar ein 'reopened'-Eintrag (der
+      // letzte Verlaufseintrag), wird stattdessen 'restarted' protokolliert ("Reinigung erneut
+      // gestartet") - unterscheidet sich bewusst von 'resumed' (Fortsetzen NACH einer Pause
+      // innerhalb derselben laufenden Reinigung, kein Abschluss dazwischen).
+      const lastHistoryAction = existing.history && existing.history.length > 0
+        ? existing.history[existing.history.length - 1].action
+        : null;
+      const startAction = lastHistoryAction === 'reopened'
+        ? 'restarted'
+        : ((existing.elapsedSeconds || 0) > 0 ? 'resumed' : 'started');
+      appendHistory(existing, startAction, user, source);
       existing.status = 'in_progress';
       existing.cleaningStartedAt = Date.now();
       await redis.hSet(HASH_KEY, taskId, JSON.stringify(existing));
@@ -358,6 +397,31 @@ module.exports = async (req, res) => {
         existing.completedAt = Date.now();
         await redis.hSet(HASH_KEY, taskId, JSON.stringify(existing));
       }
+    } else if (action === 'reopen') {
+      // Briefing "Wieder aktivieren": admin-only, ausschliesslich fuer eine bereits ABGESCHLOSSENE
+      // Reinigung (siehe tasks.ts#canReopenTask - dieselbe Regel, hier serverseitig gegen den
+      // frischen Redis-Stand durchgesetzt). Setzt NIE auf 'in_progress' zurueck - der normale
+      // "Reinigung starten"-Weg (bzw. NFC) muss fuer den Wiedereinstieg verwendet werden. Der
+      // bestehende Verlauf/elapsedSeconds-Akkumulator bleibt vollstaendig erhalten (siehe
+      // claimTask()-Kommentar oben: dieser Akkumulator schliesst die Luecke zwischen 'completed'
+      // und dem naechsten Start bereits automatisch von der aktiven Zeit aus, da cleaningStartedAt
+      // in der Zwischenzeit `null` ist - kein neues sessions[]-Schema noetig).
+      const { taskId } = req.body;
+      if (!taskId) { res.status(400).json({ error: 'taskId ist erforderlich.' }); return; }
+      if (user.role !== 'admin') {
+        res.status(403).json({ error: 'Nur Administratoren können eine Reinigung wieder aktivieren.' });
+        return;
+      }
+      const existingRaw = await redis.hGet(HASH_KEY, taskId);
+      const existing = existingRaw ? parseJSON(existingRaw, null) : null;
+      if (!existing || existing.status !== 'completed') {
+        res.status(409).json({ error: 'Nur eine abgeschlossene Reinigung kann wieder aktiviert werden.' });
+        return;
+      }
+      existing.status = existing.housekeeperId ? 'assigned' : 'open';
+      existing.cleaningStartedAt = null;
+      appendHistory(existing, 'reopened', user);
+      await redis.hSet(HASH_KEY, taskId, JSON.stringify(existing));
     } else {
       res.status(400).json({ error: 'Unbekannte action.' });
       return;

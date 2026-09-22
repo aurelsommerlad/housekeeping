@@ -53,7 +53,9 @@ function formatClock(ms: number): string {
  * wurde), ohne einen eigenen, parallelen Zeitstempel zu fuehren. */
 function lastHistoryAt(task: ResolvedTask, action: 'started' | 'resumed' | 'paused'): number | null {
   for (let i = task.history.length - 1; i >= 0; i -= 1) {
-    if (task.history[i].action === action || (action === 'started' && task.history[i].action === 'resumed')) return task.history[i].at;
+    if (task.history[i].action === action || (action === 'started' && (task.history[i].action === 'resumed' || task.history[i].action === 'restarted'))) {
+      return task.history[i].at;
+    }
   }
   return null;
 }
@@ -392,6 +394,16 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
           {task.scheduleOverride ? (
             <span title={translate(lang, 'rescheduled_badge_label')}>
               <IconRefresh width={13} height={13} className="shrink-0 text-muted" role="img" aria-label={translate(lang, 'rescheduled_badge_label')} />
+            </span>
+          ) : null}
+          {/* Briefing "Wieder aktivieren": dezentes, bereits vorhandenes Outline-Icon (kein neues
+           * Icon, keine Warnfarbe, keine zusaetzliche Kartenflaeche) - verschwindet automatisch
+           * wieder, sobald die Reinigung erneut gestartet wurde (siehe tasks.ts#ResolvedTask.reopened:
+           * rein aus dem letzten Verlaufseintrag abgeleitet), dann uebernimmt WorkStatus unten
+           * wieder den aktuellen Status ("In Reinigung ..."). */}
+          {task.reopened ? (
+            <span title={translate(lang, 'reopened_badge_label')}>
+              <IconRefresh width={13} height={13} className="shrink-0 text-muted" role="img" aria-label={translate(lang, 'reopened_badge_label')} />
             </span>
           ) : null}
           <WorkStatus task={task} lang={lang} shortName={shortName} />

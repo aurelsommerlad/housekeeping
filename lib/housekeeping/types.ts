@@ -382,6 +382,11 @@ export interface ManualTask {
   completedByUserId?: string;
   completedByUserName?: string;
   completedAt?: number;
+  /** Chronologischer Verlauf (abschliessen/wieder aktivieren) - additiv, analog zu
+   * TaskAssignment.history. Aeltere Datensaetze ohne dieses Feld werden ueber die bestehenden
+   * skalaren completedAt/completedByUserId/completedByUserName-Felder rekonstruiert (siehe
+   * tasks.ts#manualTaskToResolvedTask), NIE ueberschrieben. */
+  history?: TaskHistoryEntry[];
 }
 
 export type ManualTasksState = Record<string, ManualTask | null>;
@@ -415,7 +420,7 @@ export type TaskStatus = 'open' | 'assigned' | 'in_progress' | 'paused' | 'inspe
  * ("started" vs. "resumed") statt nur den Status zu spiegeln, damit die Verlaufszeile ohne
  * weitere Herleitung exakt den geforderten Text ("Reinigung gestartet" vs. "Fortgesetzt") tragen
  * kann. */
-export type TaskHistoryAction = 'started' | 'paused' | 'resumed' | 'completed';
+export type TaskHistoryAction = 'started' | 'paused' | 'resumed' | 'completed' | 'reopened' | 'restarted';
 
 /** Nur bei 'started'/'resumed' gesetzt (Punkt "Startquelle speichern") - woher DIESER konkrete
  * Start ausgeloest wurde. Rein informativ fuer die Verlaufsanzeige, aendert nichts an Timer-/

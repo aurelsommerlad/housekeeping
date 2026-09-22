@@ -16,6 +16,15 @@ const { hasPropertyAccess, isPropertyManager } = require('./_permissions');
 const HASH_KEY = 'housekeeping:manual_tasks';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+// Punkt "Wieder aktivieren": derselbe Verlaufsmechanismus wie bei Reinigungs-Tasks (siehe
+// api/task-assignments.js#appendHistory), hier additiv auf `task.history` statt auf einem
+// TaskAssignment-Datensatz - kein zweiter, abweichender Audit-Mechanismus.
+function appendHistory(task, action, user) {
+  const entry = { action, at: Date.now(), byUserId: user.id, byUserName: user.name || user.username };
+  task.history = [...(task.history || []), entry];
+  return task;
+}
+
 async function allTasksForUser(redis, user) {
   const all = await redis.hGetAll(HASH_KEY);
   const tasks = {};
@@ -112,6 +121,33 @@ module.exports = async (req, res) => {
         completedByUserName: user.name || user.username,
         completedAt: Date.now(),
       };
+      appendHistory(updated, 'completed', user);
+      await redis.hSet(HASH_KEY, taskId, JSON.stringify(updated));
+      res.status(200).json({ manualTasks: await allTasksForUser(redis, user) });
+      return;
+    }
+
+    if (action === 'reopen') {
+      // Briefing "Wieder aktivieren": admin-only, ausschliesslich fuer eine bereits abgeschlossene
+      // Aufgabe (siehe tasks.ts#canReopenTask). ManualTaskStatus kennt nur 'open'/'completed'
+      // (kein eigener "assigned"-Zwischenstatus fuer manuelle Aufgaben) - eine bereits zugewiesene
+      // Aufgabe bleibt beim Reaktivieren einfach zugewiesen UND 'open' (assignedUserId/-Name
+      // unveraendert), analog zur bestehenden Anzeige eines offenen, aber schon zugewiesenen Tasks.
+      const { taskId } = req.body;
+      if (!taskId) { res.status(400).json({ error: 'taskId ist erforderlich.' }); return; }
+      if (user.role !== 'admin') {
+        res.status(403).json({ error: 'Nur Administratoren können eine Aufgabe wieder aktivieren.' });
+        return;
+      }
+      const raw = await redis.hGet(HASH_KEY, taskId);
+      const task = raw ? parseJSON(raw, null) : null;
+      if (!task) { res.status(404).json({ error: 'Aufgabe nicht gefunden.' }); return; }
+      if (task.status !== 'completed') {
+        res.status(409).json({ error: 'Nur eine erledigte Aufgabe kann wieder aktiviert werden.' });
+        return;
+      }
+      const updated = { ...task, status: 'open' };
+      appendHistory(updated, 'reopened', user);
       await redis.hSet(HASH_KEY, taskId, JSON.stringify(updated));
       res.status(200).json({ manualTasks: await allTasksForUser(redis, user) });
       return;

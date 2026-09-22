@@ -1049,6 +1049,21 @@ export function useHousekeepingApp() {
     patch({ loading: false });
   }, [patch, showToast]);
 
+  // Briefing "Wieder aktivieren": admin-only (serverseitig erzwungen, siehe
+  // api/task-assignments.js#reopen). Bewusst NICHT ueber patch({ detailTaskId: null }) das Sheet
+  // schliessen (anders als z. B. finishTask) - Punkt "Wieder geöffnet"-Hinweis soll direkt in
+  // derselben Detailansicht sichtbar werden. Der Wechsel aus dem "Fertig"-Bereich zurueck in die
+  // aktive Sektion inkl. Tageszaehler passiert automatisch ueber die bestehende, state-getriebene
+  // Neuberechnung (resolvedTasksAll/tasksForDayAll), da hier nur `taskAssignments` gepatcht wird -
+  // kein zusaetzlicher Reload/Sonderpfad noetig.
+  const reopenTask = useCallback(async (taskId: string) => {
+    await runAction(async () => {
+      const { taskAssignments } = await taskAssignmentsApi.reopen(taskId);
+      patch({ taskAssignments });
+      showToast(t('reopen_done_toast'));
+    });
+  }, [patch, runAction, showToast, t]);
+
   const toggleTaskDoubleType = useCallback(async (task: ResolvedTask, typeId: string) => {
     await runAction(async () => {
       const key = roomKey(task.propertyCode, task.unitName);
@@ -1097,6 +1112,16 @@ export function useHousekeepingApp() {
       const { manualTasks } = await manualTasksApi.complete(taskId);
       patch({ manualTasks });
       showToast(t('saved'));
+    });
+  }, [patch, runAction, showToast, t]);
+
+  // Briefing "Wieder aktivieren" (manuelle Aufgabe) - siehe reopenTask() oben fuer den analogen
+  // Fall bei Reinigungen; hier genauso admin-only serverseitig erzwungen (api/manual-tasks.js).
+  const reopenManualTask = useCallback(async (taskId: string) => {
+    await runAction(async () => {
+      const { manualTasks } = await manualTasksApi.reopen(taskId);
+      patch({ manualTasks });
+      showToast(t('reopen_done_toast'));
     });
   }, [patch, runAction, showToast, t]);
 
@@ -1316,11 +1341,11 @@ export function useHousekeepingApp() {
     selectDay, selectPropertyScope, toggleMyTasksOnly,
     toggleTaskMultiSelect, toggleTaskSelection, openTask, closeTaskModal,
     claimTask, releaseTask, assignTask, bulkAssignTasks, clearDayAssignments,
-    startTaskTimer, pauseTaskTimer, finishTask, completeTaskInspection,
+    startTaskTimer, pauseTaskTimer, finishTask, completeTaskInspection, reopenTask,
     toggleTaskDoubleType, finishTaskDoubleup,
 
     // Manuell erstellte Aufgaben
-    openManualTaskForm, closeManualTaskForm, createManualTask, completeManualTask,
+    openManualTaskForm, closeManualTaskForm, createManualTask, completeManualTask, reopenManualTask,
 
     // Kontextabhaengiger Pause/Fortsetzen-Hinweis im Header (StaffHeader.tsx)
     activeCleaningTask,
