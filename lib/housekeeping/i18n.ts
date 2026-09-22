@@ -252,7 +252,7 @@ export const I18N = {
     // auf der Karte) + Punkt 8 (Bestaetigungs-Aktion/Apartment-Label in der Detailansicht) +
     // Punkt 9 (prominentes Babybett-Vorbereitungs-Icon).
     task_new_dot_label: 'Neu', booking_changed_dot_label: 'Buchung geändert',
-    acknowledge_change_action: 'Änderung zur Kenntnis genommen', booking_changed_unit_label: 'Apartment',
+    acknowledge_change_action: 'Zur Kenntnis nehmen', acknowledge_change_done_label: 'Zur Kenntnis genommen', booking_changed_unit_label: 'Apartment',
     crib_prep_label: 'Babybett vorbereiten',
     scope_all_properties: 'Alle Standorte', summary_cleanings_label: 'Reinigungen',
     notice_start_hint: 'Erst nach Bestätigung des Hinweises verfügbar',
@@ -261,6 +261,11 @@ export const I18N = {
     original_text_label: 'Original ({{lang}})',
     translation_retry_action: 'Übersetzung erneut versuchen',
     translation_failed_admin_hint: '{{lang}}-Übersetzung konnte nicht erstellt werden.',
+    // Briefing "Reinigungsdetailansicht ueberarbeiten".
+    work_order_title: 'Arbeitsauftrag', assignee_label: 'Reinigungskraft',
+    auto_translated_label: 'Automatisch übersetzt',
+    prep_apaleo_note: 'Diese Vorbereitung basiert auf den gebuchten Apaleo-Extras.',
+    doubleup_extra_add: 'Extras hinzufügen',
   },
   en: {
     app_name: 'Housekeeping', login_title: 'Sign in', username: 'Username', password: 'Password',
@@ -473,7 +478,7 @@ export const I18N = {
     filter_group_view: 'View', filter_group_property: 'Property', scope_all_tasks: 'All tasks',
     booking_changed_badge: 'Booking changed', booking_changed_title: 'Booking changed',
     task_new_dot_label: 'New', booking_changed_dot_label: 'Booking changed',
-    acknowledge_change_action: 'Change acknowledged', booking_changed_unit_label: 'Apartment',
+    acknowledge_change_action: 'Acknowledge', acknowledge_change_done_label: 'Acknowledged', booking_changed_unit_label: 'Apartment',
     crib_prep_label: 'Prepare crib',
     scope_all_properties: 'All properties', summary_cleanings_label: 'Cleanings',
     notice_start_hint: 'Available only after confirming the notice',
@@ -481,6 +486,10 @@ export const I18N = {
     original_text_label: 'Original ({{lang}})',
     translation_retry_action: 'Retry translation',
     translation_failed_admin_hint: '{{lang}} translation could not be created.',
+    work_order_title: 'Work order', assignee_label: 'Housekeeper',
+    auto_translated_label: 'Automatically translated',
+    prep_apaleo_note: 'This preparation is based on the booked Apaleo extras.',
+    doubleup_extra_add: 'Add extras',
   },
   pl: {
     app_name: 'Housekeeping', login_title: 'Zaloguj sie', username: 'Nazwa uzytkownika', password: 'Haslo',
@@ -693,7 +702,7 @@ export const I18N = {
     filter_group_view: 'Widok', filter_group_property: 'Lokalizacja', scope_all_tasks: 'Wszystkie zadania',
     booking_changed_badge: 'Rezerwacja zmieniona', booking_changed_title: 'Rezerwacja zmieniona',
     task_new_dot_label: 'Nowe', booking_changed_dot_label: 'Rezerwacja zmieniona',
-    acknowledge_change_action: 'Zmiana przyjeta do wiadomosci', booking_changed_unit_label: 'Apartament',
+    acknowledge_change_action: 'Przyjmij do wiadomosci', acknowledge_change_done_label: 'Przyjeto do wiadomosci', booking_changed_unit_label: 'Apartament',
     crib_prep_label: 'Przygotuj lozeczko',
     scope_all_properties: 'Wszystkie lokalizacje', summary_cleanings_label: 'Sprzatania',
     notice_start_hint: 'Dostepne dopiero po potwierdzeniu informacji',
@@ -701,6 +710,10 @@ export const I18N = {
     original_text_label: 'Oryginal ({{lang}})',
     translation_retry_action: 'Sprobuj ponownie przetlumaczyc',
     translation_failed_admin_hint: 'Nie udalo sie utworzyc tlumaczenia na {{lang}}.',
+    work_order_title: 'Zlecenie pracy', assignee_label: 'Osoba sprzatajaca',
+    auto_translated_label: 'Przetlumaczone automatycznie',
+    prep_apaleo_note: 'To przygotowanie wynika z zarezerwowanych dodatkow Apaleo.',
+    doubleup_extra_add: 'Dodaj dodatki',
   },
   ro: {
     app_name: 'Housekeeping', login_title: 'Autentificare', username: 'Utilizator', password: 'Parola',
@@ -913,7 +926,7 @@ export const I18N = {
     filter_group_view: 'Vizualizare', filter_group_property: 'Locatie', scope_all_tasks: 'Toate sarcinile',
     booking_changed_badge: 'Rezervare modificata', booking_changed_title: 'Rezervare modificata',
     task_new_dot_label: 'Nou', booking_changed_dot_label: 'Rezervare modificata',
-    acknowledge_change_action: 'Schimbare confirmata', booking_changed_unit_label: 'Apartament',
+    acknowledge_change_action: 'Confirma', acknowledge_change_done_label: 'Confirmat', booking_changed_unit_label: 'Apartament',
     crib_prep_label: 'Pregateste patutul',
     scope_all_properties: 'Toate locatiile', summary_cleanings_label: 'Curatenii',
     notice_start_hint: 'Disponibil doar dupa confirmarea instiintarii',
@@ -921,6 +934,10 @@ export const I18N = {
     original_text_label: 'Original ({{lang}})',
     translation_retry_action: 'Reincearca traducerea',
     translation_failed_admin_hint: 'Traducerea in {{lang}} nu a putut fi creata.',
+    work_order_title: 'Comanda de lucru', assignee_label: 'Persoana de curatenie',
+    auto_translated_label: 'Tradus automat',
+    prep_apaleo_note: 'Aceasta pregatire se bazeaza pe extraoptiunile Apaleo rezervate.',
+    doubleup_extra_add: 'Adauga extra',
   },
 } as const;
 

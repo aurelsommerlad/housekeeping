@@ -78,7 +78,7 @@ function lastHistoryAt(task: ResolvedTask, action: 'started' | 'resumed' | 'paus
  * zeigen "Fertig · HH:MM" statt einer nochmaligen Zuweisungsangabe (Punkt 10). Sonst schlicht die
  * Zuweisung selbst - der Name allein zeigt bereits eindeutig, dass zugewiesen ist.
  */
-function WorkStatus({ task, lang, shortName }: { task: ResolvedTask; lang: Lang; shortName: (name: string | null | undefined) => string }) {
+export function WorkStatus({ task, lang, shortName }: { task: ResolvedTask; lang: Lang; shortName: (name: string | null | undefined) => string }) {
   const name = task.assignedUserName ? shortName(task.assignedUserName) : translate(lang, 'unassigned');
 
   if (task.status === 'completed') {
@@ -286,7 +286,7 @@ function OccupancyBlock({
  * Zwischenreinigung (laufender Aufenthalt, weder An- noch Abreise heute) neutral ohne
  * Richtungssymbol/Label. Extras-Icons bleiben rechts in derselben Zeile.
  */
-function OccupancyLine({ task, lang, doubleTypes }: { task: ResolvedTask; lang: Lang; doubleTypes: typeof DOUBLEUP_TYPES }) {
+export function OccupancyLine({ task, lang, doubleTypes }: { task: ResolvedTask; lang: Lang; doubleTypes: typeof DOUBLEUP_TYPES }) {
   const departureText = task.reservationInfo ? formatOccupancy(lang, task.reservationInfo.adults, task.reservationInfo.childrenCount) : null;
   const arrivalText = task.type === 'turnover' && task.nextReservationInfo
     ? formatOccupancy(lang, task.nextReservationInfo.adults, task.nextReservationInfo.childrenCount)

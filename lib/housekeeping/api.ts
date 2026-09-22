@@ -818,7 +818,35 @@ import type { Lang } from './i18n';
 // weiterhin unveraendert fuer die eigentlichen Reinigungsstatus-Anzeigen gelten. Die Ansicht-/
 // Standort-<select> in TasksScreen.tsx zeigen keinen Fokusring mehr (neues `data-focus-none`-Opt-out
 // vom globalen Fokusring-Fallback in globals.css) - alle anderen Elemente sind unveraendert.
-export const APP_VERSION = '2.28.1';
+// v2.29.0 - MINOR: Reinigungsdetailansicht ueberarbeitet (Informationshierarchie/Gruppierung,
+// keine bestehende Business-Logik veraendert). Kopf: Typ-Label + "Termin verschoben"/"Wieder
+// aktiviert" + Team/Reinigungskraft (WorkStatus, wiederverwendet aus TaskCard.tsx) in einer Zeile,
+// darunter die kompakte ABREISE/ANREISE-Belegungszeile (OccupancyLine, ebenfalls wiederverwendet)
+// sowie ein neuer "Neu"/"Buchung geändert"-Aufmerksamkeitshinweis oben rechts (dieselbe, bereits
+// bestehende Logik wie auf der Karte). "Reservierung" + "Reservierungskommentar" zu einem
+// gemeinsamen "Buchung"-Bereich zusammengefuehrt (Kommentar als sekundaere Information mit eigenem
+// Sprechblasen-Icon statt eigener Karte) - kein Apaleo-Deeplink ergaenzt, da keine zuverlaessige
+// Web-URL/ID-Logik dafuer existiert. "Buchung geändert" bekommt eine helle orangene
+// Akzentflaeche (status-progress-Ton) statt einer neutralen Karte, kuerzeres Aktionslabel "Zur
+// Kenntnis nehmen" sowie einen sichtbaren "Zur Kenntnis genommen"-Zustand nach Bestaetigung.
+// "Wichtiger Hinweis" deutlich staerker hervorgehoben (helle Terracotta-Akzentflaeche,
+// GROSSGESCHRIEBENER Titel) und zeigt bei einer angezeigten automatischen Uebersetzung zusaetzlich
+// dezent "Automatisch übersetzt" (neues Globus-Icon, nur wenn tatsaechlich eine Uebersetzung fuer
+// die aktuelle Sprache vorliegt - keine Fake-Anzeige). "Team"/"Reinigung"/"Vorbereitung" zu einem
+// gemeinsamen "Arbeitsauftrag"-Abschnitt zusammengefuehrt (Team und Reinigungskraft als zwei
+// getrennt beschriftete Felder, nebeneinander auf Desktop); die Vorbereitungs-Chips zeigen
+// zusaetzlich ein per Apaleo-Service (BABY) gebuchtes Babybett/einen gebuchten Hund immer als aktiv
+// (mit Hinweistext "Diese Vorbereitung basiert auf den gebuchten Apaleo-Extras"), unabhaengig vom
+// separaten manuellen Flag - beide Datenquellen bleiben technisch weiterhin getrennt
+// (toggleTaskDoubleType unveraendert). "Reinigung starten" bleibt die eindeutige primaere Aktion;
+// "Vorfall melden" ist jetzt sichtbar sekundaer (Outline, auf Desktop links daneben statt
+// gestapelt darunter) - der bereits bestehende disabled-Button-Mechanismus fuer einen
+// unbestaetigten wichtigen Hinweis (inkl. Hervorhebung der Notice-Card) ist unveraendert. Keine
+// Aenderung an Statuslogik/Rechten/APIs/Datenmodell (ausser der bereits zuvor eingefuehrten,
+// rein additiven FreeTextTranslation) und keine Aenderung am mobilen Dashboard/den Task-Cards
+// (nur TaskCard.tsx#WorkStatus/OccupancyLine wurden fuer die Wiederverwendung exportiert, ihr
+// eigenes Verhalten/Aussehen ist unveraendert). Verifiziert per tsc/eslint/build (alle sauber).
+export const APP_VERSION = '2.29.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

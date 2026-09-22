@@ -10,10 +10,11 @@ import type { HousekeepingApp, ResolvedTask } from '@/lib/housekeeping/useHousek
 import { BottomSheet } from './BottomSheet';
 import { TonePill } from './TonePill';
 import { TimeFlag } from './TimeFlag';
+import { OccupancyLine, WorkStatus } from './TaskCard';
 import { Button } from '@/components/ui/Button';
 import {
-  DoubleupIcon, IconAlertCircle, IconCheck, IconChevronDown, IconCircle, IconClock, IconClose, IconEdit, IconPlus,
-  IconRefresh, IconTask, IconUser,
+  DoubleupIcon, IconAlertCircle, IconCalendarClock, IconCheck, IconChevronDown, IconCircle, IconClock, IconClose,
+  IconEdit, IconGlobe, IconMessageCircle, IconPlus, IconRefresh, IconRotateCcw, IconTask, IconUser,
 } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
@@ -142,57 +143,66 @@ function BookingChangeDetail({
   onAcknowledge: () => void;
 }) {
   return (
-    <div className="rounded-control border border-line bg-surface px-3.5 py-3">
-      <div className="flex items-start gap-2">
-        <IconRefresh width={16} height={16} className="mt-0.5 shrink-0 text-muted" aria-hidden="true" />
-        <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-medium text-ink">
-            {t('booking_changed_title')} <span className="font-normal text-muted">· {formatDateShort(change.changedAt)} {formatClock(change.changedAt)}</span>
-          </p>
-          <div className="mt-1.5 flex flex-col gap-1">
-            {change.arrivalFrom !== undefined || change.arrivalTo !== undefined ? (
-              <p className="text-[12.5px] text-ink">
-                <span className="text-muted">{t('label_arrival')}:</span> {formatDayMonth(change.arrivalFrom || null)} → {formatDayMonth(change.arrivalTo || null)}
-              </p>
-            ) : null}
-            {change.departureFrom !== undefined || change.departureTo !== undefined ? (
-              <p className="text-[12.5px] text-ink">
-                <span className="text-muted">{t('label_departure')}:</span> {formatDayMonth(change.departureFrom || null)} → {formatDayMonth(change.departureTo || null)}
-              </p>
-            ) : null}
-            {change.unitFrom !== undefined || change.unitTo !== undefined ? (
-              <p className="text-[12.5px] text-ink">
-                <span className="text-muted">{t('booking_changed_unit_label')}:</span> {unitLabel(change.unitFrom)} → {unitLabel(change.unitTo)}
-              </p>
-            ) : null}
+    <div className="rounded-control border border-status-progress/25 bg-status-progress-bg px-3.5 py-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-start gap-2">
+          <IconRefresh width={16} height={16} className="mt-0.5 shrink-0 text-status-progress" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-[11.5px] font-semibold uppercase tracking-wide text-status-progress">{t('booking_changed_title')}</p>
+            <p className="text-[11.5px] text-muted">{formatDateShort(change.changedAt)} · {formatClock(change.changedAt)}</p>
           </div>
-          {/* Briefing "Tag ändern" Punkt 16: die bestehende Buchungsaenderungs-Erkennung (Punkt
-           * "Buchungsaenderung sichtbar machen") erkennt bereits, dass sich die Abreise geaendert
-           * hat - hier wird das lediglich mit einem evtl. noch vorhandenen manuellen
-           * Planungs-Override auf den DAMALIGEN Termin gekreuzt (siehe TaskDetailSheet()
-           * #orphanedSchedule), damit ein bestehender Override nicht kommentarlos verschwindet,
-           * ohne eine zweite/konkurrierende Aenderungserkennung zu bauen. */}
-          {orphanedSchedule ? (
-            <p className="mt-1.5 flex items-start gap-1.5 text-[12px] text-status-attention">
-              <IconAlertCircle width={13} height={13} className="mt-0.5 shrink-0" aria-hidden="true" />
-              {t('schedule_override_orphaned_note', { date: formatDayMonth(orphanedSchedule.scheduledDate) })}
-            </p>
-          ) : null}
-          {/* Briefing "Reinigungskarten ueberarbeiten" Punkt 8: dezente Aktion, die den orangenen
-           * Punkt auf der Karte fuer DIESEN User aufhebt - erscheint nur, solange GENAU diese
-           * Aenderung noch nicht bestaetigt wurde (siehe isBookingChangeAckedByMe). */}
-          {!acknowledged ? (
-            <button
-              type="button"
-              onClick={onAcknowledge}
-              className="mt-2 flex items-center gap-1.5 text-[12.5px] font-medium text-sage transition-colors hover:text-forest"
-            >
-              <IconCheck width={14} height={14} aria-hidden="true" />
-              {t('acknowledge_change_action')}
-            </button>
-          ) : null}
         </div>
+        {/* Briefing "Reinigungskarten ueberarbeiten" Punkt 8 / "Reinigungsdetailansicht
+         * ueberarbeiten" Punkt 3: dezente Aktion, die den orangenen Punkt auf der Karte fuer
+         * DIESEN User aufhebt - erscheint nur, solange GENAU diese Aenderung noch nicht bestaetigt
+         * wurde (siehe isBookingChangeAckedByMe); danach ein reiner, klar zurueckgenommener
+         * Bestaetigt-Hinweis statt der Aktion. */}
+        {!acknowledged ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onAcknowledge}
+            className="shrink-0 border-status-progress/40 bg-warm-white text-status-progress hover:border-status-progress hover:text-status-progress"
+          >
+            <IconCheck width={14} height={14} aria-hidden="true" />
+            {t('acknowledge_change_action')}
+          </Button>
+        ) : (
+          <span className="flex shrink-0 items-center gap-1.5 text-[12px] font-medium text-muted">
+            <IconCheck width={14} height={14} className="text-status-progress" aria-hidden="true" />
+            {t('acknowledge_change_done_label')}
+          </span>
+        )}
       </div>
+      <div className="mt-2 flex flex-col gap-1">
+        {change.arrivalFrom !== undefined || change.arrivalTo !== undefined ? (
+          <p className="text-[12.5px] text-ink">
+            <span className="text-muted">{t('label_arrival')}:</span> {formatDayMonth(change.arrivalFrom || null)} → {formatDayMonth(change.arrivalTo || null)}
+          </p>
+        ) : null}
+        {change.departureFrom !== undefined || change.departureTo !== undefined ? (
+          <p className="text-[12.5px] text-ink">
+            <span className="text-muted">{t('label_departure')}:</span> {formatDayMonth(change.departureFrom || null)} → {formatDayMonth(change.departureTo || null)}
+          </p>
+        ) : null}
+        {change.unitFrom !== undefined || change.unitTo !== undefined ? (
+          <p className="text-[12.5px] text-ink">
+            <span className="text-muted">{t('booking_changed_unit_label')}:</span> {unitLabel(change.unitFrom)} → {unitLabel(change.unitTo)}
+          </p>
+        ) : null}
+      </div>
+      {/* Briefing "Tag ändern" Punkt 16: die bestehende Buchungsaenderungs-Erkennung (Punkt
+       * "Buchungsaenderung sichtbar machen") erkennt bereits, dass sich die Abreise geaendert
+       * hat - hier wird das lediglich mit einem evtl. noch vorhandenen manuellen
+       * Planungs-Override auf den DAMALIGEN Termin gekreuzt (siehe TaskDetailSheet()
+       * #orphanedSchedule), damit ein bestehender Override nicht kommentarlos verschwindet,
+       * ohne eine zweite/konkurrierende Aenderungserkennung zu bauen. */}
+      {orphanedSchedule ? (
+        <p className="mt-1.5 flex items-start gap-1.5 text-[12px] text-status-attention">
+          <IconAlertCircle width={13} height={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+          {t('schedule_override_orphaned_note', { date: formatDayMonth(orphanedSchedule.scheduledDate) })}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -206,8 +216,19 @@ function BookingChangeDetail({
  * Anzeige (bestehende Berechtigungslogik, unveraendert - nur isManager darf zuweisen/freigeben).
  */
 function CleaningAssignmentSection({
-  app, task, isManager, assignmentOpen, onToggleAssignment,
-}: { app: HousekeepingApp; task: ResolvedTask; isManager: boolean; assignmentOpen: boolean; onToggleAssignment: () => void }) {
+  app, task, isManager, assignmentOpen, onToggleAssignment, heading, showTeamInline = true,
+}: {
+  app: HousekeepingApp; task: ResolvedTask; isManager: boolean; assignmentOpen: boolean; onToggleAssignment: () => void;
+  /** Briefing "Reinigungsdetailansicht ueberarbeiten" Punkt 7: innerhalb des gemeinsamen
+   * "Arbeitsauftrag"-Abschnitts (Team+Reinigungskraft+Vorbereitung) heisst dieses Feld
+   * "Reinigungskraft" statt "Reinigung" (Team steht daneben als eigenes Feld) - optional, damit
+   * ein etwaiger anderer Aufrufer weiterhin die urspruengliche Standardueberschrift bekaeme. */
+  heading?: string;
+  /** false (nur im neuen "Arbeitsauftrag"-Kontext): der Teamname steht bereits als eigenes Feld
+   * daneben - die Zusammenfassungszeile hier zeigt dann NUR die Person (bzw. "Nicht zugewiesen"/
+   * "Noch nicht verteilt"), statt ihn ein zweites Mal in derselben Zeile zu wiederholen. */
+  showTeamInline?: boolean;
+}) {
   const { t, state, assignTask, releaseTask, workloadForPropertyDay, shortStaffName } = app;
   // Briefing "Tag ändern" Punkt 13: die Auslastungsanzeige ("N Aufgaben heute") muss den
   // EFFEKTIVEN Tag betrachten (scheduledDate), nicht das unveraenderte Quelldatum - sonst wuerde
@@ -275,10 +296,14 @@ function CleaningAssignmentSection({
 
   // Housekeeping Teams: Person+Team wenn beides bekannt, sonst Team allein ("Noch nicht
   // verteilt"), sonst wie zuvor "Nicht zugewiesen" - dieselbe Prioritaet wie WorkStatus auf der
-  // Task Card (TaskCard.tsx), hier nur ausgeschrieben statt abgekuerzt.
-  const assignmentLabel = task.assignedUserName
-    ? (task.assignedTeamName ? `${shortStaffName(task.assignedUserName)} · ${task.assignedTeamName}` : shortStaffName(task.assignedUserName))
-    : (task.assignedTeamName ? `${task.assignedTeamName} · ${t('team_task_unclaimed')}` : t('unassigned'));
+  // Task Card (TaskCard.tsx), hier nur ausgeschrieben statt abgekuerzt. Im "Arbeitsauftrag"-Kontext
+  // (showTeamInline=false) steht der Teamname bereits als eigenes Feld daneben - hier dann nur
+  // Person/"Nicht zugewiesen"/"Noch nicht verteilt", ohne den Teamnamen zu wiederholen.
+  const assignmentLabel = showTeamInline
+    ? (task.assignedUserName
+      ? (task.assignedTeamName ? `${shortStaffName(task.assignedUserName)} · ${task.assignedTeamName}` : shortStaffName(task.assignedUserName))
+      : (task.assignedTeamName ? `${task.assignedTeamName} · ${t('team_task_unclaimed')}` : t('unassigned')))
+    : (task.assignedUserName ? shortStaffName(task.assignedUserName) : (task.assignedTeamName ? t('team_task_unclaimed') : t('unassigned')));
 
   const summaryRow = (
     <div className="flex items-center justify-between gap-2">
@@ -299,7 +324,7 @@ function CleaningAssignmentSection({
 
   return (
     <div className="flex flex-col gap-1">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('cleaning_status_title')}</p>
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{heading ?? t('cleaning_status_title')}</p>
       {canManage ? (
         <button type="button" onClick={onToggleAssignment} className="flex flex-col gap-0.5 rounded-control py-0.5 text-left transition-colors hover:bg-surface">
           {summaryRow}
@@ -685,6 +710,24 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   }
   const bookingChangeAcked = task.bookingChange ? isBookingChangeAckedByMe(task) : true;
 
+  // Briefing "Reinigungsdetailansicht ueberarbeiten" Punkt 1/6: derselbe Aufmerksamkeits-Zustand
+  // wie auf der kompakten Karte (siehe TasksScreen.tsx#cardAttentionState) - Buchungsaenderung hat
+  // immer Vorrang vor "ungesehen", niemals beide gleichzeitig. Wird kurz nach dem Oeffnen wieder
+  // 'none', sobald der bestehende markTaskSeen-Effekt oben (siehe useEffect) die Bestaetigung
+  // serverseitig gespeichert hat - unveraendertes, bereits bestehendes Verhalten, hier nur zusaetzlich
+  // sichtbar gemacht.
+  const attentionState: 'none' | 'new' | 'changed' = task.bookingChange && !bookingChangeAcked
+    ? 'changed'
+    : (!isTaskSeenByMe(task.id) ? 'new' : 'none');
+
+  // Punkt 8: dasselbe "gebucht vs. manuell" Prinzip wie auf der kompakten Karte (TaskCard.tsx) -
+  // ein per Apaleo-Service (BABY) gebuchtes Babybett/ein gebuchter Hund gilt in der "Vorbereitung"
+  // unten IMMER als aktiv, unabhaengig vom separaten, manuell togglebaren Housekeeping-Flag
+  // (task.doubleupTypes) - beide Quellen bleiben technisch weiterhin getrennt (siehe
+  // toggleTaskDoubleType), nur die visuelle "aktiv"-Kennzeichnung beruecksichtigt jetzt beide.
+  const apaleoHasDog = !!(task.reservationInfo?.hasDog || task.nextReservationInfo?.hasDog);
+  const apaleoHasCrib = !!(task.reservationInfo?.hasCrib || task.nextReservationInfo?.hasCrib);
+
   // Punkt 7: EINMALIGE, transiente Rueckmeldung statt eines dauerhaft sichtbaren Erklaerungstextes
   // ueber dem Start-Button - zusaetzlich wird die Notice-Card selbst kurz optisch hervorgehoben und
   // ins Bild gescrollt (nichts Neues erklaert, derselbe Text steht bereits in der Notice-Card).
@@ -710,21 +753,61 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
             task.propertyName
           )}
         </h3>
-        <button
-          type="button"
-          onClick={closeTaskModal}
-          aria-label={t('close')}
-          className="-mr-1 -mt-1 shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-surface hover:text-ink"
-        >
-          <IconClose width={18} height={18} aria-hidden="true" />
-        </button>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <button
+            type="button"
+            onClick={closeTaskModal}
+            aria-label={t('close')}
+            className="-mr-1 -mt-1 rounded-full p-1.5 text-muted transition-colors hover:bg-surface hover:text-ink"
+          >
+            <IconClose width={18} height={18} aria-hidden="true" />
+          </button>
+          {/* Briefing "Reinigungsdetailansicht ueberarbeiten" Punkt 1/6: derselbe Aufmerksamkeits-
+           * Punkt wie auf der kompakten Karte, hier zusaetzlich mit Text statt nur Farbe (Farbe ist
+           * nie der einzige Bedeutungstraeger). */}
+          {attentionState !== 'none' ? (
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium',
+                attentionState === 'changed' ? 'bg-status-progress-bg text-status-progress' : 'bg-status-clean-bg text-status-clean',
+              )}
+            >
+              <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', attentionState === 'changed' ? 'bg-dot-changed' : 'bg-dot-new')} aria-hidden="true" />
+              {t(attentionState === 'changed' ? 'booking_changed_dot_label' : 'task_new_dot_label')}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-2 flex flex-col gap-3">
-        <span className="flex items-center gap-1.5 self-start">
-          {isManualTask ? <IconTask width={15} height={15} className="shrink-0 text-type-manual" aria-hidden="true" /> : null}
-          <TonePill config={TASK_TYPE_CONFIG[task.type]} lang={state.lang} size="sm" />
-        </span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1.5">
+            {isManualTask ? <IconTask width={15} height={15} className="shrink-0 text-type-manual" aria-hidden="true" /> : null}
+            <TonePill config={TASK_TYPE_CONFIG[task.type]} lang={state.lang} size="sm" />
+            {/* Nutzerfeedback: "Termin verschoben"/"Wieder aktiviert" gehoeren fachlich zum Typ,
+             * direkt daneben statt neben der Zuweisung (siehe TaskCard.tsx fuer dieselbe Aenderung
+             * auf der kompakten Karte). */}
+            {task.reopened ? (
+              <span title={t('reopened_badge_label')}>
+                <IconRotateCcw width={14} height={14} className="shrink-0 text-muted" role="img" aria-label={t('reopened_badge_label')} />
+              </span>
+            ) : null}
+            {task.scheduleOverride ? (
+              <span title={t('rescheduled_badge_label')}>
+                <IconCalendarClock width={14} height={14} className="shrink-0 text-muted" role="img" aria-label={t('rescheduled_badge_label')} />
+              </span>
+            ) : null}
+          </span>
+          {/* Briefing "Reinigungsdetailansicht ueberarbeiten" Punkt 1/7: Team+Reinigungskraft in
+           * EINER Zeile direkt neben dem Typ-Label - identische, bereits bestehende Logik wie auf
+           * der kompakten Karte (WorkStatus), nicht neu erfunden. Fuer manuelle Aufgaben (kein
+           * Reinigungs-Workflow/Team) steht die Zuweisung stattdessen weiter unten. */}
+          {!isManualTask ? (
+            <span className="min-w-0 shrink-0">
+              <WorkStatus task={task} lang={state.lang} shortName={shortStaffName} />
+            </span>
+          ) : null}
+        </div>
 
         {/* "Tag ändern" (Briefing Punkt 5/9): "Geplant für" mit Admin-Edit-Stift, analog zum
          * bestehenden Zeitfenster-Editor darunter (Pencil -> inline Formular -> Speichern/
@@ -940,17 +1023,30 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           <p className="text-[13px] text-muted">{t(task.nights === 1 ? 'nights_one' : 'nights_many', { n: task.nights })}</p>
         ) : null}
 
+        {/* Briefing "Reinigungsdetailansicht ueberarbeiten" Punkt 1: kompakte ABREISE/ANREISE-
+         * Belegungszeile - dieselbe, bereits bestehende Komponente wie auf der kompakten Karte
+         * (TaskCard.tsx#OccupancyLine), hier ohne die manuellen Vorbereitungs-Icons (die stehen
+         * weiter unten ausfuehrlich in "Arbeitsauftrag") - rendert fuer 'manual'/'extra' oder ohne
+         * Reservierungsdaten von selbst nichts. */}
+        {!isManualTask ? <OccupancyLine task={task} lang={state.lang} doubleTypes={[]} /> : null}
+
         {/* Punkt 6: die fruehere, hier zusaetzlich stehende Zuweisungszeile wurde entfernt - der
          * Name gehoert visuell eindeutig zur "Reinigung"-Sektion weiter unten (Mitarbeiter+Status
          * zusammengefuehrt), eine zweite Anzeige an dieser Stelle wirkte nur zerstreut. Fuer
          * manuelle Aufgaben (kein Reinigungs-Workflow) steht die Zuweisung stattdessen direkt vor
          * der Hauptaktion (siehe unten). */}
 
-        {/* Reservierung (Punkt 4/5) - bei Turnover zweispaltig (Desktop/Tablet), sonst ein
-         * einzelner kompakter Block; strikt getrennt in Abreise/Naechste Anreise. */}
-        {task.reservationInfo || task.nextReservationInfo ? (
+        {/* "Buchung" (Briefing "Reinigungsdetailansicht ueberarbeiten" Punkt 2): Reservierungsdaten
+         * und Reservierungskommentar in EINEM gemeinsamen Bereich statt zweier gleichrangiger
+         * Karten - der Kommentar ist eine sekundaere Information INNERHALB der Buchung (kleinere
+         * Schrift, eigenes Sprechblasen-Icon, per Trennlinie abgesetzt statt eigener Card). Bei
+         * Turnover weiterhin zweispaltig (Desktop/Tablet), strikt getrennt in Abreise/Naechste
+         * Anreise (unveraendert). "Buchung in Apaleo öffnen" bewusst NICHT ergaenzt - es gibt
+         * aktuell keine zuverlaessige Web-URL/ID-Logik zu einer Apaleo-Reservierung im Bestand
+         * dieser App (nur der REST-API-Token-Fluss in api/_apaleo.js), siehe Abschlussbericht. */}
+        {task.reservationInfo || task.nextReservationInfo || task.comment ? (
           <div className="rounded-control border border-line bg-surface px-3.5 py-3">
-            <p className="mb-2 text-[13px] font-medium text-ink">{t('reservation_title')}</p>
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted">{t('reservation_title')}</p>
             {task.type === 'turnover' ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {task.reservationInfo ? <CompactReservation info={task.reservationInfo} heading={t('reservation_departure_title')} t={t} /> : null}
@@ -963,13 +1059,15 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
             ) : task.reservationInfo ? (
               <CompactReservation info={task.reservationInfo} t={t} />
             ) : null}
-          </div>
-        ) : null}
-
-        {task.comment ? (
-          <div className="rounded-control border border-line bg-surface px-3.5 py-3 text-[13px] text-ink">
-            <p className="mb-1 font-medium text-muted">{t('guest_comment')}</p>
-            <p className="whitespace-pre-wrap">{cleanGuestComment(task.comment)}</p>
+            {task.comment ? (
+              <div className={cn('text-[12.5px] text-ink', (task.reservationInfo || task.nextReservationInfo) && 'mt-3 border-t border-line pt-2.5')}>
+                <p className="mb-0.5 flex items-center gap-1.5 text-[12px] font-medium text-muted">
+                  <IconMessageCircle width={13} height={13} className="shrink-0" aria-hidden="true" />
+                  {t('guest_comment')}
+                </p>
+                <p className="whitespace-pre-wrap">{cleanGuestComment(task.comment)}</p>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -1016,21 +1114,38 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           />
         ) : null}
 
-        {/* Wichtiger Hinweis - NIE aus dem Apaleo-Kommentar abgeleitet/ueberschrieben (Punkt 12),
-         * sehr helle warme Flaeche statt roter Warnbox. Punkt 7: ref+Hervorhebung fuer den
-         * blockierten Start-Versuch (siehe handleNoticeBlocked oben). */}
+        {/* Wichtiger Hinweis - NIE aus dem Apaleo-Kommentar abgeleitet/ueberschrieben (Punkt 12).
+         * Briefing "Reinigungsdetailansicht ueberarbeiten" Punkt 4: deutlich staerker hervorgehoben
+         * als eine normale Info-Karte (warme, aber nicht grellrote Flaeche + Akzentfarbe/-linie,
+         * Outline-Icon, GROSSGESCHRIEBENER Titel) - visuell klar wichtiger als "Buchung"/der
+         * Reservierungskommentar. Punkt 7: ref+Hervorhebung fuer den blockierten Start-Versuch
+         * (siehe handleNoticeBlocked oben). */}
         {notice ? (
           <div
             ref={noticeRef}
             className={cn(
               'rounded-control border px-3.5 py-3 transition-shadow',
-              noticeHighlight ? 'border-status-attention ring-2 ring-status-attention/30' : 'border-line bg-surface',
+              noticeHighlight ? 'border-status-attention bg-status-attention-bg ring-2 ring-status-attention/30' : 'border-status-attention/25 bg-status-attention-bg',
             )}
           >
-            <div className="flex items-start gap-2">
-              <IconAlertCircle width={18} height={18} className="mt-0.5 shrink-0 text-muted" aria-hidden="true" />
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-medium text-ink">{t('important_notice_title')}</p>
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex min-w-0 items-start gap-2">
+                <IconAlertCircle width={18} height={18} className="mt-0.5 shrink-0 text-status-attention" aria-hidden="true" />
+                <p className="text-[12px] font-semibold uppercase tracking-wide text-status-attention">{t('important_notice_title')}</p>
+              </div>
+              {/* Briefing Punkt 5: dezenter Hinweis, dass eine automatische Uebersetzung angezeigt
+               * wird - bewusst sehr sekundaer (kleine graue Schrift, kein eigenes Gewicht), nie mit
+               * dem WICHTIGER-HINWEIS-Titel konkurrierend. Nur wenn tatsaechlich eine Uebersetzung
+               * fuer die aktuelle Sprache existiert (dieselbe Bedingung wie "Original anzeigen") -
+               * keine Fake-Anzeige, wenn (noch) keine Uebersetzung vorliegt. */}
+              {canShowOriginal(notice.translation, state.lang) ? (
+                <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted">
+                  <IconGlobe width={12} height={12} className="shrink-0" aria-hidden="true" />
+                  {t('auto_translated_label')}
+                </span>
+              ) : null}
+            </div>
+            <div className="ml-[26px] min-w-0">
                 <p className="mt-1 whitespace-pre-wrap text-[13px] text-ink">
                   {noticeShowOriginal
                     ? notice.translation?.sourceText || notice.text
@@ -1085,7 +1200,6 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                     <button type="button" onClick={handleRemoveNotice} className="hover:text-ink">{t('remove')}</button>
                   </div>
                 ) : null}
-              </div>
             </div>
           </div>
         ) : isManager && !noticeFormOpen && !isManualTask ? (
@@ -1119,39 +1233,109 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           </div>
         ) : null}
 
-        {/* Housekeeping Teams: Team-Zuordnung DIESES Tasks aendern - ausschliesslich Admin (Briefing
-         * "UNIQUE PLACES Admin kann ... einzelne Reinigungen einer anderen Reinigungsfirma
-         * zuordnen"), unabhaengig vom Standortverantwortlichen-Recht unten. Nur sichtbar, wenn
-         * ueberhaupt Teams existieren - vorher entstuende eine leere, sinnlose Auswahl. */}
-        {!isManualTask && isAdmin(state.user) && state.teams.length > 0 ? (
-          <div className="flex items-center justify-between gap-2 text-[13px]">
-            <span className="text-muted">{t('team_label')}</span>
-            <select
-              value={task.assignedTeamId || ''}
-              onChange={(e) => setTaskTeam(task.id, e.target.value || null)}
-              className="rounded-control border border-line bg-warm-white px-2 py-1.5 text-[13px] text-ink"
-            >
-              <option value="">{t('no_team_label')}</option>
-              {state.teams.filter((tm) => tm.active).map((tm) => (
-                <option key={tm.id} value={tm.id}>{tm.name}</option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-
-        {/* "Reinigung" (Zuweisung + Reinigungsstatus zusammengefuehrt) - Admin/Standortverantwortlich
-         * koennen die Zeile aufklappen, um denselben Zuweisungs-Picker wie zuvor zu nutzen, statt
-         * dass die Mitarbeiterliste dauerhaft sichtbar ist; Housekeeper sehen nur die Anzeige.
-         * Manuelle Aufgaben haben keinen Reinigungs-Workflow - dort nur eine schlichte
-         * Zuweisungszeile direkt vor der Hauptaktion (Punkt "Admin kann Aufgaben erstellen"). */}
+        {/* "Arbeitsauftrag" (Briefing "Reinigungsdetailansicht ueberarbeiten" Punkt 7): Team,
+         * Reinigungskraft und Vorbereitung in EINEM verstaendlichen Abschnitt statt dreier
+         * getrennter, teils redundanter Bereiche - Team und Reinigungskraft sind zwei
+         * unterschiedliche, hier bewusst getrennt beschriftete Informationen (Punkt 1 zeigt sie im
+         * Kopf bereits kombiniert per WorkStatus, hier also nicht nochmal als eine Zeile
+         * wiederholt). Auf Desktop nebeneinander (Punkt 14), mobil untereinander. Manuelle
+         * Aufgaben haben keinen Team-/Reinigungs-Workflow - dort weiterhin nur die schlichte
+         * Zuweisungszeile vor der Hauptaktion. */}
         {!isManualTask ? (
-          <CleaningAssignmentSection
-            app={app}
-            task={task}
-            isManager={isManager}
-            assignmentOpen={assignmentOpen}
-            onToggleAssignment={() => setAssignmentOpen((v) => !v)}
-          />
+          <div className="flex flex-col gap-3 rounded-control border border-line bg-surface px-3.5 py-3">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('work_order_title')}</p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
+              {/* Team-Feld: Admin kann es hier aendern (unabhaengig vom Standortverantwortlichen-
+               * Recht auf die Zuweisung daneben); Standortverantwortliche/Housekeeper sehen es nur,
+               * wenn ein Team gesetzt ist (kein leeres Feld ohne Aussage). */}
+              {isAdmin(state.user) && state.teams.length > 0 ? (
+                <label className="flex flex-1 flex-col gap-1 text-[13px]">
+                  <span className="text-[11px] text-muted">{t('team_label')}</span>
+                  <select
+                    value={task.assignedTeamId || ''}
+                    onChange={(e) => setTaskTeam(task.id, e.target.value || null)}
+                    className="rounded-control border border-line bg-warm-white px-2.5 py-1.5 text-[13px] text-ink"
+                  >
+                    <option value="">{t('no_team_label')}</option>
+                    {state.teams.filter((tm) => tm.active).map((tm) => (
+                      <option key={tm.id} value={tm.id}>{tm.name}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : task.assignedTeamName ? (
+                <div className="flex flex-1 flex-col gap-1">
+                  <span className="text-[11px] text-muted">{t('team_label')}</span>
+                  <span className="text-[13px] font-medium text-ink">{task.assignedTeamName}</span>
+                </div>
+              ) : null}
+
+              {/* "Reinigungskraft" (Zuweisung + Reinigungsstatus zusammengefuehrt) - Admin/
+               * Standortverantwortlich koennen die Zeile aufklappen, um denselben
+               * Zuweisungs-Picker wie zuvor zu nutzen; ein normaler Housekeeper sieht nur die
+               * Anzeige (unveraenderte Logik, siehe CleaningAssignmentSection). */}
+              <div className="flex-1">
+                <CleaningAssignmentSection
+                  app={app}
+                  task={task}
+                  isManager={isManager}
+                  assignmentOpen={assignmentOpen}
+                  onToggleAssignment={() => setAssignmentOpen((v) => !v)}
+                  heading={t('assignee_label')}
+                  showTeamInline={false}
+                />
+              </div>
+            </div>
+
+            {/* "Vorbereitung" (vormals "Zusatzausstattung") - Admin/Standortverantwortlich:
+             * interaktive Toggles; sonst nur die bereits aktive Ausstattung als Chips (read-only).
+             * Punkt 8: ein per Apaleo-Service (BABY) gebuchtes Babybett bzw. ein gebuchter Hund
+             * gilt IMMER zusaetzlich als aktiv (apaleoHasCrib/apaleoHasDog oben), unabhaengig vom
+             * separaten manuellen Flag - beide Quellen bleiben technisch getrennt (toggleTaskDoubleType
+             * aendert ausschliesslich den manuellen Flag), nur die Anzeige kombiniert sie. */}
+            <div className="flex flex-col gap-1.5 border-t border-line pt-3">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('task_prep_title')}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {isManager
+                  ? DOUBLEUP_TYPES.map((dt) => {
+                    const manuallyOn = selectedTypes.includes(dt.id);
+                    const apaleoOn = (dt.id === 'crib' && apaleoHasCrib) || (dt.id === 'dog' && apaleoHasDog);
+                    const on = manuallyOn || apaleoOn;
+                    const isAddExtra = dt.id === 'extra' && !on;
+                    return (
+                      <button
+                        key={dt.id}
+                        type="button"
+                        onClick={() => toggleTaskDoubleType(task!, dt.id)}
+                        className={cn(
+                          'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors',
+                          on
+                            ? 'border-sage bg-type-stayover-bg text-ink'
+                            : isAddExtra
+                              ? 'border-dashed border-line bg-warm-white text-muted hover:text-ink'
+                              : 'border-line bg-warm-white text-muted hover:text-ink',
+                        )}
+                      >
+                        {isAddExtra ? <IconPlus width={13} height={13} aria-hidden="true" /> : <DoubleupIcon id={dt.id} width={14} height={14} aria-hidden="true" />}
+                        {isAddExtra ? t('doubleup_extra_add') : t(dt.label)}
+                        {on ? <IconCheck width={12} height={12} className="text-sage" aria-hidden="true" /> : null}
+                      </button>
+                    );
+                  })
+                  : DOUBLEUP_TYPES.filter((dt) =>
+                    selectedTypes.includes(dt.id) || (dt.id === 'crib' && apaleoHasCrib) || (dt.id === 'dog' && apaleoHasDog),
+                  ).map((dt) => (
+                    <span
+                      key={dt.id}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-sage bg-type-stayover-bg px-2.5 py-1 text-[12px] font-medium text-ink"
+                    >
+                      <DoubleupIcon id={dt.id} width={14} height={14} aria-hidden="true" />
+                      {t(dt.label)}
+                    </span>
+                  ))}
+              </div>
+              {(apaleoHasCrib || apaleoHasDog) ? <p className="text-[11px] text-muted">{t('prep_apaleo_note')}</p> : null}
+            </div>
+          </div>
         ) : (
           <div className="flex items-center gap-1.5 text-[13px]">
             <IconUser width={15} height={15} className="shrink-0 text-muted" aria-hidden="true" />
@@ -1161,64 +1345,34 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           </div>
         )}
 
-        {/* "Vorbereitung" (vormals "Zusatzausstattung") - Admin/Standortverantwortlich: interaktive
-         * Toggles; sonst nur die bereits ausgewaehlte Ausstattung als Chips (read-only), unveraendert.
-         * Fuer manuelle Aufgaben nicht relevant (kein Doubleup-Bezug). */}
-        {!isManualTask ? (
-          <div className="flex flex-col gap-1">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('task_prep_title')}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {isManager
-                ? DOUBLEUP_TYPES.map((dt) => {
-                  const on = selectedTypes.includes(dt.id);
-                  return (
-                    <button
-                      key={dt.id}
-                      type="button"
-                      onClick={() => toggleTaskDoubleType(task!, dt.id)}
-                      className={cn(
-                        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors',
-                        on ? 'border-sage bg-type-stayover-bg text-ink' : 'border-line bg-warm-white text-muted hover:text-ink',
-                      )}
-                    >
-                      <DoubleupIcon id={dt.id} width={14} height={14} aria-hidden="true" />
-                      {t(dt.label)}
-                      {on ? <IconCheck width={12} height={12} className="text-sage" aria-hidden="true" /> : null}
-                    </button>
-                  );
-                })
-                : DOUBLEUP_TYPES.filter((dt) => selectedTypes.includes(dt.id)).map((dt) => (
-                  <span
-                    key={dt.id}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-sage bg-type-stayover-bg px-2.5 py-1 text-[12px] font-medium text-ink"
-                  >
-                    <DoubleupIcon id={dt.id} width={14} height={14} aria-hidden="true" />
-                    {t(dt.label)}
-                  </span>
-                ))}
-            </div>
-          </div>
-        ) : null}
-
         {!isManualTask && !isManager && selectedTypes.length > 0 && task.type === 'extra' ? (
           <Button variant="secondary" className="w-full" onClick={() => finishTaskDoubleup(task!)}>
             {t('finish_doubleup')}
           </Button>
         ) : null}
 
-        <PrimaryAction app={app} task={task} isManager={isManager} mine={mine} onNoticeBlocked={handleNoticeBlocked} />
-
-        {/* "Vorfall melden" (Briefing Punkt 4) - sekundaere Aktion, bevorzugter Workflow waehrend
-         * einer laufenden Reinigung: die Reinigung ist hier bereits bekannt, der Benutzer muss sie
-         * im Formular nicht nochmal auswaehlen (siehe useHousekeepingApp.ts#openIncidentReport).
-         * Fuer manuelle Aufgaben nicht sinnvoll (keine Reinigung, taskId folgt zudem nicht dem von
-         * openIncidentReport erwarteten Apaleo-Task-ID-Format). */}
-        {!isManualTask ? (
-          <Button variant="ghost" className="w-full" onClick={() => app.openIncidentReport(task!.id)}>
-            <IconAlertCircle width={15} height={15} aria-hidden="true" />
-            {t('report_incident_title')}
-          </Button>
-        ) : null}
+        {/* Briefing "Reinigungsdetailansicht ueberarbeiten" Punkt 9: "Reinigung starten" als
+         * eindeutige primaere Aktion, "Vorfall melden" deutlich sekundaerer (Outline) und - wo
+         * Platz ist - daneben statt gestapelt darunter. `flex-col-reverse` auf Mobile zeigt trotz
+         * dieser DOM-Reihenfolge (Vorfall zuerst) die primaere Aktion oben, sekundaer darunter;
+         * `sm:flex-row` stellt Vorfall links/PrimaryAction rechts nebeneinander, sobald Platz ist -
+         * ausschliesslich Layout, PrimaryAction/openIncidentReport bleiben unveraendert. */}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row">
+          {/* "Vorfall melden" (Briefing Punkt 4) - sekundaere Aktion, bevorzugter Workflow waehrend
+           * einer laufenden Reinigung: die Reinigung ist hier bereits bekannt, der Benutzer muss sie
+           * im Formular nicht nochmal auswaehlen (siehe useHousekeepingApp.ts#openIncidentReport).
+           * Fuer manuelle Aufgaben nicht sinnvoll (keine Reinigung, taskId folgt zudem nicht dem von
+           * openIncidentReport erwarteten Apaleo-Task-ID-Format). */}
+          {!isManualTask ? (
+            <Button variant="ghost" className="w-full sm:w-auto sm:shrink-0 sm:px-5" onClick={() => app.openIncidentReport(task!.id)}>
+              <IconAlertCircle width={15} height={15} aria-hidden="true" />
+              {t('report_incident_title')}
+            </Button>
+          ) : null}
+          <div className="flex-1">
+            <PrimaryAction app={app} task={task} isManager={isManager} mine={mine} onNoticeBlocked={handleNoticeBlocked} />
+          </div>
+        </div>
 
         {/* Reinigungsverlauf (Punkt 13: bei Bedarf aufklappbar statt immer sichtbar, reduziert
          * das Scrollen fuer den operativ wichtigeren Teil oberhalb) - fuer manuelle Aufgaben
