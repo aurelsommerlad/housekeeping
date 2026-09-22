@@ -6,11 +6,11 @@
 // Rest der App (gepruft: einzig CleaningCompletionReport ist ein fachlich unabhaengiger Snapshot
 // fuer Waescheverbrauch) - dieser Mechanismus hier ist der einzige.
 //
-// Nur die drei housekeeping-relevanten Felder Anreise/Abreise/Einheit werden verglichen (Punkt
-// "nur housekeeping-relevante Aenderungen loggen") - jede andere Reservierungsaenderung wird
-// ignoriert. Redis housekeeping:booking_change_snapshots (Baseline je reservationId) +
-// housekeeping:booking_changes (nur die JEWEILS zuletzt erkannte Aenderung je reservationId, kein
-// volles Log noetig, siehe types.ts#BookingChangeRecord).
+// Nur die vier housekeeping-relevanten Felder Anreise/Abreise/Einheit/Personenanzahl werden
+// verglichen (Punkt "nur housekeeping-relevante Aenderungen loggen") - jede andere
+// Reservierungsaenderung wird ignoriert. Redis housekeeping:booking_change_snapshots (Baseline je
+// reservationId) + housekeeping:booking_changes (nur die JEWEILS zuletzt erkannte Aenderung je
+// reservationId, kein volles Log noetig, siehe types.ts#BookingChangeRecord).
 //
 // Aufgerufen vom Client nach jedem Laden der Apaleo-Reservierungen fuer den Planungszeitraum
 // (siehe useHousekeepingApp.ts#loadPlanningData) - EIN Sync-Request mit den aktuell geladenen,
@@ -79,10 +79,16 @@ module.exports = async (req, res) => {
         departure: r.departure || null,
         unitId: r.unitId || null,
         propertyCode: r.propertyCode,
+        // Nur eine bekannte Zahl (>=0) uebernehmen - fehlende/ungueltige Rohdaten (null/undefined)
+        // duerfen weder als "0 Gaeste" gespeichert noch mit einer echten spaeteren Zahl als
+        // Aenderung erkannt werden (siehe guestsChanged unten).
+        guests: typeof r.guests === 'number' ? r.guests : null,
       };
       const previous = parseJSON(snapshots[r.id], null);
       if (previous) {
-        const changed = previous.arrival !== current.arrival || previous.departure !== current.departure || previous.unitId !== current.unitId;
+        const guestsChanged = previous.guests != null && current.guests != null && previous.guests !== current.guests;
+        const changed = previous.arrival !== current.arrival || previous.departure !== current.departure
+          || previous.unitId !== current.unitId || guestsChanged;
         if (changed) {
           const change = {
             reservationId: r.id,
@@ -91,13 +97,15 @@ module.exports = async (req, res) => {
             ...(previous.arrival !== current.arrival ? { arrivalFrom: previous.arrival, arrivalTo: current.arrival } : {}),
             ...(previous.departure !== current.departure ? { departureFrom: previous.departure, departureTo: current.departure } : {}),
             ...(previous.unitId !== current.unitId ? { unitFrom: previous.unitId, unitTo: current.unitId } : {}),
+            ...(guestsChanged ? { guestsFrom: previous.guests, guestsTo: current.guests } : {}),
           };
           changeWrites.push([r.id, JSON.stringify(change)]);
         }
       }
       // Baseline nur schreiben, wenn sie fehlt oder sich tatsaechlich geaendert hat - vermeidet
       // unnoetige Schreibzugriffe bei jedem Poll-Zyklus (Punkt 31 "keine unnoetigen Requests").
-      if (!previous || previous.arrival !== current.arrival || previous.departure !== current.departure || previous.unitId !== current.unitId) {
+      if (!previous || previous.arrival !== current.arrival || previous.departure !== current.departure
+        || previous.unitId !== current.unitId || previous.guests !== current.guests) {
         snapshotWrites.push([r.id, JSON.stringify(current)]);
       }
     }

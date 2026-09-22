@@ -402,9 +402,10 @@ export type ManualTasksState = Record<string, ManualTask | null>;
  * Housekeeping-relevante Aenderung EINER Apaleo-Reservierung (Punkt "Buchungsaenderung sichtbar
  * machen") - Redis housekeeping:booking_change_snapshots (Baseline je reservationId) +
  * housekeeping:booking_changes (dieser Datensatz, letzte erkannte Aenderung je reservationId).
- * Nur die drei housekeeping-relevanten Felder (Anreise/Abreise/Einheit) werden verglichen - jedes
- * andere Reservierungsfeld wird ignoriert (Punkt "nur housekeeping-relevante Aenderungen
- * loggen"). Nur die JEWEILS zuletzt erkannte Aenderung wird gehalten (kein volles Log noetig).
+ * Nur die vier housekeeping-relevanten Felder (Anreise/Abreise/Einheit/Personenanzahl) werden
+ * verglichen - jedes andere Reservierungsfeld wird ignoriert (Punkt "nur housekeeping-relevante
+ * Aenderungen loggen"). Nur die JEWEILS zuletzt erkannte Aenderung wird gehalten (kein volles Log
+ * noetig).
  */
 export interface BookingChangeRecord {
   reservationId: string;
@@ -415,6 +416,11 @@ export interface BookingChangeRecord {
   departureTo?: string;
   unitFrom?: string;
   unitTo?: string;
+  /** Gesamtpersonenzahl (Erwachsene + Kinder, siehe tasks.ts#guestCount) - nur gesetzt, wenn beide
+   * Seiten (Snapshot und aktueller Stand) eine bekannte Zahl haben (kein "0 Gaeste" bei fehlenden
+   * Rohdaten). */
+  guestsFrom?: number;
+  guestsTo?: number;
 }
 
 export type BookingChangeRecordsState = Record<string, BookingChangeRecord | null>;

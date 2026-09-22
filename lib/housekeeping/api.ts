@@ -904,7 +904,22 @@ import type { Lang } from './i18n';
 // `ring-2 ring-status-attention/30` daneben - dieser zusaetzliche Ring-Schatten ist entfernt, sodass
 // beim Highlight nur noch GENAU ein (dunklerer, roter) Rahmen erscheint statt zweier dicht
 // uebereinanderliegender Umrandungen. Verifiziert per tsc/eslint/build.
-export const APP_VERSION = '2.30.2';
+// v2.31.0 - MINOR: "Buchung geändert" braucht keine manuelle Bestaetigung mehr. Die Karte in der
+// Detailansicht zeigt jetzt ausschliesslich die tatsaechliche Aenderung (Datum, Personenanzahl,
+// Einheit) - der bisherige "Zur Kenntnis nehmen"-Button/"Zur Kenntnis genommen"-Zustand ist
+// entfernt. Die Kenntnisnahme (fuer den orangenen Aufmerksamkeitspunkt auf der kompakten Karte
+// sowie den "Buchung geändert"-Chip oben rechts in der Detailansicht, beide unveraendert ueber
+// isBookingChangeAckedByMe) passiert stattdessen automatisch beim Oeffnen der Detailansicht -
+// derselbe Trigger-Zeitpunkt wie beim bereits bestehenden "gesehen"-Effekt (markTaskSeen), nur
+// als eigener, weiterhin unabhaengiger useEffect (keine Vermischung der beiden Zustaende). Neu:
+// Personenanzahl (Erwachsene + Kinder, siehe tasks.ts#guestCount) ist ein viertes housekeeping-
+// relevantes Vergleichsfeld neben Anreise/Abreise/Einheit (api/booking-changes.js, additiv im
+// bestehenden housekeeping:booking_change_snapshots/housekeeping:booking_changes-Schema, kein
+// neuer Redis-Key) - eine fehlende/unbekannte Personenzahl (z. B. keine expand=... im Rohdatum)
+// wird dabei nie faelschlich als "0 Gaeste"-Aenderung gewertet. Verifiziert per tsc/eslint/build
+// sowie einem Node-Integrationstest gegen einen Fake-Redis (8 Faelle: Erkennung/Baseline/
+// Ruecksetzung fuer Personenanzahl, Regressionscheck der bestehenden Datum-Erkennung).
+export const APP_VERSION = '2.31.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -1402,7 +1417,10 @@ export const manualTasksApi = {
  * die vollstaendige, fuer den User sichtbare Aenderungsliste zurueck (Server vergleicht gegen den
  * zuletzt gespeicherten housekeeping:*-Snapshot und aktualisiert ihn bei Bedarf). */
 export async function syncBookingChanges(
-  reservations: { id: string; arrival?: string | null; departure?: string | null; unitId?: string | null; propertyCode: string }[],
+  reservations: {
+    id: string; arrival?: string | null; departure?: string | null; unitId?: string | null; propertyCode: string;
+    guests?: number | null;
+  }[],
 ): Promise<BookingChangeRecordsState> {
   const data = await backendPost<{ changes?: BookingChangeRecordsState }>('booking-changes', { action: 'sync', reservations });
   return data.changes || {};

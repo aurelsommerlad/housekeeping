@@ -37,7 +37,7 @@ import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './
 import { managedPropertyCodes } from './permissions';
 import { dayHeadingLabel } from './dayLabel';
 import {
-  buildTasks, canRescheduleTask, capacityForDay, daySummary, manualTaskToResolvedTask, nextArrivalDateForTask,
+  buildTasks, canRescheduleTask, capacityForDay, daySummary, guestCount, manualTaskToResolvedTask, nextArrivalDateForTask,
   requiredPreparationItemIds, requiresInspection, resolveTasks, sortTasksForDay, teamCapacityForDay,
   type ResolvedTask, type TeamContext,
 } from './tasks';
@@ -390,6 +390,10 @@ export function useHousekeepingApp() {
         departure: r.departure || null,
         unitId: r.unit?.id || r.unit?.code || null,
         propertyCode: r.property?.code || r.property?.id || '',
+        // Nutzerfeedback "Buchung geändert" Punkt: Personenanzahl ist jetzt ein viertes
+        // housekeeping-relevantes Vergleichsfeld (siehe api/booking-changes.js) - dieselbe
+        // Gesamtpersonenzahl-Berechnung wie in der Reservierungsanzeige (tasks.ts#guestCount).
+        guests: guestCount(r),
       })).filter((r) => r.propertyCode);
       if (syncInput.length > 0) bookingChanges = await syncBookingChanges(syncInput);
     } catch {

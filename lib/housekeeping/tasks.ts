@@ -78,7 +78,10 @@ function guestName(r: ApaleoReservation): string {
   return [r.primaryGuest?.firstName, r.primaryGuest?.lastName].filter(Boolean).join(' ');
 }
 
-function guestCount(r: ApaleoReservation): number | null {
+/** Exportiert (statt modul-privat), damit useHousekeepingApp.ts#loadPlanningData dieselbe
+ * Gesamtpersonenzahl-Berechnung fuer den Buchungsaenderungs-Sync (api/booking-changes.js) nutzen
+ * kann statt einer zweiten, potenziell abweichenden Kopie der Logik. */
+export function guestCount(r: ApaleoReservation): number | null {
   if (typeof r.adults !== 'number') return null;
   return r.adults + (r.childrenAges?.length || 0);
 }

@@ -128,51 +128,29 @@ function TimeBadge({ icon, tone, title, children }: { icon: Parameters<typeof Ti
 /** Punkt "Buchungsaenderung sichtbar machen" (9): nachvollziehbare Vorher/Nachher-Anzeige in der
  * Detailansicht - nur die housekeeping-relevanten Felder, die sich tatsaechlich geaendert haben
  * (siehe types.ts#BookingChangeRecord/api/booking-changes.js). Apaleo liefert nur den aktuellen
- * Stand; der Vorher-Wert kommt ausschliesslich aus dem separat gespeicherten Snapshot. */
+ * Stand; der Vorher-Wert kommt ausschliesslich aus dem separat gespeicherten Snapshot.
+ *
+ * Nutzerfeedback: keine eigene "Zur Kenntnis nehmen"-Aktion mehr - die Karte zeigt ausschliesslich
+ * die Aenderung selbst (Datum/Personenanzahl/Einheit). Die Kenntnisnahme (fuer den Aufmerksamkeits-
+ * punkt auf der kompakten Karte, siehe TasksScreen.tsx) passiert jetzt automatisch beim Oeffnen
+ * dieser Detailansicht (siehe TaskDetailSheet()#useEffect oben), ohne eigenen Klick. */
 function BookingChangeDetail({
-  change, orphanedSchedule, t, unitLabel, acknowledged, onAcknowledge,
+  change, orphanedSchedule, t, unitLabel,
 }: {
   change: NonNullable<ResolvedTask['bookingChange']>; orphanedSchedule: TaskScheduleOverride | null; t: HousekeepingApp['t'];
   /** Loest eine rohe Apaleo-Unit-ID (unitFrom/unitTo) in ihren Anzeigenamen auf (z. B. "ONE"),
    * Fallback auf die ID selbst, falls die Einheit im aktuell geladenen Bestand nicht (mehr)
    * bekannt ist - siehe TaskDetailSheet()#unitDisplayName. */
   unitLabel: (unitId: string | undefined) => string;
-  /** Briefing "Reinigungskarten ueberarbeiten" Punkt 8: eigene Bestaetigung, bewusst GETRENNT von
-   * "gesehen" (siehe TaskDetailSheet()#markTaskSeen-Effekt oben). */
-  acknowledged: boolean;
-  onAcknowledge: () => void;
 }) {
   return (
     <div className="rounded-control border border-status-progress/25 bg-status-progress-bg px-3.5 py-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-start gap-2">
-          <IconRefresh width={16} height={16} className="mt-0.5 shrink-0 text-status-progress" aria-hidden="true" />
-          <div className="min-w-0">
-            <p className="text-[11.5px] font-semibold uppercase tracking-wide text-status-progress">{t('booking_changed_title')}</p>
-            <p className="text-[11.5px] text-muted">{formatDateShort(change.changedAt)} · {formatClock(change.changedAt)}</p>
-          </div>
+      <div className="flex min-w-0 items-start gap-2">
+        <IconRefresh width={16} height={16} className="mt-0.5 shrink-0 text-status-progress" aria-hidden="true" />
+        <div className="min-w-0">
+          <p className="text-[11.5px] font-semibold uppercase tracking-wide text-status-progress">{t('booking_changed_title')}</p>
+          <p className="text-[11.5px] text-muted">{formatDateShort(change.changedAt)} · {formatClock(change.changedAt)}</p>
         </div>
-        {/* Briefing "Reinigungskarten ueberarbeiten" Punkt 8 / "Reinigungsdetailansicht
-         * ueberarbeiten" Punkt 3: dezente Aktion, die den orangenen Punkt auf der Karte fuer
-         * DIESEN User aufhebt - erscheint nur, solange GENAU diese Aenderung noch nicht bestaetigt
-         * wurde (siehe isBookingChangeAckedByMe); danach ein reiner, klar zurueckgenommener
-         * Bestaetigt-Hinweis statt der Aktion. */}
-        {!acknowledged ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={onAcknowledge}
-            className="shrink-0 border-status-progress/40 bg-warm-white text-status-progress hover:border-status-progress hover:text-status-progress"
-          >
-            <IconCheck width={14} height={14} aria-hidden="true" />
-            {t('acknowledge_change_action')}
-          </Button>
-        ) : (
-          <span className="flex shrink-0 items-center gap-1.5 text-[12px] font-medium text-muted">
-            <IconCheck width={14} height={14} className="text-status-progress" aria-hidden="true" />
-            {t('acknowledge_change_done_label')}
-          </span>
-        )}
       </div>
       <div className="mt-2 flex flex-col gap-1">
         {change.arrivalFrom !== undefined || change.arrivalTo !== undefined ? (
@@ -183,6 +161,11 @@ function BookingChangeDetail({
         {change.departureFrom !== undefined || change.departureTo !== undefined ? (
           <p className="text-[12.5px] text-ink">
             <span className="text-muted">{t('label_departure')}:</span> {formatDayMonth(change.departureFrom || null)} → {formatDayMonth(change.departureTo || null)}
+          </p>
+        ) : null}
+        {change.guestsFrom !== undefined || change.guestsTo !== undefined ? (
+          <p className="text-[12.5px] text-ink">
+            <span className="text-muted">{t('booking_changed_guests_label')}:</span> {change.guestsFrom ?? '–'} → {change.guestsTo ?? '–'}
           </p>
         ) : null}
         {change.unitFrom !== undefined || change.unitTo !== undefined ? (
@@ -623,6 +606,20 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task?.id]);
 
+  // Nutzerfeedback "Buchung geändert braucht keine manuelle Bestaetigung mehr": die
+  // BUCHUNG-GEÄNDERT-Karte zeigt nur noch die Änderung selbst, ohne eigene Aktion - das
+  // Öffnen der Detailansicht gilt jetzt automatisch als Kenntnisnahme (identisch zum
+  // markTaskSeen-Effekt direkt darueber), statt einen expliziten Klick zu verlangen. Der
+  // orangene Aufmerksamkeitspunkt auf der kompakten Karte (TasksScreen.tsx) und der
+  // "Buchung geändert"-Chip oben rechts in dieser Ansicht (attentionState unten) verschwinden
+  // dadurch weiterhin zuverlaessig, sobald jemand die Aenderung tatsaechlich gesehen hat.
+  useEffect(() => {
+    if (!task || !task.bookingChange) return;
+    if (isBookingChangeAckedByMe(task)) return;
+    acknowledgeBookingChange(task.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id, task?.bookingChange?.changedAt]);
+
   if (!task) {
     return <BottomSheet open={false} onClose={closeTaskModal}><div /></BottomSheet>;
   }
@@ -740,9 +737,8 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   // Briefing "Reinigungsdetailansicht ueberarbeiten" Punkt 1/6: derselbe Aufmerksamkeits-Zustand
   // wie auf der kompakten Karte (siehe TasksScreen.tsx#cardAttentionState) - Buchungsaenderung hat
   // immer Vorrang vor "ungesehen", niemals beide gleichzeitig. Wird kurz nach dem Oeffnen wieder
-  // 'none', sobald der bestehende markTaskSeen-Effekt oben (siehe useEffect) die Bestaetigung
-  // serverseitig gespeichert hat - unveraendertes, bereits bestehendes Verhalten, hier nur zusaetzlich
-  // sichtbar gemacht.
+  // 'none', sobald der Auto-Acknowledge-Effekt oben (siehe useEffect) die Kenntnisnahme
+  // serverseitig gespeichert hat.
   const attentionState: 'none' | 'new' | 'changed' = task.bookingChange && !bookingChangeAcked
     ? 'changed'
     : (!isTaskSeenByMe(task.id) ? 'new' : 'none');
@@ -1166,10 +1162,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
         {/* Buchungsaenderung (Punkt 9) - nur fuer Apaleo-abgeleitete Tasks (turnover/departure/
          * stayover) ueberhaupt moeglich, siehe types.ts#BookingChangeRecord. */}
         {task.bookingChange ? (
-          <BookingChangeDetail
-            change={task.bookingChange} orphanedSchedule={orphanedSchedule} t={t} unitLabel={unitDisplayName}
-            acknowledged={bookingChangeAcked} onAcknowledge={() => acknowledgeBookingChange(task.id)}
-          />
+          <BookingChangeDetail change={task.bookingChange} orphanedSchedule={orphanedSchedule} t={t} unitLabel={unitDisplayName} />
         ) : null}
 
         {/* Wichtiger Hinweis - NIE aus dem Apaleo-Kommentar abgeleitet/ueberschrieben (Punkt 12).
