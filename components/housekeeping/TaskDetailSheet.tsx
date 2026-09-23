@@ -163,6 +163,12 @@ function BookingChangeDetail({
   if (change.unitFrom !== undefined || change.unitTo !== undefined) {
     changedFields.push({ label: t('booking_changed_unit_label'), from: unitLabel(change.unitFrom), to: unitLabel(change.unitTo) });
   }
+  // Briefing "BABY-Business-Logik" Punkt 9: ein nachtraeglich gebuchtes/entferntes Babybett auf
+  // einer bereits offenen/laufenden Reinigung ist kein "Alt -> Neu"-Wertepaar wie die Felder oben,
+  // sondern eine reine Hinzufuegung/Entfernung - deshalb eine eigene, deutlich als "+"/"-"
+  // gekennzeichnete Zeile statt eines erzwungenen Pfeil-Vergleichs (z. B. "false -> true").
+  const cribAdded = change.cribTo === true;
+  const cribRemoved = change.cribTo === false;
   return (
     <div className="rounded-control border border-status-progress/25 bg-status-progress-bg px-3.5 py-3">
       <div className="flex items-start gap-2">
@@ -181,6 +187,16 @@ function BookingChangeDetail({
                 <span className="font-semibold text-ink">{field.to}</span>
               </div>
             ))}
+            {cribAdded || cribRemoved ? (
+              <div className="flex items-center gap-2 text-[13px]">
+                <span className="w-[82px] shrink-0 text-[11px] uppercase tracking-wide text-muted">{t('extra_equipment_category_label')}</span>
+                <span className={cn('flex items-center gap-1 font-semibold', cribAdded ? 'text-ink' : 'text-muted line-through')}>
+                  {cribAdded ? <IconPlus width={13} height={13} className="shrink-0 text-status-progress" aria-hidden="true" /> : null}
+                  <DoubleupIcon id="crib" width={13} height={13} aria-hidden="true" />
+                  {t('doubleup_crib')}
+                </span>
+              </div>
+            ) : null}
           </div>
           {/* Briefing "Tag ändern" Punkt 16: die bestehende Buchungsaenderungs-Erkennung (Punkt
            * "Buchungsaenderung sichtbar machen") erkennt bereits, dass sich die Abreise geaendert
@@ -835,6 +851,9 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           <span className="flex items-center gap-1.5">
             {isManualTask ? <IconTask width={15} height={15} className="shrink-0 text-type-manual" aria-hidden="true" /> : null}
             <TonePill config={TASK_TYPE_CONFIG[task.type]} lang={state.lang} size="sm" />
+            {task.extraEquipment ? (
+              <span className="text-[12.5px] font-medium text-muted">{t('extra_equipment_category_label')}</span>
+            ) : null}
             {/* Nutzerfeedback: "Termin verschoben"/"Wieder aktiviert" gehoeren fachlich zum Typ,
              * direkt daneben statt neben der Zuweisung (siehe TaskCard.tsx fuer dieselbe Aenderung
              * auf der kompakten Karte). */}
@@ -1135,9 +1154,25 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           </div>
         ) : null}
 
+        {/* Briefing "BABY-Business-Logik" Punkt 6: strukturierte Anzeige statt des generischen
+         * Freitext-Beschreibungsfelds - dasselbe bereits definierte Crib-Icon wie auf der
+         * Turnover-Karte/Vorbereitungscheckliste, plus die Anreise-Deadline (Early-Check-in
+         * beruecksichtigt). */}
+        {isManualTask && task.extraEquipment ? (
+          <div className="flex items-center justify-between gap-2 rounded-control border border-line bg-surface px-3.5 py-3">
+            <span className="flex items-center gap-2 text-[14px] font-medium text-ink">
+              <DoubleupIcon id="crib" width={16} height={16} aria-hidden="true" />
+              {t('doubleup_crib')}
+            </span>
+            <span className="text-[12.5px] text-muted">{t('label_arrival')} {task.extraEquipment.dueTime}</span>
+          </div>
+        ) : null}
+
         {/* Beschreibung der manuellen Aufgabe (Punkt "Admin kann Aufgaben erstellen") - ersetzt an
-         * dieser Stelle Reservierung/Gaestekommentar, die es fuer eine Aufgabe nicht gibt. */}
-        {isManualTask && task.manualDescription ? (
+         * dieser Stelle Reservierung/Gaestekommentar, die es fuer eine Aufgabe nicht gibt. Fuer eine
+         * automatisch erzeugte Zusatzausstattung-Aufgabe (siehe oben) nicht zusaetzlich noetig - die
+         * `description` ("Babybett") ist dort bereits redundant zur strukturierten Anzeige. */}
+        {isManualTask && task.manualDescription && !task.extraEquipment ? (
           <div className="rounded-control border border-line bg-surface px-3.5 py-3 text-[13px] text-ink">
             <p className="mb-1 font-medium text-muted">{t('manual_task_description_title')}</p>
             <p className="whitespace-pre-wrap">

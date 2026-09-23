@@ -20,6 +20,7 @@ import type {
   TeamPropertyDefaultsState,
 } from './types';
 import type { Lang } from './i18n';
+import type { ExtraEquipmentNeed } from './tasks';
 
 // MINOR-Bump (2.5.0 -> 2.6.0): TaskCard-Redesign - klare Informationshierarchie (Apartment+Standort,
 // Typ+Arbeitsstatus, Zeitfenster, Gast/Buchung+Extras) statt vieler gleichwertiger Badges/Zeilen,
@@ -958,7 +959,38 @@ import type { Lang } from './i18n';
 // (klare Tabellen-Anmutung: Alt-Wert -> Pfeil-Icon -> Neu-Wert, hervorgehoben statt gleich
 // schwerer "Label: Wert"-Flieszeilen) - neues IconArrowRight statt eines reinen Textpfeils.
 // Verifiziert per tsc/eslint/build.
-export const APP_VERSION = '2.31.3';
+// v2.32.0 - MINOR: Business-Logik fuer das Apaleo-Extra `BABY` grundlegend angepasst (Nutzerfeedback
+// "BABY = immer Vorbereitung innerhalb der Reinigung ist zu pauschal"). Neue Leitfrage statt "wann
+// wurde BABY gebucht": "Gibt es noch eine aktive Turnover-Reinigung, in die diese Vorbereitung
+// sinnvoll integriert werden kann?" - requiredPreparationItemIds() (unveraendert) deckt dank
+// stabiler Task-IDs und live aus Apaleo neu berechneter Felder bereits automatisch alle Faelle ab,
+// in denen eine passende Turnover-Reinigung existiert und noch nicht abgeschlossen ist (Babybett
+// wird Pflicht-Vorbereitungspunkt, blockiert nur den Abschluss, nie den Start). NEU ist ausschliesslich
+// der komplementaere Fall: tasks.ts#computeExtraEquipmentNeeds() leitet rein aus bereits geladenen
+// Apaleo-Daten ab, wann KEINE passende offene Turnover-Reinigung existiert (keine Abreise am selben
+// Tag in derselben Einheit, ODER die zugehoerige Reinigung ist bereits `completed` - eine
+// abgeschlossene Reinigung wird niemals wieder geoeffnet) und dann eine separate `Zusatzausstattung`-
+// Aufgabe noetig ist (ganz normale ManualTask, kein Reinigungs-Timer/-Start/-Pause, Abschluss
+// ausschliesslich ueber "Aufgabe erledigt", Deadline "Anreise HH:MM" inkl. Early-Check-in). Deterministische
+// ID (`manual_extra_BABY_<reservationId>`, tasks.ts#manualExtraEquipmentTaskId) verhindert Duplikate
+// bei wiederholtem Sync; api/manual-tasks.js#syncExtraEquipment gleicht idempotent ab (anlegen, wenn
+// noetig; eine offene, nicht mehr benoetigte Aufgabe sauber entfernen; eine bereits ERLEDIGTE Aufgabe
+// niemals loeschen) - ausschliesslich fuer Properties/Reservierungen, die der jeweilige Sync selbst
+// ausgewertet hat, nie darueber hinaus. api/booking-changes.js um ein fuenftes Vergleichsfeld `crib`
+// erweitert (analog zu `guests`), damit ein nachtraeglich auf einer bereits offenen/laufenden
+// Reinigung hinzugekommenes/entferntes Babybett ueber die bestehende Buchungsaenderungs-/Ungesehen-
+// Logik sichtbar wird ("Buchung geändert" + "+ Babybett", kein neues Farbsystem) - dafuer greift
+// buildTasks() bei einem Turnover-Task jetzt auch auf bookingChanges[arrivingRes.id] zu (bisher nur
+// departingRes.id, ein reiner Crib-Wechsel haengt aber an der ankommenden Reservierung). TaskCard/
+// TaskDetailSheet zeigen eine automatisch erzeugte Zusatzausstattung-Aufgabe mit dem bereits
+// definierten Crib-Icon + "Babybett" + Anreise-Deadline statt generischem Freitext, plus einem
+// "Zusatzausstattung"-Kategorie-Label neben dem "Aufgabe"-Typ. Keine neue Task-Engine, keine
+// neue Team-/Berechtigungslogik (bestehende ManualTask-Zuweisungs-/Property-Rechte unveraendert
+// wiederverwendet), keine geloeschten Redis-Daten. Verifiziert per tsc/eslint/build sowie zwei
+// Node-Logiktestsuiten (26 Assertions gegen die transpilierte tasks.ts fuer die Faelle A-J aus dem
+// Briefing; 7 Assertions gegen die echte api/manual-tasks.js-Route mit Mock-Redis fuer Anlegen/
+// Idempotenz/Entfernen/Nie-Loeschen-bei-Erledigt).
+export const APP_VERSION = '2.32.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -1448,6 +1480,14 @@ export const manualTasksApi = {
   complete: (taskId: string) => backendPost<{ manualTasks: ManualTasksState }>('manual-tasks', { action: 'complete', taskId }),
   /** Briefing "Wieder aktivieren" - admin-only, siehe api/manual-tasks.js#reopen. */
   reopen: (taskId: string) => backendPost<{ manualTasks: ManualTasksState }>('manual-tasks', { action: 'reopen', taskId }),
+  /** Briefing "BABY-Business-Logik" Punkt 3C/4/5/8: idempotenter Abgleich der automatisch aus dem
+   * Apaleo-Service BABY abgeleiteten `Zusatzausstattung`-Aufgaben - siehe
+   * lib/housekeeping/tasks.ts#computeExtraEquipmentNeeds (Client-Berechnung der `needs`) und
+   * api/manual-tasks.js#syncExtraEquipment (serverseitiger Redis-Abgleich). */
+  syncExtraEquipment: (needs: ExtraEquipmentNeed[], evaluatedReservationIds: string[], coveredProperties: string[]) =>
+    backendPost<{ manualTasks: ManualTasksState }>(
+      'manual-tasks', { action: 'syncExtraEquipment', needs, evaluatedReservationIds, coveredProperties },
+    ),
 };
 
 /** Housekeeping-relevante Buchungsaenderungen (Punkt "Buchungsaenderung sichtbar machen") - siehe
@@ -1459,6 +1499,8 @@ export async function syncBookingChanges(
   reservations: {
     id: string; arrival?: string | null; departure?: string | null; unitId?: string | null; propertyCode: string;
     guests?: number | null;
+    /** Briefing "BABY-Business-Logik" Punkt 9 - siehe api/booking-changes.js#cribChanged. */
+    crib?: boolean | null;
   }[],
 ): Promise<BookingChangeRecordsState> {
   const data = await backendPost<{ changes?: BookingChangeRecordsState }>('booking-changes', { action: 'sync', reservations });

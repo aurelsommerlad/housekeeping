@@ -48,6 +48,14 @@ function hasBookedService(r: ApaleoReservation | undefined, code: 'ECI' | 'LCO' 
   return !!r?.services?.some((s) => s.service?.code === code);
 }
 
+/** Exportiert (statt modul-privat), damit useHousekeepingApp.ts#loadPlanningData denselben
+ * BABY-Erkennungsweg fuer den Buchungsaenderungs-Sync (api/booking-changes.js, Feld `crib`) nutzen
+ * kann statt einer zweiten, potenziell abweichenden Kopie von hasBookedService() - Briefing
+ * "BABY-Business-Logik" Punkt 8: Apaleo-Servicecode bleibt die EINZIGE Quelle der Wahrheit. */
+export function reservationHasCrib(r: ApaleoReservation): boolean {
+  return hasBookedService(r, 'BABY');
+}
+
 /** Alle gebuchten Leistungsdatane (yyyy-mm-dd) EINES Servicecodes auf dieser Reservierung (Punkt
  * 12) - `INTERCLEAN` ist `availability.mode: "Daily"` (live gegen alle Properties verifiziert) und
  * wird deshalb, anders als ECI/LCO/HUND/BABY, potenziell fuer mehrere einzelne Tage gebucht. */
@@ -230,7 +238,13 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
           // Punkt 4: strikt getrennt - reservationInfo IMMER von departingRes, nextReservationInfo
           // IMMER von arrivingRes, nie vermischt.
           reservationInfo: reservationSummary(departingRes), nextReservationInfo: reservationSummary(arrivingRes),
-          bookingChange: bookingChanges[departingRes.id] || null,
+          // Briefing "BABY-Business-Logik" Punkt 9: eine nachtraeglich gebuchte/entfernte
+          // Zusatzausstattung (z. B. BABY) ist eine Aenderung der ANKOMMENDEN Reservierung, nicht
+          // der abreisenden - ohne arrivingRes.id hier wuerde ein reiner Crib-Wechsel auf diesem
+          // Turnover-Task nie sichtbar (bookingChanges ist ein Redis-Datensatz je reservationId,
+          // siehe api/booking-changes.js). Abreise-Aenderungen (Datum/Personen/Einheit) haben
+          // weiterhin Vorrang, falls beide Seiten zufaellig am selben Tag geaendert wurden.
+          bookingChange: bookingChanges[departingRes.id] || bookingChanges[arrivingRes.id] || null,
         });
         continue;
       }
@@ -488,6 +502,7 @@ export function manualTaskToResolvedTask(mt: ManualTask, scheduleOverride: TaskS
     manualTitle: mt.title,
     manualDescription: mt.description,
     manualDescriptionTranslation: mt.descriptionTranslation,
+    extraEquipment: mt.extraEquipment,
     bookingChange: null,
     // Punkt 3: bewusst nur Offen/Erledigt, kein Reinigungs-Zwischenstatus (assigned/in_progress/
     // paused/inspection gibt es fuer eine manuelle Aufgabe nicht).
@@ -686,4 +701,116 @@ export function teamCapacityForDay(date: string, tasks: ResolvedTask[]): TeamCap
  * anzufassen. */
 export function requiresInspection(_propertyCode: string): boolean {
   return false;
+}
+
+/**
+ * Briefing "BABY-Business-Logik" - Entscheidungsbaum Punkt 10: "Ist die Vorbereitung noch sinnvoll
+ * in eine Reinigung integrierbar?" statt "Wann wurde BABY gebucht?". EIN gebuchtes Babybett
+ * (Apaleo-Service `BABY`, siehe reservationHasCrib) auf einer ankommenden Reservierung braucht NUR
+ * dann eine separate `Zusatzausstattung`-Aufgabe, wenn es NICHT mehr sinnvoll in eine bestehende
+ * Turnover-Reinigung aufgenommen werden kann:
+ *   - keine passende Turnover-Reinigung fuer diese Anreise vorhanden (Fall 4/E), ODER
+ *   - die passende Turnover-Reinigung ist bereits `completed` (Fall 3C/D) - eine abgeschlossene
+ *     Reinigung wird NIEMALS wieder geoeffnet/veraendert.
+ * In JEDEM anderen Fall (keine Reinigung begonnen, laeuft gerade, pausiert, zugewiesen) deckt das
+ * bereits bestehende requiredPreparationItemIds() (siehe oben) das Babybett automatisch als
+ * Vorbereitungspunkt der laufenden/offenen Reinigung ab, live bei jedem Aufruf neu berechnet auf
+ * derselben stabilen Turnover-Task-ID - dafuer ist HIER keine Aktion noetig (Faelle 1/2/3A/3B).
+ *
+ * Reine, seiteneffektfreie Ableitung (wie buildTasks) - KEINE zweite Task-Engine: das Ergebnis
+ * beschreibt nur, welche `Zusatzausstattung`-Aufgaben aktuell "gebraucht" werden; das tatsaechliche
+ * Anlegen/Entfernen (idempotent, deterministische ID) uebernimmt api/manual-tasks.js#syncExtraEquipment.
+ */
+export interface ExtraEquipmentNeed {
+  /** Deterministisch aus serviceCode+reservationId (Punkt 5 "keine Doppelaufgaben", NIEMALS eine
+   * zufaellige ID) - siehe api/manual-tasks.js#extraEquipmentTaskId, hier bereits vorberechnet,
+   * damit Client und Server exakt dieselbe ID verwenden. */
+  id: string;
+  propertyCode: string;
+  propertyName: string;
+  unitId: string;
+  unitName: string;
+  /** Anreisetag der Reservierung, fuer die das Babybett gebraucht wird. */
+  date: string;
+  serviceCode: 'BABY';
+  reservationId: string;
+  /** "HH:MM" - Punkt 6: Early-Check-in-beruecksichtigte Anreisezeit. */
+  dueTime: string;
+}
+
+export interface ComputeExtraEquipmentNeedsInput {
+  propertyNames: Record<string, string>;
+  units: ApaleoUnit[];
+  reservations: ApaleoReservation[];
+  /** Die aktuell betrachteten (sichtbaren) Kalendertage - eine Anreise ausserhalb dieses Fensters
+   * wird nicht beruecksichtigt (identisch zu buildTasks/`days`, hier bewusst OHNE die zusaetzlichen,
+   * nicht sichtbaren taskGenerationDays()-Ruecklauftage: eine Aufgabe wird erst relevant, wenn ihr
+   * Anreisetag tatsaechlich sichtbar ist). */
+  days: string[];
+  /** Bereits bekannter Zuweisungs-/Fortschrittszustand der Turnover-Reinigungen (Punkt "keine
+   * zweite Polling-/Task-Engine bauen" - derselbe bereits geladene Redis-Stand wie fuer
+   * resolveTasks(), hier nur gelesen, nie veraendert). */
+  taskAssignments: TaskAssignmentsState;
+}
+
+export function computeExtraEquipmentNeeds({
+  propertyNames, units, reservations, days, taskAssignments,
+}: ComputeExtraEquipmentNeedsInput): ExtraEquipmentNeed[] {
+  const resByUnit = new Map<string, ApaleoReservation[]>();
+  for (const r of reservations) {
+    const uid = resUnitId(r);
+    if (!uid) continue;
+    if (!resByUnit.has(uid)) resByUnit.set(uid, []);
+    resByUnit.get(uid)!.push(r);
+  }
+
+  const needs: ExtraEquipmentNeed[] = [];
+  for (const unit of units) {
+    const propertyCode = unitPropertyCode(unit, '');
+    if (!propertyCode) continue;
+    const propertyName = propertyNames[propertyCode] || propertyCode;
+    const unitName = String(unit.name || unit.id || unit.unitGroup?.name || '?');
+    const unitReservations = resByUnit.get(unit.id) || [];
+
+    for (const r of unitReservations) {
+      if (!reservationHasCrib(r)) continue;
+      const arrivalDate = dateOnly(r.arrival);
+      if (!arrivalDate || !days.includes(arrivalDate)) continue;
+
+      // Dieselbe Turnover-Paarung wie buildTasks() (Abreise eines anderen Gasts GENAU an diesem
+      // Anreisetag in derselben Einheit) - bewusst dieselbe Bedingung, keine zweite Definition von
+      // "passende Turnover-Reinigung".
+      const departingRes = unitReservations.find((d) => d.id !== r.id && dateOnly(d.departure) === arrivalDate);
+      if (departingRes) {
+        const turnoverId = taskId(propertyCode, unit.id, arrivalDate, 'turnover', departingRes.id);
+        const status = taskAssignments[turnoverId]?.status || 'open';
+        // Faelle 1/2/3A/3B: Reinigung existiert und ist noch nicht abgeschlossen - das Babybett
+        // wird bereits live ueber requiredPreparationItemIds() Teil dieser Reinigung, keine
+        // separate Aufgabe (Punkt 10 Entscheidungsbaum).
+        if (status !== 'completed') continue;
+      }
+      // Fall 3C (Reinigung bereits abgeschlossen) oder Fall 4/E (keine passende Reinigung): eine
+      // separate `Zusatzausstattung`-Aufgabe wird gebraucht.
+      const hasEarlyCheckin = hasBookedService(r, 'ECI');
+      needs.push({
+        id: manualExtraEquipmentTaskId(r.id),
+        propertyCode, propertyName, unitId: unit.id, unitName, date: arrivalDate,
+        serviceCode: 'BABY', reservationId: r.id,
+        dueTime: hasEarlyCheckin ? EXTRA_TIME : STANDARD_ARRIVAL_TIME,
+      });
+    }
+  }
+  return needs;
+}
+
+/** Punkt 5 "keine Doppelaufgaben": deterministisch aus Servicecode+Reservierung, NIE eine zufaellige
+ * ID (sonst wuerde jeder erneute Apaleo-Sync eine weitere Aufgabe fuer dieselbe Buchung anlegen).
+ * Exportiert, damit Client (useHousekeepingApp.ts, ueber computeExtraEquipmentNeeds bereits
+ * enthalten) und Server (api/manual-tasks.js#syncExtraEquipment) exakt dieselbe ID berechnen - der
+ * Server vertraut dabei NIEMALS einer vom Client mitgeschickten ID, sondern leitet sie bei jedem
+ * Abgleich selbst aus reservationId+serviceCode neu her. Enthaelt bewusst keine Pipe-Zeichen ("|"),
+ * damit isDerivedTaskId() (api/task-schedule-overrides.js, 5-Teile-Pipe-Heuristik) diese ID niemals
+ * mit einer abgeleiteten Reinigungs-Task-ID verwechselt. */
+export function manualExtraEquipmentTaskId(reservationId: string): string {
+  return `manual_extra_BABY_${reservationId}`;
 }

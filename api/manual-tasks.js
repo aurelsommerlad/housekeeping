@@ -18,6 +18,18 @@ const HASH_KEY = 'housekeeping:manual_tasks';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const VALID_SOURCE_LANGUAGES = ['de', 'en', 'pl', 'ro'];
 
+// Briefing "BABY-Business-Logik" Punkt 5 "keine Doppelaufgaben": deterministisch aus
+// Servicecode+Reservierung statt der sonst hier verwendeten Zufalls-ID (siehe 'create' oben) - ein
+// erneuter Apaleo-Sync berechnet fuer dieselbe Buchung immer wieder EXAKT dieselbe ID, statt eine
+// weitere Aufgabe anzulegen. Muss 1:1 mit lib/housekeeping/tasks.ts#manualExtraEquipmentTaskId
+// uebereinstimmen (dort fuer den Client, hier fuer den Server - api/*.js importiert bewusst kein
+// TypeScript, siehe bestehende Konvention z. B. api/_permissions.js). Enthaelt bewusst kein "|",
+// damit api/task-schedule-overrides.js#isDerivedTaskId (5-Teile-Pipe-Heuristik) diese ID niemals
+// mit einer abgeleiteten Reinigungs-Task-ID verwechselt.
+function extraEquipmentTaskId(reservationId) {
+  return `manual_extra_BABY_${reservationId}`;
+}
+
 // Punkt "Wieder aktivieren": derselbe Verlaufsmechanismus wie bei Reinigungs-Tasks (siehe
 // api/task-assignments.js#appendHistory), hier additiv auf `task.history` statt auf einem
 // TaskAssignment-Datensatz - kein zweiter, abweichender Audit-Mechanismus.
@@ -159,6 +171,92 @@ module.exports = async (req, res) => {
       const updated = { ...task, status: 'open' };
       appendHistory(updated, 'reopened', user);
       await redis.hSet(HASH_KEY, taskId, JSON.stringify(updated));
+      res.status(200).json({ manualTasks: await allTasksForUser(redis, user) });
+      return;
+    }
+
+    // Briefing "BABY-Business-Logik" Punkt 3C/4/5/8/10: idempotenter Abgleich der automatisch aus
+    // dem Apaleo-Service BABY abgeleiteten `Zusatzausstattung`-Aufgaben. Der Client berechnet
+    // `needs` bereits rein (lib/housekeeping/tasks.ts#computeExtraEquipmentNeeds, exakt derselbe
+    // Entscheidungsbaum wie bei der Vorbereitungs-Checkliste, siehe requiredPreparationItemIds) -
+    // hier passiert NUR der Redis-Abgleich (anlegen/entfernen), keine zweite Ableitungslogik. Jeder
+    // mit Property-Zugriff darf syncen (dieselbe Vertrauensstufe wie api/booking-changes.js#sync -
+    // rein aus bereits sichtbaren Apaleo-Daten abgeleitet, kein Admin-Recht noetig).
+    if (action === 'syncExtraEquipment') {
+      const { needs, evaluatedReservationIds, coveredProperties } = req.body;
+      if (!Array.isArray(needs) || !Array.isArray(evaluatedReservationIds) || !Array.isArray(coveredProperties)) {
+        res.status(400).json({ error: 'needs[]/evaluatedReservationIds[]/coveredProperties[] sind erforderlich.' });
+        return;
+      }
+      // Sicherheitsabgrenzung (Punkt "keine bestehenden Redis-Daten loeschen"): eine Reconciliation
+      // (Loeschen nicht mehr benoetigter offener Aufgaben, siehe unten) darf NIEMALS ueber das
+      // hinausgehen, was dieser Sync tatsaechlich selbst ausgewertet hat UND worauf der User Zugriff
+      // hat - sonst koennte ein auf einen einzelnen Standort eingeschraenkter Sync faelschlich
+      // Aufgaben ausserhalb seines eigenen Blickfelds entfernen.
+      const safeCoveredProperties = coveredProperties.filter((p) => typeof p === 'string' && hasPropertyAccess(user, p));
+      const validNeeds = needs.filter((n) => (
+        n && typeof n.propertyCode === 'string' && hasPropertyAccess(user, n.propertyCode)
+        && safeCoveredProperties.includes(n.propertyCode)
+        && typeof n.reservationId === 'string' && n.reservationId
+        && typeof n.unitId === 'string' && n.unitId
+        && typeof n.date === 'string' && DATE_RE.test(n.date)
+        && (n.dueTime === '13:00' || n.dueTime === '16:00')
+      ));
+
+      const now = Date.now();
+      const all = await redis.hGetAll(HASH_KEY);
+      const existing = {};
+      for (const [id, raw] of Object.entries(all)) {
+        const t = parseJSON(raw, null);
+        if (t) existing[id] = t;
+      }
+
+      const neededIds = new Set();
+      const writes = [];
+      for (const need of validNeeds) {
+        // ID wird IMMER serverseitig aus reservationId+serviceCode neu berechnet, niemals einer vom
+        // Client mitgeschickten ID vertraut (Punkt 5 "nicht mit zufaelligen IDs arbeiten" gilt
+        // ebenso fuer eine potenziell manipulierte ID).
+        const id = extraEquipmentTaskId(need.reservationId);
+        neededIds.add(id);
+        if (existing[id]) continue; // idempotent (Punkt "H": erneuter Sync erzeugt keine Dopplung)
+        const task = {
+          id,
+          propertyCode: need.propertyCode,
+          propertyName: need.propertyName || need.propertyCode,
+          unitId: need.unitId,
+          unitName: need.unitName || need.unitId,
+          date: need.date,
+          title: 'Zusatzausstattung',
+          description: 'Babybett',
+          assignedUserId: null,
+          assignedUserName: null,
+          status: 'open',
+          createdByUserId: user.id,
+          createdByUserName: user.name || user.username,
+          createdAt: now,
+          extraEquipment: { category: 'extra_equipment', serviceCode: 'BABY', reservationId: need.reservationId, dueTime: need.dueTime },
+        };
+        writes.push([id, JSON.stringify(task)]);
+      }
+
+      // Punkt 8: eine offene automatische Aufgabe, deren Bedarf nicht mehr besteht (BABY wieder
+      // storniert ODER die zugehoerige Turnover-Reinigung deckt sie jetzt wieder live ab), sauber
+      // entfernen - eine bereits ERLEDIGTE historische Aufgabe wird NIEMALS geloescht (status-Filter
+      // unten). Nur fuer Reservierungen, die dieser Sync tatsaechlich ausgewertet hat.
+      const evaluatedSet = new Set(evaluatedReservationIds.filter((x) => typeof x === 'string'));
+      for (const [id, task] of Object.entries(existing)) {
+        if (task.status !== 'open') continue;
+        const ee = task.extraEquipment;
+        if (!ee || ee.category !== 'extra_equipment') continue;
+        if (!safeCoveredProperties.includes(task.propertyCode)) continue;
+        if (!evaluatedSet.has(ee.reservationId)) continue;
+        if (neededIds.has(id)) continue;
+        await redis.hDel(HASH_KEY, id);
+      }
+
+      for (const [field, value] of writes) await redis.hSet(HASH_KEY, field, value);
+
       res.status(200).json({ manualTasks: await allTasksForUser(redis, user) });
       return;
     }

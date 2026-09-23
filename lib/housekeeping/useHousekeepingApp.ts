@@ -37,8 +37,9 @@ import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './
 import { managedPropertyCodes } from './permissions';
 import { dayHeadingLabel } from './dayLabel';
 import {
-  buildTasks, canRescheduleTask, capacityForDay, daySummary, guestCount, manualTaskToResolvedTask, nextArrivalDateForTask,
-  requiredPreparationItemIds, requiresInspection, resolveTasks, sortTasksForDay, taskGenerationDays, teamCapacityForDay,
+  buildTasks, canRescheduleTask, capacityForDay, computeExtraEquipmentNeeds, daySummary, guestCount, manualTaskToResolvedTask,
+  nextArrivalDateForTask, requiredPreparationItemIds, requiresInspection, reservationHasCrib, resolveTasks, sortTasksForDay,
+  taskGenerationDays, teamCapacityForDay,
   type ResolvedTask, type TeamContext,
 } from './tasks';
 import type {
@@ -399,8 +400,29 @@ export function useHousekeepingApp() {
         // housekeeping-relevantes Vergleichsfeld (siehe api/booking-changes.js) - dieselbe
         // Gesamtpersonenzahl-Berechnung wie in der Reservierungsanzeige (tasks.ts#guestCount).
         guests: guestCount(r),
+        // Briefing "BABY-Business-Logik" Punkt 9: fuenftes Vergleichsfeld, damit ein nachtraeglich
+        // gebuchtes/entferntes Babybett auf einer bereits offenen/laufenden Reinigung dieselbe
+        // Aenderungs-/Ungesehen-Logik nutzt wie Anreise/Abreise/Personen/Einheit.
+        crib: reservationHasCrib(r),
       })).filter((r) => r.propertyCode);
       if (syncInput.length > 0) bookingChanges = await syncBookingChanges(syncInput);
+    } catch {
+      // still, siehe Kommentar oben - vorheriger Stand bleibt erhalten.
+    }
+    // Briefing "BABY-Business-Logik" Punkt 3C/4/5/8/10: Fall 1/2/3A/3B (Reinigung existiert und ist
+    // noch nicht abgeschlossen) deckt requiredPreparationItemIds() bereits live ab, siehe dort -
+    // hier wird NUR der komplementaere Fall (keine passende Reinigung ODER bereits abgeschlossen)
+    // als separate `Zusatzausstattung`-Aufgabe mit dem Server abgeglichen. Rein informativ wie der
+    // Buchungsaenderungs-Sync oben - ein Fehler hier darf die Aufgabenplanung nicht blockieren.
+    let manualTasksState: ManualTasksState = manualTasks;
+    try {
+      if (scopeCodes.length > 0) {
+        const propertyNames: Record<string, string> = {};
+        for (const p of properties) propertyNames[p.code] = p.name || p.code;
+        const needs = computeExtraEquipmentNeeds({ propertyNames, units, reservations, days, taskAssignments });
+        const evaluatedReservationIds = reservations.map((r) => r.id);
+        manualTasksState = (await manualTasksApi.syncExtraEquipment(needs, evaluatedReservationIds, scopeCodes)).manualTasks;
+      }
     } catch {
       // still, siehe Kommentar oben - vorheriger Stand bleibt erhalten.
     }
@@ -410,7 +432,7 @@ export function useHousekeepingApp() {
       taskSeen: viewsData.seen, bookingChangeAcks: viewsData.changeAcks,
       planningDays: days,
       teams: teamsData.teams, teamPropertyDefaults: teamsData.propertyDefaults, taskTeamOverrides: teamsData.taskTeamOverrides,
-      linenItems, consumableItems, manualTasks, bookingChanges,
+      linenItems, consumableItems, manualTasks: manualTasksState, bookingChanges,
     });
   }, [loadBackend, patch]);
 

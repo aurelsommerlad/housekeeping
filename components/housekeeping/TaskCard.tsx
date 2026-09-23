@@ -198,6 +198,22 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
     );
   }
 
+  // Briefing "BABY-Business-Logik" Punkt 6: die automatisch erzeugte `Zusatzausstattung`-Aufgabe
+  // zeigt statt des generischen Titel-Texts das bereits definierte Crib-Icon + "Babybett" sowie die
+  // Anreise-Deadline (Early-Check-in-beruecksichtigt, siehe tasks.ts#computeExtraEquipmentNeeds) -
+  // derselbe visuelle Aufgaben-Stil (Rahmenzeile), nur mit strukturiertem statt freiem Inhalt.
+  if (task.type === 'manual' && task.extraEquipment) {
+    return (
+      <div className="flex items-center justify-between gap-2 border-t border-line/70 pt-2">
+        <span className="flex items-center gap-1.5 text-[13px] text-ink">
+          <DoubleupIcon id="crib" width={14} height={14} aria-hidden="true" />
+          {translate(lang, 'doubleup_crib')}
+        </span>
+        <span className="text-[12px] text-muted">{translate(lang, 'label_arrival')} {task.extraEquipment.dueTime}</span>
+      </div>
+    );
+  }
+
   if (task.type === 'manual' && task.manualTitle) {
     return (
       <p className="truncate border-t border-line/70 pt-2 text-[13px] text-ink">{task.manualTitle}</p>
@@ -421,6 +437,12 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
            * Outline-Icon neben dem ohnehin schon textlichen "Aufgabe"-Label der TonePill. */}
           {task.type === 'manual' ? <IconTask width={14} height={14} className="shrink-0 text-type-manual" aria-hidden="true" /> : null}
           <TonePill config={typeConfig} lang={lang} size="sm" />
+          {/* Briefing "BABY-Business-Logik" Punkt 6: Kategorie-Label "Zusatzausstattung" direkt
+           * neben dem generischen "Aufgabe"-Typ-Label, statt es dort zu ersetzen (die Aufgabe bleibt
+           * eine ganz normale `Aufgabe`, nur mit dieser zusaetzlichen Einordnung). */}
+          {task.extraEquipment ? (
+            <span className="text-[12px] font-medium text-muted">{translate(lang, 'extra_equipment_category_label')}</span>
+          ) : null}
           {/* Nutzerfeedback: "Termin verschoben"/"Wieder aktiviert" gehoeren fachlich zum Typ/
            * Zeitplan der Reinigung (Abreise/Turnover/...), nicht zur Zuweisung - direkt neben dem
            * Typ-Label statt neben Zuweisung/Team platziert. Statuskorrektur (Briefing

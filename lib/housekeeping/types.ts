@@ -347,6 +347,8 @@ export interface Task {
   /** Automatische Uebersetzung von `manualDescription` (Briefing "automatische Uebersetzung frei
    * eingegebener operativer Texte") - 1:1 aus ManualTask.descriptionTranslation uebernommen. */
   manualDescriptionTranslation?: FreeTextTranslation;
+  /** 1:1 aus ManualTask.extraEquipment uebernommen (Briefing "BABY-Business-Logik") - siehe dort. */
+  extraEquipment?: ManualTask['extraEquipment'];
   /** Housekeeping-relevante Aenderung der zugrundeliegenden Apaleo-Reservierung seit dem letzten
    * bekannten Stand (Punkt "Buchungsaenderung sichtbar machen") - `null`, wenn keine relevante
    * Aenderung bekannt ist oder der Task keine eigene Reservierung hat (manual/extra). Wird beim
@@ -394,6 +396,22 @@ export interface ManualTask {
    * eingegebener operativer Texte") - additiv, `description` bleibt unveraendert die Quelle der
    * Wahrheit. Fehlt bei aelteren, vor diesem Feature erstellten Aufgaben. */
   descriptionTranslation?: FreeTextTranslation;
+  /** Briefing "BABY-Business-Logik" Punkt 3C/4/6: NUR bei einer automatisch aus einem gebuchten
+   * Apaleo-Service erzeugten Aufgabe gesetzt (aktuell ausschliesslich `serviceCode: 'BABY'`, siehe
+   * tasks.ts#computeExtraEquipmentNeeds) - fehlt bei jeder admin-erstellten Aufgabe. Traegt die
+   * Herkunft (welche Reservierung/welcher Service hat die Aufgabe ausgeloest) fuer die
+   * deterministische ID (api/manual-tasks.js#extraEquipmentTaskId) und den erneuten Sync-Abgleich
+   * (Punkt 5 "keine Doppelaufgaben"/Punkt 8 "sauber entfernen, wenn BABY wieder storniert wird"),
+   * OHNE eine zweite, parallele Task-Engine zu sein - die Aufgabe selbst bleibt ein ganz normaler
+   * ManualTask (gleiche Felder/gleicher Workflow wie jede andere Aufgabe). */
+  extraEquipment?: {
+    category: 'extra_equipment';
+    serviceCode: 'BABY';
+    reservationId: string;
+    /** "HH:MM" - Anreisezeit unter Beruecksichtigung von Early Check-in (Punkt 6), fuer die
+     * Anzeige "Anreise HH:MM" auf der Aufgabenkarte/-detailansicht. */
+    dueTime: string;
+  };
 }
 
 export type ManualTasksState = Record<string, ManualTask | null>;
@@ -421,6 +439,14 @@ export interface BookingChangeRecord {
    * Rohdaten). */
   guestsFrom?: number;
   guestsTo?: number;
+  /** Briefing "BABY-Business-Logik" Punkt 9: ein per Apaleo-Service `BABY` gebuchtes/wieder
+   * entferntes Babybett auf einer bereits offenen/laufenden Reinigung - genutzt, um in der
+   * Detailansicht "Zusatzausstattung hinzugefuegt / + Babybett" anzuzeigen, OHNE ein zweites
+   * Farbsystem einzufuehren (dieselbe Buchungsaenderungs-/Ungesehen-Logik wie Anreise/Abreise/
+   * Personen/Einheit oben). Nur gesetzt, wenn sich GENAU dieses Feld geaendert hat (analog zu
+   * guestsFrom/-To). */
+  cribFrom?: boolean;
+  cribTo?: boolean;
 }
 
 export type BookingChangeRecordsState = Record<string, BookingChangeRecord | null>;
