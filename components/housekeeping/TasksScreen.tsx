@@ -844,36 +844,48 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   return (
     <div className="pb-6">
       {compactInfoLine ? <p className="truncate px-4 pt-2 text-[12.5px] text-muted">{compactInfoLine}</p> : null}
-      {/* Housekeeping-Mobile-Redesign (Feinschliff nach Zielbild): EINE ruhige, freundliche
-       * Statuskarte statt einer Warn-/Dashboard-Kachel - bewusst NICHT `status-attention` (das ist
-       * der bestehende Terracotta-/Orange-Ton fuer Abreise/Buchungsaenderung/Early-Check-in, siehe
-       * TaskCard.tsx - eine neutrale Zusammenfassung darf diese Bedeutung nicht mitbenutzen),
-       * sondern der bereits definierte, bisher ungenutzte warme Beige-Ton `sand` + dezente
-       * `border-line`-Kontur. Sie bleibt in BEIDEN Tabs sichtbar (kein Verschwinden/Ersetzen durch
-       * einen zweiten, andersfarbigen Banner) - nur Text und Tipp-Verhalten wechseln: in "Meine
-       * Aufgaben" fuehrt Antippen direkt zu "Im Team offen" (Pfeil als Hinweis), dort selbst ist
-       * die Karte rein informativ (kein Pfeil, kein Tap-Ziel, man ist ja schon dort). */}
+      {/* Housekeeping-Mobile-Redesign (Nachbesserung): EINE ruhige, freundliche Statuskarte statt
+       * einer Warn-/Dashboard-Kachel - bewusst NICHT `status-attention` (das ist der bestehende
+       * Terracotta-/Orange-Ton fuer Abreise/Buchungsaenderung/Early-Check-in, siehe TaskCard.tsx -
+       * eine neutrale Zusammenfassung darf diese Bedeutung nicht mitbenutzen), sondern der bereits
+       * definierte, bisher ungenutzte warme Beige-Ton `sand`, hier bewusst nur mit halber Deckkraft
+       * (`bg-sand/50`) und ohne eigene Kontur fuer einen leichteren, weniger "kachelhaften" Eindruck
+       * (Nachbesserung: kompakteres Padding + kleinerer Radius `rounded-card` statt `rounded-card-lg`).
+       * Sie bleibt in BEIDEN Tabs sichtbar (kein Verschwinden/Ersetzen durch einen zweiten,
+       * andersfarbigen Banner) - nur Text und Tipp-Verhalten wechseln: in "Meine Aufgaben" fuehrt
+       * Antippen direkt zu "Im Team offen" (Pfeil als Hinweis), dort selbst ist die Karte rein
+       * informativ (kein Pfeil, kein Tap-Ziel, man ist ja schon dort). */}
       {housekeeperRedesignHere ? (
         state.myTasksOnly ? (
           <button
             type="button"
             onClick={selectAllTasks}
-            className="mx-4 mt-2 flex w-[calc(100%-2rem)] items-center justify-between gap-3 rounded-card-lg border border-line bg-sand px-4 py-3 text-left"
+            className="mx-4 mt-2 flex w-[calc(100%-2rem)] items-center justify-between gap-3 rounded-card bg-sand/50 px-4 py-2.5 text-left"
           >
             <span className="flex flex-col items-start gap-0.5">
               <span className="text-[14px] font-medium text-ink">
                 {t('status_card_cleanings_line', { count: countLabel(t, myOpenTasksCount, 'noun_cleaning_one', 'noun_cleaning_many') })}
               </span>
               <span className="text-[12.5px] text-muted">
-                {openClaimableTasksToday.length > 0
-                  ? (openClaimableTasksToday.length === 1 ? t('status_card_team_open_one') : t('status_card_team_open_many', { m: openClaimableTasksToday.length }))
-                  : t('status_card_team_done')}
+                {/* Nachbesserung: "Arbeiten" nur, wenn sich die Zahl aus Reinigungen UND
+                 * manuellen Aufgaben zusammensetzt - sind ausschliesslich Reinigungen offen,
+                 * heisst es "Reinigungen" (dieselbe Unterscheidung wie auf der "Im Team
+                 * offen"-Kartenvariante unten, siehe dortiger Kommentar). */}
+                {(() => {
+                  const n = openClaimableTasksToday.length;
+                  if (n === 0) return t('status_card_team_done');
+                  const allCleaning = openClaimableTasksToday.every((task) => task.type !== 'manual');
+                  const nounKey = allCleaning
+                    ? (n === 1 ? 'noun_cleaning_one' : 'noun_cleaning_many')
+                    : (n === 1 ? 'noun_open_work_one' : 'noun_open_work_many');
+                  return t(n === 1 ? 'status_card_team_open_singular' : 'status_card_team_open_plural', { n, noun: t(nounKey) });
+                })()}
               </span>
             </span>
             <IconChevronRight width={16} height={16} className="shrink-0 text-muted" aria-hidden="true" />
           </button>
         ) : (
-          <div className="mx-4 mt-2 flex w-[calc(100%-2rem)] flex-col items-start gap-0.5 rounded-card-lg border border-line bg-sand px-4 py-3 text-left">
+          <div className="mx-4 mt-2 flex w-[calc(100%-2rem)] flex-col items-start gap-0.5 rounded-card bg-sand/50 px-4 py-2.5 text-left">
             {openClaimableTasksToday.length > 0 ? (
               <>
                 <span className="text-[14px] font-medium text-ink">
@@ -921,13 +933,13 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         // das alte Dropdown/native <select> UND den Standortfilter (siehe showPropertyChips oben).
         // `selectedDay`/`state.propertyScope` bleiben dabei unberuehrt (selectMine/selectAllTasks
         // aendern ausschliesslich myTasksOnly, siehe oben) - Punkt 5.
-        <div className="flex gap-2 px-4 py-2.5 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
+        <div className="flex gap-2 px-4 pt-3 pb-2 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
           <button
             type="button"
             onClick={selectMine}
             aria-pressed={state.myTasksOnly}
             className={cn(
-              'flex-1 rounded-full border px-3.5 py-2 text-center text-[13px] font-medium transition-colors',
+              'flex-1 rounded-full border px-3.5 py-1.5 text-center text-[13px] font-medium transition-colors',
               state.myTasksOnly ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-ink',
             )}
           >
@@ -938,7 +950,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             onClick={selectAllTasks}
             aria-pressed={!state.myTasksOnly}
             className={cn(
-              'flex-1 rounded-full border px-3.5 py-2 text-center text-[13px] font-medium transition-colors',
+              'flex-1 rounded-full border px-3.5 py-1.5 text-center text-[13px] font-medium transition-colors',
               !state.myTasksOnly ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-ink',
             )}
           >
@@ -1009,15 +1021,12 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             aria-pressed={date === d}
             className={cn(
               'flex flex-col items-center rounded-control border px-2 py-1.5 text-center transition-colors xl:h-9 xl:flex-row xl:items-center xl:justify-center xl:rounded-none xl:border-0 xl:border-b-2 xl:bg-transparent xl:px-1 xl:py-0',
+              // Feinschliff (Nachbesserung): die Tagesauswahl bleibt fuer ALLE Rollen bei der
+              // bisherigen, klaren schwarz/weiss-Markierung des aktiven Tages - explizit
+              // gewuenschter Navigationsakzent, kein zweiter getoenter Zustand mehr fuer die
+              // Reinigungskraft (das war der vorherige Versuch, hier bewusst zurueckgenommen).
               date === d
-                // Housekeeping-Mobile-Redesign (Feinschliff nach Zielbild) Punkt 7: fuer diese
-                // Rolle ein leicht getoenter Hintergrund (derselbe warme `sand`-Ton wie die
-                // Statuskarte) + kraeftigere Schrift statt einer zweiten massiven schwarzen
-                // Flaeche neben dem Haupttab-Paar - Admin/Standortverantwortliche/Teamleader
-                // behalten exakt die bisherige, vollflaechig dunkle Auswahl.
-                ? housekeeperRedesignHere
-                  ? 'border-line bg-sand text-ink font-semibold xl:border-ink xl:bg-transparent xl:text-ink'
-                  : 'border-ink bg-ink text-warm-white xl:border-ink xl:bg-transparent xl:text-ink'
+                ? 'border-ink bg-ink text-warm-white xl:border-ink xl:bg-transparent xl:text-ink'
                 : 'border-line bg-warm-white text-muted hover:text-ink xl:border-transparent xl:bg-transparent xl:text-muted xl:hover:text-ink xl:hover:border-line',
             )}
           >
