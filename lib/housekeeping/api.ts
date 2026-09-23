@@ -13,8 +13,10 @@
 import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, BookingChangeAck, BookingChangeAcksState, BookingChangeRecordsState,
   DoubleupsState, Completion, BreakEntry,
-  ConsumableItem, ConsumableReport, HousekeepingIncident, HousekeepingTeam, LinenItem, ManualTask, ManualTasksState,
-  NfcTagStatusesState, Property, ReservationSearchResult, ReservationsState, StaffUser, TaskAssignment, TaskAssignmentsState,
+  ConsumableItem, ConsumableReport, HousekeepingIncident, HousekeepingTeam, Invitation, InvitationsState, LinenItem,
+  ManualTask, ManualTasksState,
+  NfcTagStatusesState, Property, ReservationSearchResult, ReservationsState, Role, StaffUser, TaskAssignment,
+  TaskAssignmentsState,
   TaskNotice, TaskNoticeAck, TaskNoticeAcksState, TaskNoticesState, TaskScheduleOverride, TaskScheduleOverridesState,
   TaskSeenRecord, TaskSeenState, TaskStartSource, TaskTeamOverridesState, TaskTimeOverride, TaskTimeOverridesState,
   TeamPropertyDefaultsState,
@@ -1697,6 +1699,63 @@ export const usersApi = {
   save: (user: Record<string, unknown>) => backendPost('users', { action: 'set', user }),
   remove: (username: string) => backendPost('users', { action: 'delete', username }),
 };
+
+/** Einladungssystem (Briefing "Team-/Benutzerverwaltung ueberarbeiten") - Sichtbarkeit/Scoping wird
+ * ausschliesslich serverseitig durchgesetzt (siehe api/invitations.js): Admin sieht/verwaltet alle
+ * Einladungen, Standortverantwortliche/Teamleader nur die von ihnen selbst versendeten. `create`
+ * gibt das Klartext-Token NUR einmalig zurueck (fuer "Einladungslink kopieren", siehe
+ * TeamScreen.tsx) - es wird serverseitig nie gespeichert und ist danach nicht mehr abrufbar. */
+export interface InvitationCreateInput {
+  email: string;
+  role?: Role;
+  propertyIds?: string[];
+  teamId?: string | null;
+  isLeader?: boolean;
+  lang?: Lang;
+}
+
+export const invitationsApi = {
+  list: async (): Promise<InvitationsState> => {
+    const data = await backendGet<{ invitations?: Invitation[] }>('invitations');
+    const byId: InvitationsState = {};
+    for (const inv of data.invitations || []) byId[inv.id] = inv;
+    return byId;
+  },
+  create: (input: InvitationCreateInput) =>
+    backendPost<{ invitation: Invitation; token: string }>('invitations', { action: 'create', ...input }),
+  resend: (id: string) => backendPost<{ invitation: Invitation; token: string }>('invitations', { action: 'resend', id }),
+  revoke: (id: string) => backendPost<{ invitation: Invitation }>('invitations', { action: 'revoke', id }),
+};
+
+export interface InvitationInfo {
+  status: 'pending' | 'expired' | 'accepted' | 'revoked' | 'not_found';
+  email?: string;
+  role?: Role;
+  lang?: Lang;
+}
+
+/** Oeffentliche Einladungsseite (app/invite/[token]/page.tsx, siehe dort) - bewusst OHNE
+ * bestehende Session/Cookie: wer den Link noch nicht angenommen hat, ist noch gar kein
+ * angemeldeter Benutzer dieser App. Ruft denselben legacy-Endpunkt wie die urspruengliche
+ * Admin-Ersteinrichtung auf (api/auth.js, siehe app.js#action:'register-admin') - beides ist
+ * "Account-Anlage vor dem ersten Login", nicht der reguläre Next-native app/api/auth/{login,me}-
+ * Session-Lebenszyklus. */
+export async function fetchInvitationInfo(token: string): Promise<InvitationInfo> {
+  return backendPost<InvitationInfo>('auth', { action: 'invitation-info', token });
+}
+
+export interface AcceptInvitationInput {
+  token: string;
+  firstName: string;
+  lastName: string;
+  password: string;
+  passwordConfirm: string;
+}
+
+export async function acceptInvitation(input: AcceptInvitationInput): Promise<StaffUser> {
+  const data = await backendPost<{ user: StaffUser }>('auth', { action: 'accept-invite', ...input });
+  return data.user;
+}
 
 /** Admin-Reservierungssuche (Punkt 5-9) - sucht live gegen Apaleo ueber alle Properties/Zeitraeume
  * hinweg (nicht nur die vier geladenen Planungstage), siehe api/reservation-search.js fuer die

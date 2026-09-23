@@ -26,12 +26,14 @@ import { buildShortNameMap } from './names';
 import { fetchMe, login as loginRequest, logout as logoutRequest } from './auth';
 import {
   DOUBLEUP_TYPES, POLL_INTERVAL, assignmentsApi, breaksApi, completionsApi, consumablesApi, doubleupsApi,
-  getPropertyDisplayName, housekeepingTeamsApi, incidentPhotosApi, incidentsApi, linenItemsApi, loadBackendState,
-  loadConsumableItems, loadHousekeepingTeams, loadIntegrationsStatus, loadLinenItems, loadManualTasks, loadNfcTagStatuses,
+  getPropertyDisplayName, housekeepingTeamsApi, incidentPhotosApi, incidentsApi, invitationsApi, linenItemsApi,
+  loadBackendState, loadConsumableItems, loadHousekeepingTeams, loadIntegrationsStatus, loadLinenItems, loadManualTasks,
+  loadNfcTagStatuses,
   loadProperties, loadReservations, loadReservationsRangeForProperties, loadTaskAssignments, loadTaskNotices,
   loadTaskScheduleOverrides, loadTaskTimeOverrides, loadTaskViews, loadUnits, loadUnitsForProperties, manualTasksApi, nfcApi,
   setUnitCondition, syncBookingChanges, taskAssignmentsApi, taskNoticesApi, taskScheduleOverridesApi, taskTimeOverridesApi,
-  taskViewsApi, usersApi, type IntegrationsStatus, type ManualTaskCreateInput, type ReportIncidentInput,
+  taskViewsApi, usersApi, type IntegrationsStatus, type InvitationCreateInput, type ManualTaskCreateInput,
+  type ReportIncidentInput,
 } from './api';
 import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './rooms';
 import { managedPropertyCodes } from './permissions';
@@ -45,7 +47,8 @@ import {
 import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, BookingChangeAcksState, BookingChangeRecordsState, BreakEntry,
   CapacityEntry, Completion,
-  ConsumableItem, ConsumableReport, DaySummary, DoubleupsState, HousekeepingIncident, HousekeepingTeam, LinenItem,
+  ConsumableItem, ConsumableReport, DaySummary, DoubleupsState, HousekeepingIncident, HousekeepingTeam, Invitation,
+  InvitationsState, LinenItem,
   ManualTask, ManualTasksState, NfcTagStatusesState, Property, ReservationsState, Room, RoomFilter, StaffUser,
   TaskAssignmentsState, TaskNotice, TaskNoticeAcksState, TaskNoticesState, TaskScheduleOverridesState, TaskSeenState,
   TaskStartSource, TaskTeamOverridesState, TaskTimeOverridesState, TeamCapacityEntry, TeamPropertyDefaultsState,
@@ -132,6 +135,12 @@ interface AppState {
    * selten benoetigt), sondern erst, wenn die NFC-Einstellungen tatsaechlich geoeffnet werden. */
   nfcTags: NfcTagStatusesState;
   nfcTagsLoading: boolean;
+  /** Einladungssystem (Briefing "Team-/Benutzerverwaltung ueberarbeiten") - wie nfcTags NICHT beim
+   * Login vorgeladen (nur fuer Admin/Standortverantwortliche/Teamleader relevant), sondern erst
+   * lazy, wenn TeamScreen tatsaechlich geoeffnet wird. Sichtbarkeit ist bereits serverseitig auf
+   * die eigenen Einladungen gescoped (siehe api/invitations.js), hier keine weitere Filterung noetig. */
+  invitations: InvitationsState;
+  invitationsLoading: boolean;
   tasksLoadError: string | null;
   taskMultiSelect: boolean;
   selectedTasks: Set<string>;
@@ -242,6 +251,8 @@ function initialState(): AppState {
     taskScheduleOverrides: {},
     nfcTags: {},
     nfcTagsLoading: false,
+    invitations: {},
+    invitationsLoading: false,
     tasksLoadError: null,
     taskMultiSelect: false,
     selectedTasks: new Set(),
@@ -1409,6 +1420,54 @@ export function useHousekeepingApp() {
     }
   }, [patch, showToast]);
 
+  // --- Einladungssystem (Briefing "Team-/Benutzerverwaltung ueberarbeiten", siehe TeamScreen.tsx)
+  // - dieselbe Lazy-Load-Idee wie bei den NFC-Tags oben. `create`/`resend` geben das frisch erzeugte
+  // Token NICHT ueber runAction() zurueck (das schluckt Rueckgabewerte), da die aufrufende
+  // Komponente es fuer "Einladungslink kopieren" direkt braucht - wie bei den NFC-URLs oben.
+  const loadInvitations = useCallback(async () => {
+    patch({ invitationsLoading: true });
+    try {
+      const invitations = await invitationsApi.list();
+      patch({ invitations, invitationsLoading: false });
+    } catch (err) {
+      patch({ invitationsLoading: false });
+      showToast(err instanceof Error ? err.message : String(err));
+    }
+  }, [patch, showToast]);
+
+  const createInvitation = useCallback(async (input: InvitationCreateInput): Promise<string | null> => {
+    try {
+      const { invitation, token } = await invitationsApi.create(input);
+      patch((s) => ({ invitations: { ...s.invitations, [invitation.id]: invitation } }));
+      return token;
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err));
+      return null;
+    }
+  }, [patch, showToast]);
+
+  const resendInvitation = useCallback(async (id: string): Promise<string | null> => {
+    try {
+      const { invitation, token } = await invitationsApi.resend(id);
+      patch((s) => ({ invitations: { ...s.invitations, [invitation.id]: invitation } }));
+      return token;
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err));
+      return null;
+    }
+  }, [patch, showToast]);
+
+  const revokeInvitation = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      const { invitation } = await invitationsApi.revoke(id);
+      patch((s) => ({ invitations: { ...s.invitations, [invitation.id]: invitation } }));
+      return true;
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  }, [patch, showToast]);
+
   // --- Einstellungen > Meldungen & Betrieb / Integrationen (admin-only, siehe SettingsScreen.tsx)
   // - dieselbe Lazy-Load-Idee wie bei den NFC-Tags oben: selten benoetigt, deshalb erst beim
   // tatsaechlichen Oeffnen der jeweiligen Ansicht geladen, nicht beim Login.
@@ -1488,6 +1547,9 @@ export function useHousekeepingApp() {
 
     // NFC-Tag-Verwaltung
     loadNfcTags, createNfcTag, revealNfcTag, deactivateNfcTag, replaceNfcTag,
+
+    // Einladungssystem
+    loadInvitations, createInvitation, resendInvitation, revokeInvitation,
 
     // Einstellungen > Meldungen & Betrieb / Integrationen
     loadIncidentsList, loadConsumableReportsList, loadIntegrationsStatusInfo,
