@@ -4,49 +4,55 @@ import { useState } from 'react';
 import { LANGUAGES } from '@/lib/housekeeping/i18n';
 import type { Lang } from '@/lib/housekeeping/i18n';
 import { getPropertyDisplayName } from '@/lib/housekeeping/api';
-import { sanitizeManagedProperties } from '@/lib/housekeeping/permissions';
+import { getTeamMemberships, sanitizeManagedProperties } from '@/lib/housekeeping/permissions';
+import { todayISO } from '@/lib/housekeeping/rooms';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
-import type { StaffUser } from '@/lib/housekeeping/types';
+import type { Role, StaffUser, TeamMembership } from '@/lib/housekeeping/types';
 import { BottomSheet } from './BottomSheet';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/cn';
 
 export interface UserFormSheetProps {
   app: HousekeepingApp;
-  user: StaffUser | null;
+  user: StaffUser;
   onClose: () => void;
 }
 
+const ROLES: Role[] = ['admin', 'location_manager', 'housekeeper'];
+
 /**
- * Ersetzt die frueheren `prompt()`-Dialoge des Team-Screens durch ein hochwertiges Formular im
- * Bottom Sheet - ruft dieselbe `saveUser`-Aktion (api/users.js#set) mit denselben Feldern auf,
- * jetzt erweitert um Punkt 17 (Vorname/Nachname/Sprache/aktiv + Property-Zugriff UND
- * Standortverantwortlich in einer gemeinsamen Tabelle statt zweier getrennter Formulare).
+ * Briefing "Team-/Benutzerverwaltung ueberarbeiten": Bearbeitungsformular fuer einen BESTEHENDEN
+ * Mitarbeiter - Neuanlage laeuft seit der Einfuehrung des Einladungssystems ausschliesslich ueber
+ * InviteUserSheet.tsx (Punkt "sicheres Einladungssystem" ersetzt die fruehere direkte
+ * Admin-Passwortvergabe fuer neue Konten). Ausschliesslich ueber TeamScreen.tsx erreichbar, das
+ * bereits serverseitig/clientseitig sicherstellt, dass nur ein Admin hierher gelangt
+ * (canManageUser ist bewusst admin-only, siehe lib/housekeeping/permissions.ts).
  *
- * Wird vom Team-Screen nur bei geoeffnetem Formular ueberhaupt gemountet (statt dauerhaft mit
- * einem `open`-Flag) - so liest jeder Feld-State per Lazy-Initializer direkt aus `user`, ohne
- * einen synchronisierenden Effekt zu brauchen.
+ * Rolle ist jetzt ein 3-Werte-Dropdown statt zweier Buttons (admin/location_manager/housekeeper,
+ * siehe types.ts#Role) - `managedProperties` (Standortverantwortung) ist nur bei
+ * role==='location_manager' sichtbar/setzbar, sonst wird sie beim Speichern geleert (sonst wuerde
+ * api/_users.js#migrateUserRecord die Rolle beim naechsten Laden automatisch wieder auf
+ * location_manager zurueckstufen). Teammitgliedschaft ist jetzt ein Mehrfachauswahl-Set
+ * (teamMemberships[]) statt einer einzelnen housekeepingTeamId/teamRole-Kombination - ein User
+ * kann Mitglied mehrerer Teams gleichzeitig sein, in jedem davon unabhaengig Teamleader.
  */
 export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
   const { state, t, saveUser } = app;
-  const [username, setUsername] = useState(user?.username || '');
-  const [firstName, setFirstName] = useState(user?.name?.split(' ')[0] || '');
-  const [lastName, setLastName] = useState(user?.name?.split(' ').slice(1).join(' ') || '');
-  const [email, setEmail] = useState(user?.email || '');
-  const [role, setRole] = useState<'admin' | 'housekeeping'>(user?.role === 'admin' ? 'admin' : 'housekeeping');
-  const [lang, setLang] = useState<Lang>(user?.lang || 'de');
-  const [active, setActive] = useState(user?.active !== false);
-  const isAllInitially = !user || user.properties === 'alle' || user.properties === 'all';
+  const [firstName, setFirstName] = useState(user.firstName || user.name?.split(' ')[0] || '');
+  const [lastName, setLastName] = useState(user.lastName || user.name?.split(' ').slice(1).join(' ') || '');
+  const [email, setEmail] = useState(user.email || '');
+  const [role, setRole] = useState<Role>(user.role);
+  const [lang, setLang] = useState<Lang>(user.lang || 'de');
+  const [active, setActive] = useState(user.active !== false);
+  const isAllInitially = user.properties === 'alle' || user.properties === 'all';
   const [allProperties, setAllProperties] = useState(isAllInitially);
-  const [properties, setProperties] = useState<string[]>(isAllInitially ? [] : (user!.properties as string[]));
-  const [managedProperties, setManagedProperties] = useState<string[]>(user?.managedProperties || []);
-  const [housekeepingTeamId, setHousekeepingTeamId] = useState<string>(user?.housekeepingTeamId || '');
-  const [teamRole, setTeamRole] = useState<'member' | 'lead'>(user?.teamRole === 'lead' ? 'lead' : 'member');
+  const [properties, setProperties] = useState<string[]>(isAllInitially ? [] : (user.properties as string[]));
+  const [managedProperties, setManagedProperties] = useState<string[]>(user.managedProperties || []);
+  const [teamMemberships, setTeamMemberships] = useState<TeamMembership[]>(getTeamMemberships(user));
   const [password, setPassword] = useState('');
 
-  // Punkt 17: Standortverantwortlich nur moeglich, wenn Zugriff aktiv ist; wird Zugriff
-  // entfernt, faellt Standortverantwortlich fuer dieses Property automatisch mit weg -
-  // clientseitig sofort beim Toggle durchgesetzt, serverseitig zusaetzlich in api/_users.js.
+  const futureAssignmentCount = countFutureAssignments(user, state.taskAssignments);
+
   function toggleProperty(code: string) {
     setProperties((prev) => {
       const next = prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code];
@@ -64,18 +70,35 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
   function toggleAllProperties() {
     setAllProperties((v) => {
       const next = !v;
-      // "Alle Haeuser" deaktiviert -> vorher moeglicherweise ueberall gesetzte
-      // Standortverantwortung wird sofort gegen die (dann leere) Property-Liste geprueft.
       if (!next) setManagedProperties((mp) => sanitizeManagedProperties(properties, mp));
       return next;
     });
   }
 
+  function toggleTeam(teamId: string) {
+    setTeamMemberships((prev) => (prev.some((m) => m.teamId === teamId)
+      ? prev.filter((m) => m.teamId !== teamId)
+      : [...prev, { teamId, isLeader: false }]));
+  }
+
+  function toggleLeader(teamId: string) {
+    setTeamMemberships((prev) => prev.map((m) => (m.teamId === teamId ? { ...m, isLeader: !m.isLeader } : m)));
+  }
+
+  async function handleDeactivate() {
+    if (typeof window === 'undefined') return;
+    const message = futureAssignmentCount > 0
+      ? `${t('deactivate_user_confirm')}\n\n${t('deactivate_future_assignments_warning', { n: futureAssignmentCount })}`
+      : t('deactivate_user_confirm');
+    if (!window.confirm(message)) return;
+    setActive(false);
+  }
+
   async function handleSubmit() {
-    if (!username.trim()) return;
-    const name = [firstName, lastName].filter(Boolean).join(' ').trim() || username.trim();
+    const name = [firstName, lastName].filter(Boolean).join(' ').trim() || user.name;
     await saveUser({
-      username: username.trim(),
+      id: user.id,
+      username: user.username,
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       name,
@@ -84,9 +107,12 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
       lang,
       active,
       properties: allProperties ? 'alle' : properties,
-      managedProperties: sanitizeManagedProperties(allProperties ? 'alle' : properties, managedProperties),
-      housekeepingTeamId: housekeepingTeamId || undefined,
-      teamRole: housekeepingTeamId ? teamRole : undefined,
+      // role !== 'location_manager': serverseitig wuerde api/_users.js#upsertUser managedProperties
+      // ohnehin wieder gegen `properties` schneiden, aber ein leeres Array hier verhindert
+      // zusaetzlich die migrateUserRecord-Selbstheilung (Rolle wieder auf location_manager
+      // hochstufen, sobald managedProperties nicht leer ist).
+      managedProperties: role === 'location_manager' ? sanitizeManagedProperties(allProperties ? 'alle' : properties, managedProperties) : [],
+      teamMemberships,
       ...(password ? { password } : {}),
     });
     onClose();
@@ -94,18 +120,9 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
 
   return (
     <BottomSheet open onClose={onClose}>
-      <h3 className="italic text-lg text-[#17160f]">{user ? [firstName, lastName].filter(Boolean).join(' ') || username : t('new_user')}</h3>
+      <h3 className="italic text-lg text-[#17160f]">{[firstName, lastName].filter(Boolean).join(' ') || user.username}</h3>
 
       <div className="mt-4 flex flex-col gap-3">
-        <label className="flex flex-col gap-1 text-[13px] font-medium text-muted">
-          {t('username')}
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            disabled={!!user}
-            className="h-11 rounded-control border border-line bg-warm-white px-3 text-[15px] text-ink disabled:bg-surface disabled:text-muted"
-          />
-        </label>
         <div className="flex gap-2">
           <label className="flex flex-1 flex-col gap-1 text-[13px] font-medium text-muted">
             {t('first_name')}
@@ -134,70 +151,56 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
           />
         </label>
 
-        <div className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
+        <label className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
           {t('role')}
-          <div className="flex gap-2">
-            {(['housekeeping', 'admin'] as const).map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setRole(r)}
-                className={
-                  'flex-1 rounded-control border px-3 py-2.5 text-[13px] font-medium transition-colors ' +
-                  (role === r ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted')
-                }
-              >
-                {r === 'admin' ? t('role_admin') : t('role_housekeeper')}
-              </button>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as Role)}
+            className="h-11 rounded-control border border-line bg-warm-white px-3 text-[15px] text-ink"
+          >
+            {ROLES.map((r) => (
+              <option key={r} value={r}>
+                {r === 'admin' ? t('role_admin') : r === 'location_manager' ? t('role_location_manager') : t('role_housekeeper')}
+              </option>
             ))}
-          </div>
-        </div>
+          </select>
+        </label>
 
-        {state.teams.length > 0 ? (
+        {state.teams.filter((tm) => tm.active).length > 0 ? (
           <div className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
-            {t('housekeeping_team_label')}
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setHousekeepingTeamId('')}
-                className={cn(
-                  'rounded-control border px-3 py-2 text-[13px] font-medium transition-colors',
-                  !housekeepingTeamId ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted',
-                )}
-              >
-                {t('no_team_label')}
-              </button>
-              {state.teams.filter((tm) => tm.active).map((tm) => (
-                <button
-                  key={tm.id}
-                  type="button"
-                  onClick={() => setHousekeepingTeamId(tm.id)}
-                  className={cn(
-                    'rounded-control border px-3 py-2 text-[13px] font-medium transition-colors',
-                    housekeepingTeamId === tm.id ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted',
-                  )}
-                >
-                  {tm.name}
-                </button>
-              ))}
+            {t('team_memberships_label')}
+            <div className="flex flex-col gap-1 rounded-control border border-line">
+              {state.teams.filter((tm) => tm.active).map((tm) => {
+                const membership = teamMemberships.find((m) => m.teamId === tm.id);
+                return (
+                  <div key={tm.id} className="flex items-center justify-between gap-2 border-b border-line px-3 py-2 text-[13px] last:border-b-0">
+                    <button type="button" onClick={() => toggleTeam(tm.id)} className="flex flex-1 items-center gap-2 text-left">
+                      <span
+                        className={cn(
+                          'flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px]',
+                          membership ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-transparent',
+                        )}
+                      >
+                        ✓
+                      </span>
+                      <span className="text-ink">{tm.name}</span>
+                    </button>
+                    {membership ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleLeader(tm.id)}
+                        className={cn(
+                          'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                          membership.isLeader ? 'border-status-attention bg-status-attention-bg text-status-attention' : 'border-line bg-warm-white text-muted',
+                        )}
+                      >
+                        {t('team_membership_leader_label')}
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
-            {housekeepingTeamId ? (
-              <div className="mt-1 flex gap-2">
-                {(['member', 'lead'] as const).map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setTeamRole(r)}
-                    className={cn(
-                      'flex-1 rounded-control border px-3 py-2.5 text-[13px] font-medium transition-colors',
-                      teamRole === r ? 'border-status-attention bg-status-attention-bg text-status-attention' : 'border-line bg-warm-white text-muted',
-                    )}
-                  >
-                    {r === 'lead' ? t('team_role_lead') : t('team_role_member')}
-                  </button>
-                ))}
-              </div>
-            ) : null}
           </div>
         ) : null}
 
@@ -224,7 +227,7 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
           {t('active_label')}
           <button
             type="button"
-            onClick={() => setActive((v) => !v)}
+            onClick={() => (active ? handleDeactivate() : setActive(true))}
             className={cn(
               'rounded-control border px-3 py-2.5 text-left text-[13px] font-medium transition-colors',
               active ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted',
@@ -232,6 +235,9 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
           >
             {active ? t('active_label') : t('inactive_label')}
           </button>
+          {active && futureAssignmentCount > 0 ? (
+            <p className="text-xs text-status-attention">{t('deactivate_future_assignments_warning', { n: futureAssignmentCount })}</p>
+          ) : null}
         </div>
 
         <div className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
@@ -247,13 +253,11 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
             {t('all_properties')}
           </button>
 
-          {/* Punkt 17: Zugriff UND Standortverantwortlich in einer gemeinsamen Tabelle je
-           * Property statt zweier getrennter Listen. */}
           <div className="mt-1 flex flex-col gap-1 rounded-control border border-line">
             <div className="flex items-center gap-2 border-b border-line px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
               <span className="flex-1">{t('properties')}</span>
               <span className="w-16 text-right">{t('access_label')}</span>
-              <span className="w-20 text-right">{t('managed_properties')}</span>
+              {role === 'location_manager' ? <span className="w-20 text-right">{t('managed_properties')}</span> : null}
             </div>
             {state.properties.map((p) => {
               const hasAccess = allProperties || properties.includes(p.code);
@@ -276,21 +280,23 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
                       ✓
                     </button>
                   </span>
-                  <span className="flex w-20 justify-end">
-                    <button
-                      type="button"
-                      disabled={!hasAccess}
-                      onClick={() => toggleManaged(p.code)}
-                      aria-pressed={isManaged}
-                      className={cn(
-                        'flex h-6 w-6 items-center justify-center rounded-full border text-[11px] transition-colors',
-                        isManaged ? 'border-status-attention bg-status-attention text-warm-white' : 'border-line bg-warm-white text-transparent',
-                        !hasAccess && 'opacity-40',
-                      )}
-                    >
-                      ✓
-                    </button>
-                  </span>
+                  {role === 'location_manager' ? (
+                    <span className="flex w-20 justify-end">
+                      <button
+                        type="button"
+                        disabled={!hasAccess}
+                        onClick={() => toggleManaged(p.code)}
+                        aria-pressed={isManaged}
+                        className={cn(
+                          'flex h-6 w-6 items-center justify-center rounded-full border text-[11px] transition-colors',
+                          isManaged ? 'border-status-attention bg-status-attention text-warm-white' : 'border-line bg-warm-white text-transparent',
+                          !hasAccess && 'opacity-40',
+                        )}
+                      >
+                        ✓
+                      </button>
+                    </span>
+                  ) : null}
                 </div>
               );
             })}
@@ -298,7 +304,7 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
         </div>
 
         <label className="flex flex-col gap-1 text-[13px] font-medium text-muted">
-          {t('password')} {user ? '(leer lassen = unveraendert)' : ''}
+          {t('password')} (leer lassen = unveraendert)
           <input
             type="password"
             value={password}
@@ -316,4 +322,20 @@ export function UserFormSheet({ app, user, onClose }: UserFormSheetProps) {
       </Button>
     </BottomSheet>
   );
+}
+
+/** Briefing "Team-/Benutzerverwaltung ueberarbeiten" Punkt 26 ("Admin vor Deaktivierung warnen,
+ * wenn zukuenftige Zuweisungen bestehen") - Task-IDs sind deterministisch aufgebaut
+ * ("<propertyCode>|<unitId>|<date>|<type>|<sourceReservationId>", siehe
+ * lib/housekeeping/tasks.ts#taskId), das Datum laesst sich also direkt daraus lesen, ohne die
+ * komplette Task-Ableitung erneut aufzurufen. */
+function countFutureAssignments(user: StaffUser, taskAssignments: Record<string, { housekeeperId: string } | null>): number {
+  const today = todayISO();
+  let count = 0;
+  for (const [taskId, assignment] of Object.entries(taskAssignments)) {
+    if (!assignment || assignment.housekeeperId !== user.id) continue;
+    const date = taskId.split('|')[2];
+    if (date && date >= today) count += 1;
+  }
+  return count;
 }

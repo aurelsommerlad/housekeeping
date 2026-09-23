@@ -1446,7 +1446,7 @@ export async function loadHousekeepingTeams(): Promise<HousekeepingTeamsData> {
 }
 
 export const housekeepingTeamsApi = {
-  saveTeam: (team: { id?: string; name: string; active?: boolean }) =>
+  saveTeam: (team: { id?: string; name: string; active?: boolean; propertyIds?: string[] }) =>
     backendPost<{ teams: HousekeepingTeam[]; team: HousekeepingTeam }>('housekeeping-teams', { action: 'setTeam', team }),
   setPropertyDefault: (propertyCode: string, teamId: string | null) =>
     backendPost<{ propertyDefaults: TeamPropertyDefaultsState }>('housekeeping-teams', { action: 'setPropertyDefault', propertyCode, teamId }),

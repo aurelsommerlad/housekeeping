@@ -469,6 +469,43 @@ export function IconInfo(props: IconProps) {
   );
 }
 
+/** Fuer "Einladungslink kopieren" (Briefing "Team-/Benutzerverwaltung ueberarbeiten") - zwei
+ * ueberlappende Rechtecke, dieselbe Outline-Sprache wie die uebrigen Icons. */
+export function IconCopy(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="8.5" y="8.5" width="11" height="11" rx="2" />
+      <path d="M15.5 8.5V6.5A2 2 0 0 0 13.5 4.5h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+    </svg>
+  );
+}
+
+/** Fuer "Einladung widerrufen"/"Benutzer deaktivieren" - schlichter Papierkorb, dieselbe
+ * Outline-Sprache wie die uebrigen Icons (keine Warnfarbe im Icon selbst, das uebernimmt der
+ * Button-Kontext). */
+export function IconTrash(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M5 7h14" />
+      <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7" />
+      <path d="M7 7l1 12.5A1.5 1.5 0 0 0 9.5 21h5a1.5 1.5 0 0 0 1.5-1.5L17 7" />
+      <path d="M10.2 11v6" />
+      <path d="M13.8 11v6" />
+    </svg>
+  );
+}
+
+/** Fuer "Einladung erneut senden"/"Mitarbeiter einladen" - Briefumschlag, dieselbe Outline-
+ * Sprache wie die uebrigen Icons. */
+export function IconMail(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
+      <path d="M4.5 7l7.5 6 7.5-6" />
+    </svg>
+  );
+}
+
 export const NAV_ICONS = {
   bed: IconBed,
   chart: IconChart,

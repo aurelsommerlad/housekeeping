@@ -768,7 +768,7 @@ export function useHousekeepingApp() {
 
   // --- Housekeeping Teams (Reinigungsfirmen) - Admin-only Schreibaktionen, siehe
   // api/housekeeping-teams.js. Laden erfolgt bereits gebuendelt in loadPlanningData().
-  const saveTeam = useCallback(async (team: { id?: string; name: string; active?: boolean }) => {
+  const saveTeam = useCallback(async (team: { id?: string; name: string; active?: boolean; propertyIds?: string[] }) => {
     await runAction(async () => {
       const { teams } = await housekeepingTeamsApi.saveTeam(team);
       patch({ teams });
