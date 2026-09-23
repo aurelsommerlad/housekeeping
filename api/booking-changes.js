@@ -30,6 +30,44 @@ const { hasPropertyAccess } = require('./_permissions');
 
 const SNAPSHOT_HASH_KEY = 'housekeeping:booking_change_snapshots';
 const CHANGES_HASH_KEY = 'housekeeping:booking_changes';
+// Punkt "Unit-Wechsel besonders sauber behandeln": dieselbe Redis-Struktur wie
+// api/task-assignments.js (bewusst NICHT von dort importiert - eigenstaendige CommonJS-Datei ohne
+// gemeinsame Abhaengigkeit, siehe api/_permissions.js fuer dasselbe etablierte Muster einer
+// bewusst duplizierten, aber synchron gehaltenen Konstante).
+const TASK_ASSIGNMENTS_HASH_KEY = 'housekeeping:task_assignments';
+
+// Tasks werden IMMER frisch aus der aktuellen Apaleo Unit<->Reservierung-Zuordnung abgeleitet
+// (siehe lib/housekeeping/tasks.ts#taskId/buildTasks) - ihre ID enthaelt die Einheit. Ein
+// Unit-Wechsel erzeugt deshalb automatisch eine ANDERE Task-ID; die alte wird schlicht nicht mehr
+// erzeugt (kein doppelter/verwaister sichtbarer Task moeglich, siehe Analyse). Ohne diese Funktion
+// wuerde der bereits bestehende Zuweisungs-/Fortschrittsdatensatz (Redis housekeeping:
+// task_assignments, Key = Task-ID) unter der alten ID liegen bleiben und nie wieder gelesen -
+// eine laufende/pausierte/zugewiesene Reinigung wuerde fuer den Housekeeper kommentarlos
+// verschwinden, die neue Einheit startet als "offen". Dieselbe Ambiguitaet wie beim bestehenden
+// `orphanedSchedule` in TaskDetailSheet.tsx (Task-TYP laesst sich aus den reinen Buchungsdaten
+// allein nicht sicher bestimmen) wird identisch geloest: beide Kandidatentypen (turnover/departure)
+// werden versucht. Eine bereits ABGESCHLOSSENE Reinigung bleibt bewusst am alten Task (gueltige
+// Historie fuer das damalige Apartment) - nur offene/zugewiesene/laufende/pausierte Zuweisungen
+// werden uebernommen. Der alte Redis-Eintrag wird NICHT geloescht (Nutzervorgabe: keine
+// Housekeeping-Daten pauschal loeschen) - er wird nach der Migration schlicht nie wieder gelesen,
+// da kein Task mehr auf die alte ID verweist.
+function migrateAssignmentsOnUnitChange(assignments, propertyCode, reservationId, fromUnitId, fromDate, toUnitId, toDate) {
+  if (!fromDate || !toDate) return [];
+  const writes = [];
+  for (const type of ['turnover', 'departure']) {
+    const oldTaskId = `${propertyCode}|${fromUnitId}|${fromDate}|${type}|${reservationId}`;
+    const newTaskId = `${propertyCode}|${toUnitId}|${toDate}|${type}|${reservationId}`;
+    if (oldTaskId === newTaskId) continue;
+    const oldRaw = assignments[oldTaskId];
+    if (!oldRaw || assignments[newTaskId]) continue; // nichts zu migrieren, oder Ziel bereits belegt (nie ueberschreiben)
+    const oldRecord = parseJSON(oldRaw, null);
+    if (!oldRecord || oldRecord.status === 'completed') continue;
+    const migrated = { ...oldRecord, taskId: newTaskId };
+    writes.push([newTaskId, JSON.stringify(migrated)]);
+    assignments[newTaskId] = JSON.stringify(migrated); // verhindert Doppelmigration innerhalb desselben Sync-Laufs
+  }
+  return writes;
+}
 
 // Bugfix (Nutzerfeedback: "Buchung geändert" erschien mit "Anreise 23.09. -> 23.09.", obwohl sich
 // sichtbar nichts geaendert hatte): Apaleo liefert Anreise/Abreise als vollstaendige ISO-Datumszeit
@@ -124,9 +162,15 @@ module.exports = async (req, res) => {
     }
 
     const snapshots = await redis.hGetAll(SNAPSHOT_HASH_KEY);
+    // Punkt "Unit-Wechsel besonders sauber behandeln": einmal geladen, innerhalb dieses Sync-Laufs
+    // fuer alle Reservierungen wiederverwendet (dieselbe Hash-weite Lesestrategie wie bei snapshots
+    // oben) - migrateAssignmentsOnUnitChange() haelt sie bei einer tatsaechlichen Migration selbst
+    // aktuell (siehe dort).
+    const assignments = await redis.hGetAll(TASK_ASSIGNMENTS_HASH_KEY);
     const now = Date.now();
     const snapshotWrites = [];
     const changeWrites = [];
+    const assignmentWrites = [];
 
     for (const r of visible) {
       const current = {
@@ -161,6 +205,11 @@ module.exports = async (req, res) => {
         const arrivalChanged = fieldChanged(previous.arrival, current.arrival);
         const departureChanged = fieldChanged(previous.departure, current.departure);
         const unitChanged = fieldChanged(previous.unitId, current.unitId);
+        if (unitChanged) {
+          assignmentWrites.push(...migrateAssignmentsOnUnitChange(
+            assignments, r.propertyCode, r.id, previous.unitId, previous.departure, current.unitId, current.departure,
+          ));
+        }
         const adultsChanged = fieldChanged(previous.adults, current.adults);
         const childrenChanged = fieldChanged(previous.children, current.children);
         const guestsChanged = adultsChanged || childrenChanged;
@@ -197,6 +246,7 @@ module.exports = async (req, res) => {
 
     for (const [field, value] of snapshotWrites) await redis.hSet(SNAPSHOT_HASH_KEY, field, value);
     for (const [field, value] of changeWrites) await redis.hSet(CHANGES_HASH_KEY, field, value);
+    for (const [field, value] of assignmentWrites) await redis.hSet(TASK_ASSIGNMENTS_HASH_KEY, field, value);
 
     res.status(200).json({ changes: await changesForUser(redis, user) });
   } catch (err) {

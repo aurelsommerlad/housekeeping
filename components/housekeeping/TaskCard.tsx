@@ -262,10 +262,16 @@ function bookedExtraIcons(
  * deutlich groesseres Icon auf einer eigenen Zeile unten rechts im Block - fuer den einzigen Fall,
  * der fuer Housekeeping eine konkrete Vorbereitung bedeutet (Babybett fuer die HEUTIGE Anreise). */
 function OccupancyBlock({
-  icon: Icon, label, text, extras, prominent,
+  icon: Icon, label, text, extras, prominent, checkedInLabel,
 }: {
   icon: typeof IconExit; label: string; text: string; extras: { id: string; label: string }[];
   prominent?: { id: string; label: string } | null;
+  /** Nutzerfeedback (Punkt "Check-in-Status bei Turnover"): NUR fuer die ABREISENDE Reservierung
+   * eines Turnovers gesetzt (siehe OccupancyLine unten), wenn `checkedIn` (live verifizierter
+   * Apaleo-Status 'InHouse') zutrifft - eine rein operative Live-Information, technisch/visuell
+   * unabhaengig von "Buchung geändert" (kein Einfluss auf attentionState/den orangen Punkt) und von
+   * den Status-Punkten oben rechts auf der Karte. Sage/Gruen, sehr klein, kein eigenes Badge. */
+  checkedInLabel?: string | null;
 }) {
   return (
     <div className="flex min-w-0 flex-col">
@@ -281,6 +287,12 @@ function OccupancyBlock({
           </span>
         ) : null}
       </span>
+      {checkedInLabel ? (
+        <span className="mt-0.5 flex items-center gap-0.5 truncate text-[9.5px] font-medium leading-none text-status-clean">
+          <IconCheck width={8} height={8} className="shrink-0" aria-hidden="true" />
+          {checkedInLabel}
+        </span>
+      ) : null}
       {prominent ? (
         <span className="mt-1 flex items-center justify-end" title={prominent.label}>
           <DoubleupIcon id={prominent.id} width={17} height={17} className="text-ink" role="img" aria-label={prominent.label} />
@@ -308,12 +320,22 @@ export function OccupancyLine({ task, lang, doubleTypes }: { task: ResolvedTask;
     ? formatOccupancy(lang, task.nextReservationInfo.adults, task.nextReservationInfo.childrenCount)
     : null;
 
+  // Nutzerfeedback "Check-in-Status bei Turnover": ausschliesslich bei Turnover und ausschliesslich
+  // fuer die ABREISENDE Reservierung (deren Abreise die Reinigung erzeugt) - bei reiner Abreise
+  // brauchen wir das laut Briefing auf der kompakten Karte vorerst nicht.
+  const departureCheckedInLabel = task.type === 'turnover' && task.reservationInfo?.checkedIn
+    ? translate(lang, 'reservation_checked_in_label')
+    : null;
+
   let occupancy = null;
   if ((task.type === 'turnover' || task.type === 'departure') && (departureText || arrivalText)) {
     occupancy = (
       <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-2">
         {departureText ? (
-          <OccupancyBlock icon={IconExit} label={translate(lang, 'label_departure')} text={departureText} extras={bookedExtraIcons(task.reservationInfo, lang)} />
+          <OccupancyBlock
+            icon={IconExit} label={translate(lang, 'label_departure')} text={departureText}
+            extras={bookedExtraIcons(task.reservationInfo, lang)} checkedInLabel={departureCheckedInLabel}
+          />
         ) : <span />}
         {arrivalText ? (
           <OccupancyBlock

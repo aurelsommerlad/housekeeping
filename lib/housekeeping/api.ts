@@ -1080,7 +1080,35 @@ import type { ExtraEquipmentNeed } from './tasks';
 // - Die bestehende Aenderungs-/Ungesehen-Punkt-Logik (orange vs. gruen, nie beide gleichzeitig,
 //   TasksScreen.tsx#cardAttentionState) sowie der Kenntnisnahme-Mechanismus beim Oeffnen der
 //   Detailansicht sind unveraendert und bereits korrekt.
-export const APP_VERSION = '2.34.0';
+//
+// v2.35.0 - "Reinigung verschoben" und "Buchung geändert" duerfen sich weder technisch noch
+// visuell vermischen (Nutzerfeedback-Folgerunde):
+// - TaskDetailSheet.tsx: der Hinweis auf eine manuelle Tagesverschiebung (task.scheduleOverride)
+//   nutzte bisher denselben Wortlaut ("Termin geändert · von -> nach") UND denselben orangen
+//   status-progress-Ton wie die Buchungsaenderung - zwei fachlich unabhaengige Dinge wirkten dadurch
+//   nahezu identisch. Jetzt: eigener, unmissverstaendlicher Text ("Reinigung verschoben von ..."),
+//   dezentes Sage/Gruen (status-clean) statt Orange, kompakte einzeilige Information ohne Rahmen/
+//   Hintergrund-Card statt einer eigenen Alert-Box - Orange bleibt ausschliesslich der tatsaechlichen
+//   Apaleo-Buchungsaenderung vorbehalten.
+// - BookingChangeDetail (die orange Buchungsaenderungs-Karte): die Kompaktzeile zeigte bisher bei
+//   genau einer Aenderung eine feldspezifische Zusammenfassung ("Termin geändert · X -> Y") - exakt
+//   derselbe Wortlaut wie oben. Zeigt jetzt IMMER Titel + Zeitstempel ("BUCHUNG GEÄNDERT ·
+//   23.09. · 16:11"), unabhaengig von der Anzahl geaenderter Felder - eindeutig als Ueberschrift
+//   erkennbar, nie mit einem konkreten Feldwert verwechselbar (macht die drei jetzt tot liegenden
+//   feldspezifischen Summary-Keys ueberfluessig, entfernt).
+// - "GÄSTE"-Zeile heisst jetzt konsistent mit dem abgestimmten Wortlaut "Gäste" statt "Personen".
+// - TaskCard.tsx (kompakte Karte): "✓ Eingecheckt" existierte bisher nur in der Detailansicht - jetzt
+//   zusaetzlich dezent auf der kompakten Karte, ausschliesslich bei Turnover und ausschliesslich auf
+//   der ABREISE-Seite (bei reiner Abreise weiterhin nicht noetig), sage/gruen, kein Badge.
+// - api/booking-changes.js: ein Einheitenwechsel wird zusaetzlich auf Zuweisungs-Kontinuitaet
+//   geprueft (migrateAssignmentsOnUnitChange) - eine noch nicht abgeschlossene Zuweisung/laufende
+//   Reinigung an der ALTEN Einheit wird auf die NEUE Einheit uebertragen (Status/Zeit/Verlauf bleiben
+//   erhalten), NIE ueberschreibt das eine an der neuen Einheit bereits bestehende Zuweisung, eine
+//   bereits ABGESCHLOSSENE Reinigung bleibt bewusst als Historie an der alten Einheit. Der alte
+//   Redis-Eintrag wird nicht geloescht. Stale/doppelte sichtbare Tasks wurden analysiert und sind
+//   durch die bestehende, rein aus Live-Apaleo-Daten abgeleitete Task-Architektur strukturell
+//   bereits ausgeschlossen (keine Aenderung noetig).
+export const APP_VERSION = '2.35.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

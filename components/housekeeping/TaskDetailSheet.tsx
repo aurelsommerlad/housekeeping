@@ -255,16 +255,16 @@ function BookingChangeDetail({
   if (change.unitFrom !== undefined || change.unitTo !== undefined) {
     changedFields.push({ kind: 'unit', label: t('booking_changed_unit_label'), from: unitLabel(change.unitFrom), to: unitLabel(change.unitTo) });
   }
-  // Bei genau EINER Aenderung eine sprechende Zusammenfassung direkt in der Kompaktzeile ("Termin
-  // geändert · 22.09. → 24.09."); bei mehreren gleichzeitigen Aenderungen bleibt die Kompaktzeile
-  // generisch, die Einzelheiten stehen nach dem Aufklappen zur Verfuegung.
-  const summaryKeyByKind = {
-    arrival: 'booking_changed_date_summary', departure: 'booking_changed_date_summary',
-    guests: 'booking_changed_guests_summary', unit: 'booking_changed_unit_summary',
-  } as const;
-  const summaryText = changedFields.length === 1
-    ? `${t(summaryKeyByKind[changedFields[0].kind])} · ${changedFields[0].from} → ${changedFields[0].to}`
-    : t('booking_changed_title');
+  // Nutzerfeedback (Punkt "Reinigung verschoben" vs. "Buchung geändert" nicht vermischen): die
+  // Kompaktzeile zeigte bisher bei genau EINER Aenderung eine feldspezifische Zusammenfassung wie
+  // "Termin geändert · 22.09. → 24.09." - exakt derselbe Wortlaut ("Termin geändert"), den auch die
+  // (fachlich komplett unabhaengige) manuelle Reinigungsverschiebung verwendete, wodurch beide
+  // Meldungen verwechselbar wurden (siehe Fix dort). Die Kompaktzeile zeigt deshalb jetzt IMMER
+  // denselben Titel + Zeitstempel ("BUCHUNG GEÄNDERT · 23.09. · 16:11"), unabhaengig davon, wie
+  // viele Felder sich geaendert haben - eindeutig als Ueberschrift erkennbar, nie mit einem
+  // konkreten Feldwert verwechselbar. Die tatsaechlich geaenderten Felder stehen unveraendert erst
+  // nach dem Aufklappen.
+  const summaryText = `${t('booking_changed_title')} · ${formatDateShort(change.changedAt)} · ${formatClock(change.changedAt)}`;
   return (
     <div className="rounded-control border border-status-progress/25 bg-status-progress-bg">
       <button
@@ -274,12 +274,13 @@ function BookingChangeDetail({
         aria-expanded={expanded}
       >
         <IconRefresh width={15} height={15} className="shrink-0 text-status-progress" aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-status-progress">{summaryText}</span>
+        <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold uppercase tracking-wide text-status-progress">{summaryText}</span>
         <IconChevronDown width={14} height={14} className={cn('shrink-0 text-status-progress transition-transform', expanded && 'rotate-180')} aria-hidden="true" />
       </button>
       {expanded ? (
         <div className="border-t border-status-progress/20 px-3.5 pb-3 pt-2.5">
-          <p className="mb-2 text-[11.5px] text-muted">{formatDateShort(change.changedAt)} · {formatClock(change.changedAt)}</p>
+          {/* Datum/Uhrzeit der Aenderung stehen bereits in der Kompaktzeile oben ("BUCHUNG
+           * GEÄNDERT · 23.09. · 16:11") - keine doppelte Anzeige mehr. */}
           <div className="flex flex-col gap-1.5">
             {changedFields.map((field) => (
               <div key={field.kind} className="flex items-center gap-2 text-[13px]">
@@ -1071,23 +1072,26 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
               ) : null}
             </div>
 
-            {/* Nutzerfeedback: eine manuell verschobene Reinigung war bisher nur ein dezenter
-             * grauer Hinweistext - kaum von normalem Fliesstext zu unterscheiden. Jetzt ein
-             * deutliches gelb/goldenes Feld (bereits bestehender status-progress-Ton, siehe
-             * "Buchung geändert" oben - keine neue Farbe eingefuehrt), damit eine Verschiebung auf
-             * den ersten Blick auffaellt. Zeigt weiterhin das URSPRUENGLICHE Datum; die
-             * tatsaechliche Reservierung (Abreise/Naechste Anreise) steht unveraendert separat
-             * weiter unten - nie der Eindruck, die Reservierung selbst waere geaendert worden. */}
+            {/* Nutzerfeedback (Punkt "Reinigung verschoben" vs. "Buchung geändert" nicht vermischen):
+             * dieser Hinweis betrifft AUSSCHLIESSLICH die manuelle Verschiebung des Reinigungstermins
+             * (task.scheduleOverride, "Tag ändern") - fachlich komplett unabhaengig von einer
+             * Apaleo-Buchungsaenderung (task.bookingChange, siehe BookingChangeDetail weiter unten).
+             * Frueher teilte sich dieser Hinweis sowohl den Text ("Termin geändert · von → nach",
+             * identisch zur Buchungsaenderungs-Zusammenfassung) als auch den orangen status-progress-
+             * Ton mit dem Buchungsaenderungs-Block - dadurch standen zwei nahezu identisch wirkende
+             * Meldungen direkt untereinander, obwohl sie zwei verschiedene Dinge bedeuten. Jetzt:
+             * eigener Wortlaut ("Reinigung verschoben von ..." statt "Termin geändert"), dezentes
+             * Sage/Gruen (status-clean, wie der bestehende Arbeitsauftrag-Bereich) statt Orange, und
+             * eine kompakte einzeilige Information ohne Rahmen/Hintergrund-Card - Orange bleibt
+             * ausschliesslich der tatsaechlichen Buchungsaenderung vorbehalten. Nur das URSPRUENGLICHE
+             * Datum wird genannt (das AKTUELLE Datum steht bereits direkt darueber) - die
+             * tatsaechliche Reservierung (Abreise/Naechste Anreise) steht unveraendert separat weiter
+             * unten, nie der Eindruck, die Reservierung selbst waere geaendert worden. */}
             {task.scheduleOverride ? (
-              <div className="flex items-start gap-2 rounded-control border border-status-progress/25 bg-status-progress-bg px-3 py-2">
-                <IconRefresh width={14} height={14} className="mt-0.5 shrink-0 text-status-progress" aria-hidden="true" />
-                <p className="text-[12.5px] font-medium text-status-progress">
-                  {t('rescheduled_from', {
-                    from: formatFullDate(task.scheduleOverride.originalScheduledDate),
-                    to: formatFullDate(task.scheduleOverride.scheduledDate),
-                  })}
-                </p>
-              </div>
+              <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-status-clean">
+                <IconCalendarClock width={13} height={13} className="shrink-0" aria-hidden="true" />
+                {t('rescheduled_from', { from: formatFullDate(task.scheduleOverride.originalScheduledDate) })}
+              </p>
             ) : null}
 
             {!hasTimeRow && task.type === 'stayover' && task.nights ? (
