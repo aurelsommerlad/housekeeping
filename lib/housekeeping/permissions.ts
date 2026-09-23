@@ -60,6 +60,13 @@ export function getTeamMemberships(user: StaffUser | null): TeamMembership[] {
   return [];
 }
 
+/** Ist dieser User ueberhaupt Mitglied irgendeines Teams (unabhaengig von der Rolle darin)? Rein
+ * darstellungs-relevanter Helfer fuer die rollenabhaengige Dashboard-Priorisierung (Briefing
+ * "Housekeeping-Dashboard anpassen") - begruendet KEINE neue Berechtigung. */
+export function hasTeamMembership(user: StaffUser | null): boolean {
+  return getTeamMemberships(user).length > 0;
+}
+
 /** Team-Verantwortlicher IRGENDEINES Teams (fuer generische UI-Sichtbarkeit, z. B. Navigation) -
  * unabhaengig von isPropertyManager/managedProperties (siehe types.ts#StaffUser-Kommentar: beide
  * Zustaendigkeiten duerfen sich nie vermischen). Admin zaehlt hier bewusst NICHT automatisch als

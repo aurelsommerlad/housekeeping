@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
-import type { ResolvedTask } from '@/lib/housekeeping/tasks';
+import { sortTasksForDay, type ResolvedTask } from '@/lib/housekeeping/tasks';
 import type { StaffUser } from '@/lib/housekeeping/types';
 import { allowedProperties } from '@/lib/housekeeping/rooms';
 import { getPropertyDisplayName } from '@/lib/housekeeping/api';
 import { dayOverviewFor } from '@/lib/housekeeping/dayOverview';
+import { getTeamMemberships, isTeamLead, managedPropertyCodes } from '@/lib/housekeeping/permissions';
 import { DAY_LABEL_KEYS, DAY_LOCALES, shortDayLabel } from '@/lib/housekeeping/dayLabel';
 import { countLabel } from '@/lib/housekeeping/pluralLabel';
 import { TaskCard } from './TaskCard';
@@ -124,6 +125,69 @@ function TaskGroup({
 }
 
 /**
+ * Briefing "Housekeeping-Dashboard anpassen" Punkt 3/4: derselbe visuelle Chip-Stil wie der
+ * bestehende native "Ansicht"-Picker (siehe `selectClass` in TasksScreen) - als Knopf+Liste statt
+ * <select>, NUR weil eine native <option> keine farbige Teilzeile (Zahl in Warnfarbe) darstellen
+ * kann. Fachlich ersetzt sie ausschliesslich die bisherige Anzeige, keine neue Filterlogik: welcher
+ * `value` gewaehlt wird, entscheidet weiterhin exakt dieselbe Aufrufer-Logik wie beim bisherigen
+ * <select onChange>.
+ */
+function TaskViewSelect({
+  value, options, onChange, className,
+}: {
+  value: string;
+  options: { value: string; label: string; count?: number; highlightCount?: boolean }[];
+  onChange: (value: string) => void;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = options.find((o) => o.value === value) || options[0];
+  return (
+    <div className={cn('relative min-w-0', className)}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-9 w-full items-center justify-between gap-2 rounded-full border border-line bg-warm-white pl-3.5 pr-3 text-[13px] font-medium text-ink"
+        data-focus-none
+      >
+        <span className="truncate">
+          {current.label}
+          {typeof current.count === 'number' ? (
+            <span className={cn('ml-1.5 font-medium', current.highlightCount && current.count > 0 ? 'text-status-attention' : 'text-muted')}>
+              {current.count}
+            </span>
+          ) : null}
+        </span>
+        <IconChevronDown width={13} height={13} className={cn('shrink-0 text-muted transition-transform', open && 'rotate-180')} aria-hidden="true" />
+      </button>
+      {open ? (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-card-lg border border-line bg-warm-white shadow-card-lg">
+            {options.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => { onChange(o.value); setOpen(false); }}
+                className={cn(
+                  'flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left text-[13px]',
+                  o.value === value ? 'font-medium text-ink' : 'text-muted transition-colors hover:text-ink',
+                )}
+              >
+                <span className="truncate">{o.label}</span>
+                {typeof o.count === 'number' ? (
+                  <span className={cn(o.highlightCount && o.count > 0 ? 'text-status-attention' : 'text-muted')}>{o.count}</span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * Primaerer Bildschirm (Punkt 2/3/10/26, refactored fuer einen kompakteren oberen Bereich): Ziel
  * ist, dass die erste Aufgabenkarte auf dem Smartphone moeglichst ohne Scrollen sichtbar ist -
  * erreicht durch Zusammenfuehren von "Meine Aufgaben"/"Alle"/Standortfilter in EINE Chip-Zeile,
@@ -137,13 +201,19 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const {
     state, t, selectDay, selectPropertyScope, toggleMyTasksOnly,
     toggleTaskMultiSelect, toggleTaskSelection, openTask, bulkAssignTasks, clearDayAssignments, retryTasksLoad,
-    noticeForTask, isNoticeAcknowledgedBy, openManualTaskForm, shortStaffName,
+    noticeForTask, isNoticeAcknowledgedBy, openManualTaskForm, shortStaffName, tasksForDayAll,
     isTaskSeenByMe, isBookingChangeAckedByMe,
   } = app;
   const [bulkOpen, setBulkOpen] = useState(false);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
   const [doneOpen, setDoneOpen] = useState(false);
+  // Briefing "Housekeeping-Dashboard anpassen": eine dritte, rein lokale Ansicht zusaetzlich zum
+  // bestehenden `myTasksOnly` - ausschliesslich fuer Teamleader/Standortverantwortliche/Admin
+  // genutzt (siehe elevatedHere unten). 'mine' spiegelt dabei exakt `myTasksOnly=true` (bestehender
+  // Renderpfad bleibt fuer diesen Fall vollstaendig unveraendert), 'home'/'open' sind neue,
+  // zusaetzliche Ansichten, die ausschliesslich mit bereits vorhandenen Daten arbeiten.
+  const [taskViewMode, setTaskViewMode] = useState<'home' | 'mine' | 'open'>('home');
 
   // Punkt 17 (Desktop-Admin-Layout): dieselbe Ableitung wie zuvor hier inline, jetzt in
   // lib/housekeeping/dayOverview.ts ausgelagert - die neue DesktopAdminSidebar.tsx nutzt exakt
@@ -154,6 +224,132 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const allowedProps = state.properties.filter((p) => allowed.includes(p.code));
   const topCapacityEntry = capacity.find((e) => e.housekeeperId);
   const unassignedCapacityEntry = capacity.find((e) => e.housekeeperId === null);
+
+  // Briefing "Housekeeping-Dashboard anpassen": rollenabhaengige Priorisierung/Beschriftung des
+  // bestehenden Dashboards - Rollen/Teams/Standortzuordnungen/Tasks/Assignments/APIs bleiben dabei
+  // komplett unveraendert (siehe permissions.ts/dayOverview.ts), hier wird ausschliesslich anhand
+  // bereits vorhandener Daten klassifiziert, WELCHE Ausschnitte/Beschriftungen angezeigt werden.
+  // `isManagerHere` (siehe dayOverview.ts) ist fuer einen reinen Teamleader OHNE managedProperties
+  // false - `teamLeadHere` wird deshalb bewusst unabhaengig davon ermittelt.
+  const teamLeadHere = isTeamLead(state.user);
+  const locationManagerHere = isManagerHere && !isAdmin;
+  const myTeamMemberships = getTeamMemberships(state.user);
+  const hasTeam = myTeamMemberships.length > 0;
+  const plainTeamMemberHere = !isAdmin && !locationManagerHere && !teamLeadHere && hasTeam;
+  const elevatedHere = isAdmin || locationManagerHere || teamLeadHere;
+
+  // Default-Ansicht je Rolle (Punkt 4/5/6): Teamleader/Standortverantwortliche/Admin starten in
+  // 'home' ("Team heute"/"Standort heute"/"Uebersicht"), NICHT in "Meine Aufgaben" - fuer einen
+  // reinen Teamleader (role 'housekeeper' ohne managedProperties) setzt afterLogin() `myTasksOnly`
+  // beim Login weiterhin auf `true` (siehe useHousekeepingApp.ts#afterLogin, unveraendert), daher
+  // hier einmalig beim ersten Rendern korrigiert - jede spaetere Umschaltung laeuft ausschliesslich
+  // ueber selectViewHome/-Mine/-Open unten.
+  useEffect(() => {
+    if (elevatedHere && taskViewMode !== 'mine' && state.myTasksOnly) toggleMyTasksOnly();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function selectViewHome() {
+    setTaskViewMode('home');
+    if (state.myTasksOnly) toggleMyTasksOnly();
+  }
+  function selectViewMineElevated() {
+    setTaskViewMode('mine');
+    if (!state.myTasksOnly) toggleMyTasksOnly();
+  }
+  function selectViewOpen() {
+    setTaskViewMode('open');
+    if (state.myTasksOnly) toggleMyTasksOnly();
+  }
+
+  // Aufgaben des Tages OHNE "Meine Aufgaben"-Einschraenkung, aber weiterhin durch den bestehenden
+  // Standort-/Zugriffs-Scope begrenzt (tasksForDayAll/resolvedTasksAll laden ohnehin nur bereits
+  // erlaubte Standorte, siehe useHousekeepingApp.ts#loadPlanningData) - dieselbe Datenquelle wie
+  // `visible` oben, nur ungefiltert von `myTasksOnly`, damit "Team heute"/"Standort heute"/
+  // "Uebersicht" unabhaengig vom aktuellen Ansichts-Modus dieselben Tageszahlen zeigen.
+  const allTasksToday = date ? tasksForDayAll(date) : [];
+  const openTasksToday = allTasksToday.filter((task) => task.status !== 'completed');
+
+  // Teamleader (Punkt 4): nur die Teams, in denen der Nutzer TATSAECHLICH Lead ist (nicht jede
+  // blosse Mitgliedschaft) - "Team heute" zeigt bewusst nur das/die eigenen geleiteten Teams.
+  const myLeadTeamIds = new Set(myTeamMemberships.filter((m) => m.isLeader).map((m) => m.teamId));
+  const teamOpenTasksToday = openTasksToday.filter((task) => task.assignedTeamId && myLeadTeamIds.has(task.assignedTeamId));
+  const teamUnassignedTasks = sortTasksForDay(teamOpenTasksToday.filter((task) => !task.assignedUserId));
+  const teamAssignedTasks = sortTasksForDay(teamOpenTasksToday.filter((task) => !!task.assignedUserId));
+  const teamDoneTasksToday = sortTasksForDay(
+    allTasksToday.filter((task) => task.assignedTeamId && myLeadTeamIds.has(task.assignedTeamId) && task.status === 'completed'),
+  );
+  const myTeamName = state.teams.find((tm) => myLeadTeamIds.has(tm.id))?.name || teamOpenTasksToday.find((task) => task.assignedTeamName)?.assignedTeamName || '';
+
+  // Punkt 7: die Reinigungen-/Aufgaben-/Fertig-Kennzahl bleibt bestehen, nur ihr SCOPE wechselt je
+  // Rolle - fuer Standortverantwortliche/Admin ist `cleaningTasks`/`openManualTasks`/`doneTasks`
+  // (siehe dayOverviewFor) bereits korrekt auf den aktuellen Standort-Scope begrenzt; nur fuer den
+  // Teamleader in 'home'/'open' muss hier zusaetzlich auf das eigene Team eingegrenzt werden, da
+  // `visible` dort (myTasksOnly=false, kein Property-Manager) sonst den GESAMTEN Standort zeigen
+  // wuerde statt nur des eigenen Teams.
+  const teamScopedSummary = teamLeadHere && taskViewMode !== 'mine';
+  const summaryCleaningCount = teamScopedSummary ? teamOpenTasksToday.filter((task) => task.type !== 'manual').length : cleaningTasks.length;
+  const summaryManualCount = teamScopedSummary ? teamOpenTasksToday.filter((task) => task.type === 'manual').length : openManualTasks.length;
+  const summaryDoneCount = teamScopedSummary ? teamDoneTasksToday.length : doneTasks.length;
+
+  // Standortverantwortlicher (Punkt 5): "Nicht zugewiesen" zuerst, unabhaengig vom Aufgabentyp
+  // (Reinigung/Aufgabe) - der bestehende Reinigungen-/Aufgaben-Split bleibt fuer den Rest
+  // bestehen, siehe Ausschluss-Filter direkt bei der Verwendung unten.
+  const locationUnassignedTasks = sortTasksForDay(openTasksToday.filter((task) => !task.assignedUserId));
+  const locationUnassignedIds = new Set(locationUnassignedTasks.map((task) => task.id));
+
+  // Admin (Punkt 6): "Handlungsbedarf" nutzt ausschliesslich bereits vorhandene Felder
+  // (assignedUserId/hasEarlyCheckin/effectiveArrivalTime) - keine neue Bewertungslogik, keine neue
+  // Datenquelle.
+  const adminUnassignedTasks = openTasksToday.filter((task) => !task.assignedUserId);
+  const adminEarlyCheckinTasks = openTasksToday.filter((task) => task.hasEarlyCheckin);
+  const actionNeededIds = new Set([...adminUnassignedTasks, ...adminEarlyCheckinTasks].map((task) => task.id));
+  const actionNeededTasks = sortTasksForDay(openTasksToday.filter((task) => actionNeededIds.has(task.id)));
+  const singleEarlyCheckinTime = adminEarlyCheckinTasks.length === 1 ? adminEarlyCheckinTasks[0].effectiveArrivalTime : null;
+
+  // Standort-Kompaktinfo (Punkt 5): bei "Alle Standorte" entweder der Name des einzigen verwalteten
+  // Standorts oder, falls mehrere, ein generischer Zaehler - kein neuer Berechtigungscode, nur
+  // Darstellung der bereits vorhandenen managedPropertyCodes()-Ableitung.
+  const managedHereCodes = managedPropertyCodes(state.user, allowedProps.map((p) => p.code));
+  const managedHereProps = allowedProps.filter((p) => managedHereCodes.includes(p.code));
+  const locationLabel =
+    state.propertyScope !== 'all'
+      ? getPropertyDisplayName(allowedProps.find((p) => p.code === state.propertyScope) || { code: state.propertyScope, name: state.propertyScope })
+      : managedHereProps.length === 1
+        ? getPropertyDisplayName(managedHereProps[0])
+        : t('dashboard_multiple_locations', { n: managedHereProps.length || allowedProps.length });
+
+  // Briefing "Housekeeping-Dashboard anpassen" Punkt 1: kompakte Info-Zeile direkt unter Datum/
+  // Begruessung (die selbst in StaffHeader.tsx liegt) - bewusst hier in TasksScreen statt in
+  // StaffHeader, weil StaffHeader auf JEDEM Tab (auch Apartments/Team/Einstellungen) unveraendert
+  // gerendert wird und Aufgaben-Kennzahlen dort fehl am Platz waeren; visuell erscheint die Zeile
+  // trotzdem direkt unter dem Header, weil TasksScreen unmittelbar darunter beginnt.
+  let compactInfoLine: ReactNode = null;
+  if (isAdmin) {
+    compactInfoLine = t('dashboard_overview_summary_line', {
+      n: cleaningTasks.length, m: openManualTasks.length, k: actionNeededTasks.length,
+    });
+  } else if (locationManagerHere) {
+    compactInfoLine = t('dashboard_location_summary_line', {
+      location: locationLabel, n: cleaningTasks.length, m: locationUnassignedTasks.length,
+    });
+  } else if (teamLeadHere) {
+    compactInfoLine = t('dashboard_team_summary_line', {
+      team: myTeamName, n: teamOpenTasksToday.length, m: teamUnassignedTasks.length,
+    });
+  } else if (plainTeamMemberHere) {
+    const myOwnCount = openTasksToday.filter((task) => task.assignedUserId === state.user?.id).length;
+    const openTeamCount = openTasksToday.filter(
+      (task) => !task.assignedUserId && task.assignedTeamId && myTeamMemberships.some((m) => m.teamId === task.assignedTeamId),
+    ).length;
+    compactInfoLine =
+      openTeamCount > 0
+        ? t('dashboard_cleanings_for_you_with_open', { n: myOwnCount, m: openTeamCount })
+        : t('dashboard_cleanings_for_you', { n: myOwnCount });
+  } else {
+    const myOwnCount = openTasksToday.filter((task) => task.assignedUserId === state.user?.id).length;
+    compactInfoLine = t('dashboard_cleanings_for_you', { n: myOwnCount });
+  }
 
   // Briefing "Reinigungskarten ueberarbeiten" Punkt 1: nur bei "Alle Standorte" tatsaechlich
   // gruppieren - ist bereits ein einzelner Standort ausgewaehlt, waere die Ueberschrift redundant
@@ -209,7 +405,11 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   }
 
   const showPropertyChips = allowedProps.length > 1;
-  const showScopeRow = !isManagerHere || showPropertyChips;
+  // Briefing "Housekeeping-Dashboard anpassen": vorher gab es fuer Admin/Standortverantwortliche
+  // (isManagerHere) UEBERHAUPT keinen "Ansicht"-Picker (nur ggf. den Standortfilter) - jetzt
+  // bekommen Admin/Standortverantwortliche/Teamleader (elevatedHere) ebenfalls einen eigenen
+  // "Ansicht"-Picker (Team/Standort/Uebersicht heute · Meine Aufgaben · Offen), siehe unten.
+  const showScopeRow = elevatedHere || !isManagerHere || showPropertyChips;
 
   // Wichtiger-Hinweis-Badge auf der Task Card (Punkt 3, unveraendert aus der bisherigen
   // Detailsheet-Logik hierher gezogen): "unread" bezieht sich auf den AKTUELL EINGELOGGTEN
@@ -227,8 +427,129 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   // oben) bleibt unveraendert, es aendert sich ausschliesslich die Darstellung.
   const selectClass = 'h-9 w-full appearance-none rounded-full border border-line bg-warm-white pl-3.5 pr-8 text-[13px] font-medium text-ink';
 
+  // Briefing "Housekeeping-Dashboard anpassen" Punkt 3/4: fuer Teamleader/Team-Mitglied zeigt der
+  // "Ansicht"-Picker zusaetzlich Zahlen je Option (native <select> kann das nicht farbig darstellen,
+  // siehe TaskViewSelect oben) - fuer Standortverantwortliche/Admin bleiben die Optionen laut
+  // Vorgabe ohne Zahl (nur Team-/Standort-/Uebersichts-Bezeichnung).
+  const myOpenTasksCount = openTasksToday.filter((task) => task.assignedUserId === state.user?.id).length;
+  let viewOptions: { value: string; label: string; count?: number; highlightCount?: boolean }[] | null = null;
+  let viewValue: string = state.myTasksOnly ? 'mine' : 'all';
+  let onViewChange: (value: string) => void = (value) => (value === 'mine' ? selectMine() : selectAllTasks());
+  if (teamLeadHere) {
+    viewOptions = [
+      { value: 'home', label: t('dashboard_team_today') },
+      { value: 'mine', label: t('my_tasks_only'), count: myOpenTasksCount },
+      { value: 'open', label: t('dashboard_open_team_tasks'), count: teamUnassignedTasks.length, highlightCount: true },
+    ];
+    viewValue = taskViewMode;
+    onViewChange = (value) => (value === 'home' ? selectViewHome() : value === 'mine' ? selectViewMineElevated() : selectViewOpen());
+  } else if (locationManagerHere) {
+    viewOptions = [
+      { value: 'home', label: t('dashboard_location_today') },
+      { value: 'mine', label: t('my_tasks_only') },
+      { value: 'open', label: t('dashboard_open_tasks_generic') },
+    ];
+    viewValue = taskViewMode;
+    onViewChange = (value) => (value === 'home' ? selectViewHome() : value === 'mine' ? selectViewMineElevated() : selectViewOpen());
+  } else if (isAdmin) {
+    viewOptions = [
+      { value: 'home', label: t('dashboard_overview') },
+      { value: 'mine', label: t('my_tasks_only') },
+      { value: 'open', label: t('dashboard_action_needed') },
+    ];
+    viewValue = taskViewMode;
+    onViewChange = (value) => (value === 'home' ? selectViewHome() : value === 'mine' ? selectViewMineElevated() : selectViewOpen());
+  } else if (plainTeamMemberHere) {
+    viewOptions = [
+      { value: 'mine', label: t('my_tasks_only'), count: myOpenTasksCount },
+      { value: 'all', label: t('dashboard_open_team_tasks'), count: openTasksToday.filter((task) => !task.assignedUserId && task.assignedTeamId && myTeamMemberships.some((m) => m.teamId === task.assignedTeamId)).length, highlightCount: true },
+    ];
+  }
+
+  // Briefing "Housekeeping-Dashboard anpassen": gemeinsame Kartenrender-Helfer fuer die neuen
+  // rollenabhaengigen Abschnitte unten - dieselbe Karten-/Gruppen-Darstellung (TaskCard/TaskGroup)
+  // wie im unveraenderten Standardpfad, nur mit eigenen, bereits oben gefilterten Listen gefuettert.
+  // "Fertig" ist bewusst ebenfalls eine gemeinsame Funktion (statt einer dritten Kopie), damit
+  // Standard- und neue Rollenpfade exakt dieselbe Klapp-/Karten-Darstellung verwenden.
+  function renderRoleTaskCard(task: ResolvedTask, noticeOverride?: 'none') {
+    return (
+      <TaskCard
+        key={task.id}
+        task={task}
+        lang={state.lang}
+        selected={false}
+        selectable={false}
+        shortName={shortStaffName}
+        noticeState={noticeOverride ?? cardNoticeState(task)}
+        attentionState={cardAttentionState(task)}
+        onOpen={() => openTask(task.id)}
+      />
+    );
+  }
+
+  function renderCleaningAndManualTaskGroups(cleaningList: ResolvedTask[], manualList: ResolvedTask[]) {
+    return (
+      <>
+        {cleaningList.length > 0 ? (
+          <TaskGroup
+            text={countLabel(t, cleaningList.length, 'noun_cleaning_one', 'noun_cleaning_many')}
+            count={cleaningList.length}
+            categoryLabel={t('noun_cleaning_many')}
+            icon={IconSparkles}
+            toneClass="text-type-turnover"
+            tasks={cleaningList}
+            locationGroups={toLocationGroups(cleaningList, 'noun_cleaning_one', 'noun_cleaning_many')}
+            renderCard={(task) => renderRoleTaskCard(task)}
+          />
+        ) : null}
+        {manualList.length > 0 ? (
+          <TaskGroup
+            text={countLabel(t, manualList.length, 'noun_task_one', 'noun_task_many')}
+            count={manualList.length}
+            categoryLabel={t('noun_task_many')}
+            toneClass="text-type-departure xl:text-type-manual"
+            icon={IconTask}
+            tasks={manualList}
+            locationGroups={toLocationGroups(manualList, 'noun_task_one', 'noun_task_many')}
+            renderCard={(task) => renderRoleTaskCard(task, 'none')}
+          />
+        ) : null}
+      </>
+    );
+  }
+
+  function renderDoneSection(doneList: ResolvedTask[]) {
+    if (doneList.length === 0) return null;
+    return (
+      <div className="mt-1">
+        <button
+          type="button"
+          onClick={() => setDoneOpen((v) => !v)}
+          className="flex w-full items-center justify-between gap-1.5 px-4 pt-4 pb-1 text-left"
+        >
+          <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink xl:hidden">
+            <IconCheck width={14} height={14} className="shrink-0 text-status-clean" aria-hidden="true" />
+            {doneList.length} {t('section_done_suffix')}
+          </span>
+          <span className="hidden items-center gap-1.5 text-[11px] font-normal uppercase tracking-wide text-muted xl:flex">
+            <IconCheck width={13} height={13} className="shrink-0 text-status-clean" aria-hidden="true" />
+            {t('wf_done')}
+            <span className="font-medium normal-case text-ink">{doneList.length}</span>
+          </span>
+          <IconChevronDown width={14} height={14} className={cn('shrink-0 text-muted transition-transform', doneOpen && 'rotate-180')} aria-hidden="true" />
+        </button>
+        {doneOpen ? (
+          <div className="grid grid-cols-1 gap-3 px-4 pt-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]">
+            {doneList.map((task) => renderRoleTaskCard(task, 'none'))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="pb-6">
+      {compactInfoLine ? <p className="truncate px-4 pt-2 text-[12.5px] text-muted">{compactInfoLine}</p> : null}
       {/* Desktop-Admin-Layout (>= 1280px): der bisherige eigene xl:mx-auto/max-w-Wrapper hier
        * entfaellt - die Breitenbegrenzung/Zentrierung passiert jetzt einmalig auf Ebene der
        * Grid-Spalte in app/page.tsx (Hauptbereich), damit Header/Toolbar/Sidebar konsistent
@@ -250,7 +571,9 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       <div className="xl:flex xl:flex-wrap xl:items-center xl:gap-x-3 xl:gap-y-2 xl:px-4 xl:pb-1 xl:pt-3">
       {showScopeRow ? (
         <div className="flex gap-2 px-4 py-2.5 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
-          {!isManagerHere ? (
+          {viewOptions ? (
+            <TaskViewSelect value={viewValue} options={viewOptions} onChange={onViewChange} className="flex-1 xl:w-[210px] xl:flex-none" />
+          ) : !isManagerHere ? (
             <div className="relative min-w-0 flex-1 xl:w-[210px] xl:flex-none">
               <select
                 value={state.myTasksOnly ? 'mine' : 'all'}
@@ -362,14 +685,14 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       {visible.length > 0 ? (
         <div className="grid grid-cols-3 gap-2 px-4 pt-3 xl:order-4 xl:flex xl:flex-none xl:ml-auto xl:items-center xl:gap-5 xl:px-0 xl:pt-0">
           <SummaryStat
-            value={cleaningTasks.length}
-            label={t(cleaningTasks.length === 1 ? 'noun_cleaning_one' : 'noun_cleaning_many')}
+            value={summaryCleaningCount}
+            label={t(summaryCleaningCount === 1 ? 'noun_cleaning_one' : 'noun_cleaning_many')}
             icon={IconSparkles}
             toneClass="text-type-turnover"
           />
           <SummaryStat
-            value={openManualTasks.length}
-            label={t(openManualTasks.length === 1 ? 'noun_task_one' : 'noun_task_many')}
+            value={summaryManualCount}
+            label={t(summaryManualCount === 1 ? 'noun_task_one' : 'noun_task_many')}
             icon={IconTask}
             // Feinschliff Runde 8 (Punkt 3): "Aufgabe" ist keine Abreise-Reinigung, sondern der
             // neutrale, manuelle Aufgabentyp (siehe TaskCard.tsx#TYPE_LEFT_BORDER: type-manual) -
@@ -378,7 +701,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             // unveraendert bleibt, wie fuer dieses Feinschliff-Update gefordert.
             toneClass="text-type-departure xl:text-type-manual"
           />
-          <SummaryStat value={doneTasks.length} label={t('wf_done')} icon={IconCheck} toneClass="text-status-clean" />
+          <SummaryStat value={summaryDoneCount} label={t('wf_done')} icon={IconCheck} toneClass="text-status-clean" />
         </div>
       ) : null}
       </div>
@@ -456,108 +779,147 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             />
           ))}
         </div>
+      ) : elevatedHere && taskViewMode !== 'mine' ? (
+        // Briefing "Housekeeping-Dashboard anpassen" Punkt 4/5/6: Teamleader/Standortverantwortliche/
+        // Admin sehen in 'home'/'open' eigene, nach Zuweisungsstatus bzw. Handlungsbedarf sortierte
+        // Ausschnitte statt der Standard-Reinigungen/Aufgaben-Trennung - dieselben Karten/Gruppen
+        // (renderCleaningAndManualTaskGroups/renderDoneSection/TaskGroup), nur mit vorab anders
+        // gefilterten Listen. Bestehende Zuweisungsrechte/Assignment-APIs bleiben unangetastet.
+        <>
+          {isAdmin && taskViewMode === 'home' && actionNeededTasks.length > 0 ? (
+            <div className="mx-4 mt-4 rounded-card-lg border border-line bg-warm-white px-4 py-3">
+              <p className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
+                {t('dashboard_action_needed')}
+                <span className="text-status-attention">· {actionNeededTasks.length}</span>
+              </p>
+              <div className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-muted">
+                {adminUnassignedTasks.length > 0 ? <p>{t('dashboard_action_needed_unassigned_line', { n: adminUnassignedTasks.length })}</p> : null}
+                {adminEarlyCheckinTasks.length > 0 ? (
+                  <p>
+                    {adminEarlyCheckinTasks.length === 1 && singleEarlyCheckinTime
+                      ? t('dashboard_action_needed_early_checkin_line_time', { n: 1, time: singleEarlyCheckinTime })
+                      : t('dashboard_action_needed_early_checkin_line', { n: adminEarlyCheckinTasks.length })}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {isAdmin && taskViewMode === 'open' ? (
+            actionNeededTasks.length > 0 ? (
+              <TaskGroup
+                text={`${t('dashboard_action_needed')} · ${actionNeededTasks.length}`}
+                count={actionNeededTasks.length}
+                categoryLabel={t('dashboard_action_needed')}
+                icon={IconTask}
+                toneClass="text-status-attention"
+                tasks={actionNeededTasks}
+                locationGroups={toLocationGroups(actionNeededTasks, 'noun_task_one', 'noun_task_many')}
+                renderCard={(task) => renderRoleTaskCard(task)}
+              />
+            ) : (
+              <div className="px-4 py-10 text-center text-sm text-muted">{t('no_tasks')}</div>
+            )
+          ) : null}
+
+          {locationManagerHere && taskViewMode === 'open' ? (
+            locationUnassignedTasks.length > 0 ? (
+              <TaskGroup
+                text={`${t('dashboard_not_yet_assigned')} · ${locationUnassignedTasks.length}`}
+                count={locationUnassignedTasks.length}
+                categoryLabel={t('dashboard_not_yet_assigned')}
+                icon={IconTask}
+                toneClass="text-status-attention"
+                tasks={locationUnassignedTasks}
+                locationGroups={toLocationGroups(locationUnassignedTasks, 'noun_task_one', 'noun_task_many')}
+                renderCard={(task) => renderRoleTaskCard(task)}
+              />
+            ) : (
+              <div className="px-4 py-10 text-center text-sm text-muted">{t('no_tasks')}</div>
+            )
+          ) : null}
+
+          {(isAdmin || locationManagerHere) && taskViewMode === 'home' ? (
+            <>
+              {locationManagerHere && locationUnassignedTasks.length > 0 ? (
+                <TaskGroup
+                  text={`${t('dashboard_not_yet_assigned')} · ${locationUnassignedTasks.length}`}
+                  count={locationUnassignedTasks.length}
+                  categoryLabel={t('dashboard_not_yet_assigned')}
+                  icon={IconTask}
+                  toneClass="text-status-attention"
+                  tasks={locationUnassignedTasks}
+                  locationGroups={toLocationGroups(locationUnassignedTasks, 'noun_task_one', 'noun_task_many')}
+                  renderCard={(task) => renderRoleTaskCard(task)}
+                />
+              ) : null}
+              {renderCleaningAndManualTaskGroups(
+                locationManagerHere ? cleaningTasks.filter((task) => !locationUnassignedIds.has(task.id)) : cleaningTasks,
+                locationManagerHere ? openManualTasks.filter((task) => !locationUnassignedIds.has(task.id)) : openManualTasks,
+              )}
+              {renderDoneSection(doneTasks)}
+            </>
+          ) : null}
+
+          {teamLeadHere && taskViewMode === 'open' ? (
+            teamUnassignedTasks.length > 0 ? (
+              <TaskGroup
+                text={`${t('dashboard_not_yet_assigned')} · ${teamUnassignedTasks.length}`}
+                count={teamUnassignedTasks.length}
+                categoryLabel={t('dashboard_not_yet_assigned')}
+                icon={IconTask}
+                toneClass="text-status-attention"
+                tasks={teamUnassignedTasks}
+                locationGroups={null}
+                renderCard={(task) => renderRoleTaskCard(task)}
+              />
+            ) : (
+              <div className="px-4 py-10 text-center text-sm text-muted">{t('no_tasks')}</div>
+            )
+          ) : null}
+
+          {teamLeadHere && taskViewMode === 'home' ? (
+            <>
+              {teamUnassignedTasks.length > 0 ? (
+                <TaskGroup
+                  text={`${t('dashboard_not_yet_assigned')} · ${teamUnassignedTasks.length}`}
+                  count={teamUnassignedTasks.length}
+                  categoryLabel={t('dashboard_not_yet_assigned')}
+                  icon={IconTask}
+                  toneClass="text-status-attention"
+                  tasks={teamUnassignedTasks}
+                  locationGroups={null}
+                  renderCard={(task) => renderRoleTaskCard(task)}
+                />
+              ) : null}
+              {teamAssignedTasks.length > 0 ? (
+                <TaskGroup
+                  text={t('dashboard_team_assigned_count', { n: teamAssignedTasks.length })}
+                  count={teamAssignedTasks.length}
+                  categoryLabel={t('capacity_title_short')}
+                  icon={IconUsers}
+                  toneClass="text-muted"
+                  tasks={teamAssignedTasks}
+                  locationGroups={null}
+                  renderCard={(task) => renderRoleTaskCard(task)}
+                />
+              ) : null}
+              {renderDoneSection(teamDoneTasksToday)}
+              {teamUnassignedTasks.length === 0 && teamAssignedTasks.length === 0 && teamDoneTasksToday.length === 0 ? (
+                <div className="px-4 py-10 text-center text-sm text-muted">{t('no_tasks')}</div>
+              ) : null}
+            </>
+          ) : null}
+        </>
       ) : (
         // Punkt 10: Reinigungen/Aufgaben/Fertig als eigene, klein beschriftete Abschnitte statt
         // einer einzigen gemischten Liste - "Fertig" per Default eingeklappt, damit erledigte
         // Elemente die noch offene Arbeit nicht verdraengen. Eine leere Kategorie wird komplett
-        // weggelassen (kein grosser Empty-State).
+        // weggelassen (kein grosser Empty-State). Genutzt fuer normale Housekeeper (mit/ohne Team)
+        // UND fuer Teamleader/Standortverantwortliche/Admin im 'mine'-Modus (identisch zu vorher).
         <>
-          {cleaningTasks.length > 0 ? (
-            <TaskGroup
-              text={countLabel(t, cleaningTasks.length, 'noun_cleaning_one', 'noun_cleaning_many')}
-              count={cleaningTasks.length}
-              categoryLabel={t('noun_cleaning_many')}
-              icon={IconSparkles}
-              toneClass="text-type-turnover"
-              tasks={cleaningTasks}
-              locationGroups={toLocationGroups(cleaningTasks, 'noun_cleaning_one', 'noun_cleaning_many')}
-              renderCard={(task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  lang={state.lang}
-                  selected={false}
-                  selectable={false}
-                  shortName={shortStaffName}
-                  noticeState={cardNoticeState(task)}
-                  attentionState={cardAttentionState(task)}
-                  onOpen={() => openTask(task.id)}
-                />
-              )}
-            />
-          ) : null}
-
-          {openManualTasks.length > 0 ? (
-            <TaskGroup
-              text={countLabel(t, openManualTasks.length, 'noun_task_one', 'noun_task_many')}
-              count={openManualTasks.length}
-              categoryLabel={t('noun_task_many')}
-              icon={IconTask}
-              // Feinschliff Runde 8 (Punkt 3/4): derselbe Farbtoken-Fix wie bei der Kennzahl oben,
-              // fuer denselben Aufgabentyp - nur auf Desktop (`xl:`), Mobile unveraendert.
-              toneClass="text-type-departure xl:text-type-manual"
-              tasks={openManualTasks}
-              locationGroups={toLocationGroups(openManualTasks, 'noun_task_one', 'noun_task_many')}
-              renderCard={(task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  lang={state.lang}
-                  selected={false}
-                  selectable={false}
-                  shortName={shortStaffName}
-                  noticeState="none"
-                  attentionState={cardAttentionState(task)}
-                  onOpen={() => openTask(task.id)}
-                />
-              )}
-            />
-          ) : null}
-
-          {doneTasks.length > 0 ? (
-            <div className="mt-1">
-              {/* Korrektur (UX-Feinschliff Runde 4, Punkt 4): exakt dieselbe Grundstruktur wie der
-               * Reinigungen-/Aufgaben-Header oben (gleiche Hoehe/Typografie/Icon-Groesse/Abstaende/
-               * Klickflaeche, siehe TaskGroup) - einziger Unterschied ist der Chevron rechts, weil
-               * ausschliesslich dieser Bereich tatsaechlich auf-/zuklappbar ist. */}
-              <button
-                type="button"
-                onClick={() => setDoneOpen((v) => !v)}
-                className="flex w-full items-center justify-between gap-1.5 px-4 pt-4 pb-1 text-left"
-              >
-                <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink xl:hidden">
-                  <IconCheck width={14} height={14} className="shrink-0 text-status-clean" aria-hidden="true" />
-                  {doneTasks.length} {t('section_done_suffix')}
-                </span>
-                {/* Desktop-Feinschliff (Claude-Befehl 2): dieselbe "[Icon] KATEGORIE Zahl"-Form wie
-                 * TaskGroup oben ("FERTIG 2" statt "2 erledigt") - bestehendes IconCheck
-                 * unveraendert wiederverwendet, Chevron/Auf-Zuklapp-Funktion unveraendert. */}
-                <span className="hidden items-center gap-1.5 text-[11px] font-normal uppercase tracking-wide text-muted xl:flex">
-                  <IconCheck width={13} height={13} className="shrink-0 text-status-clean" aria-hidden="true" />
-                  {t('wf_done')}
-                  <span className="font-medium normal-case text-ink">{doneTasks.length}</span>
-                </span>
-                <IconChevronDown width={14} height={14} className={cn('shrink-0 text-muted transition-transform', doneOpen && 'rotate-180')} aria-hidden="true" />
-              </button>
-              {doneOpen ? (
-                <div className="grid grid-cols-1 gap-3 px-4 pt-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]">
-                  {doneTasks.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      lang={state.lang}
-                      selected={false}
-                      selectable={false}
-                      shortName={shortStaffName}
-                      noticeState="none"
-                      attentionState={cardAttentionState(task)}
-                      onOpen={() => openTask(task.id)}
-                    />
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
+          {renderCleaningAndManualTaskGroups(cleaningTasks, openManualTasks)}
+          {renderDoneSection(doneTasks)}
         </>
       )}
 

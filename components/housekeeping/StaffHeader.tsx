@@ -70,10 +70,16 @@ export interface StaffHeaderProps {
 export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderProps) {
   const { state, t } = app;
   const dateLabel = new Intl.DateTimeFormat(LOCALES[state.lang] || 'de-DE', {
-    weekday: 'short',
+    weekday: 'long',
     day: '2-digit',
     month: 'long',
   }).format(new Date());
+  // Briefing "Housekeeping-Dashboard anpassen" Punkt 1: tageszeitabhaengige Begruessung mit
+  // Vornamen statt vollem Namen + Datum in einer Zeile - bewusst weiterhin nur zwei kompakte
+  // Zeilen, damit der Bereich insgesamt nur wenig hoeher wird als zuvor.
+  const hour = new Date().getHours();
+  const greetingKey = hour < 12 ? 'greeting_morning' : hour < 18 ? 'greeting_afternoon' : 'greeting_evening';
+  const firstName = state.user?.firstName || state.user?.name?.trim().split(/\s+/)[0] || '';
 
   return (
     // Desktop-Admin-Layout (>= 1280px): der fruehere eigene xl:mx-auto/max-w-Wrapper ist entfallen
@@ -130,9 +136,13 @@ export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderPr
           </button>
         </div>
       </div>
-      <p className="truncate pb-2 text-[12px] text-muted">
-        {state.user?.name} · {dateLabel}
-      </p>
+      <div className="truncate pb-2 leading-tight">
+        <p className="truncate text-[15px] font-semibold text-ink">
+          {t(greetingKey)}
+          {firstName ? `, ${firstName}` : ''}
+        </p>
+        <p className="truncate text-[12px] text-muted">{dateLabel}</p>
+      </div>
     </header>
   );
 }

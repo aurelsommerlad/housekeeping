@@ -36,7 +36,7 @@ import {
   type ReportIncidentInput,
 } from './api';
 import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './rooms';
-import { managedPropertyCodes } from './permissions';
+import { managedPropertyCodes, getTeamMemberships, isTeamLead } from './permissions';
 import { dayHeadingLabel } from './dayLabel';
 import {
   buildTasks, canRescheduleTask, capacityForDay, computeExtraEquipmentNeeds, daySummary, manualTaskToResolvedTask,
@@ -869,11 +869,28 @@ export function useHousekeepingApp() {
   }, [resolvedTasksAll]);
 
   /** Sichtbare, priorisierte Aufgabenliste fuer die Aufgaben-Ansicht - respektiert
-   * "Meine Aufgaben" (Punkt 3/14). */
+   * "Meine Aufgaben" (Punkt 3/14). Briefing "Housekeeping-Dashboard anpassen" Punkt 3: fuer eine
+   * Reinigungskraft, die (nicht-leitendes) Mitglied eines Teams ist, bedeutet die zweite Option
+   * ("nicht nur meine") NICHT mehr "alle Aufgaben ueberhaupt", sondern "noch nicht zugewiesene
+   * Aufgaben des eigenen Teams" - genau die Aufgaben, die laut Briefing "nicht mehr uebersehen
+   * werden duerfen". Admin/Standortverantwortliche/Teamleader nutzen fuer ihre eigenen neuen
+   * Ansichten (taskViewMode in TasksScreen.tsx) bewusst NICHT diesen Zweig, sondern lesen direkt
+   * tasksForDayAll() - ihr Verhalten hier bleibt unveraendert (myTasksOnly=false liefert weiterhin
+   * uneingeschraenkt alles). */
   const tasksForDay = useCallback((date: string): ResolvedTask[] => {
     const all = tasksForDayAll(date);
-    const scoped = state.myTasksOnly && state.user ? all.filter((task) => task.assignedUserId === state.user!.id) : all;
-    return sortTasksForDay(scoped);
+    const user = state.user;
+    if (state.myTasksOnly && user) {
+      return sortTasksForDay(all.filter((task) => task.assignedUserId === user.id));
+    }
+    const isPlainTeamMember =
+      !!user && user.role === 'housekeeper' && getTeamMemberships(user).length > 0 && !isTeamLead(user);
+    if (isPlainTeamMember) {
+      const myTeamIds = new Set(getTeamMemberships(user).map((m) => m.teamId));
+      const openTeamTasks = all.filter((task) => !task.assignedUserId && task.assignedTeamId && myTeamIds.has(task.assignedTeamId));
+      return sortTasksForDay(openTeamTasks);
+    }
+    return sortTasksForDay(all);
   }, [state.myTasksOnly, state.user, tasksForDayAll]);
 
   const daySummaryFor = useCallback((date: string): DaySummary => daySummary(date, tasksForDayAll(date)), [tasksForDayAll]);
