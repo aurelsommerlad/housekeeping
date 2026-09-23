@@ -15,6 +15,11 @@
 // (nur die JEWEILS zuletzt erkannte Aenderung je reservationId, kein volles Log noetig, siehe
 // types.ts#BookingChangeRecord).
 //
+// Personenanzahl (Nutzerfeedback-Folgerunde): Erwachsene/Kinder werden GETRENNT verglichen und
+// gespeichert (adultsFrom/-To, childrenFrom/-To) statt einer einzigen Gesamtzahl, damit die
+// Detailansicht konkrete Deltas wie "2 Erw. · 1 Kind -> 3 Erw. · 1 Kind" zeigen kann, statt nur
+// "3 -> 4".
+//
 // Aufgerufen vom Client nach jedem Laden der Apaleo-Reservierungen fuer den Planungszeitraum
 // (siehe useHousekeepingApp.ts#loadPlanningData) - EIN Sync-Request mit den aktuell geladenen,
 // fuer den User sichtbaren Reservierungen statt eines eigenen serverseitigen Apaleo-Pollings.
@@ -39,12 +44,46 @@ function dateOnly(iso) {
   return iso ? String(iso).slice(0, 10) : null;
 }
 
+// Bugfix (Nutzerfeedback-Folgerunde "Buchung geändert" pruefen): Anreise/Abreise/Einheit wurden
+// bisher auch dann als "geaendert" erkannt, wenn EINER der beiden Werte (Vorher ODER Nachher)
+// schlicht fehlte (z. B. eine kurzzeitig unvollstaendige Apaleo-Antwort ohne `arrival`, oder eine
+// Einheit ohne `unit.id`/`unit.code`) - `null !== '2026-09-23'` ist zwar technisch wahr, aber
+// housekeeping-fachlich KEINE echte Umbuchung, sondern fehlende Rohdaten. Ein solcher Datensatz
+// wurde bisher trotzdem als Aenderung gespeichert und zeigte z. B. "Anreise 23.09. -> " an. Beide
+// Seiten muessen deshalb jetzt bekannt (nicht null) UND unterschiedlich sein - exakt dieselbe
+// Absicherung, die die Personenanzahl (`guestsChanged`, jetzt adults/children) schon vorher hatte.
+function fieldChanged(previousValue, currentValue) {
+  return previousValue != null && currentValue != null && previousValue !== currentValue;
+}
+
+// Defensiver Read-Filter (Nutzerfeedback-Folgerunde: "pruefen, ob bereits fehlerhafte Datensaetze
+// mit identischen Vorher-/Nachher-Werten existieren"): ein *From/*To-Paar zaehlt nur als ECHTE
+// Aenderung, wenn beide Seiten tatsaechlich verschieden sind. Die Schreiblogik unten haengt ein
+// Paar ohnehin nur an, wenn es sich geaendert hat - dieser Filter ist zusaetzlich ein Sicherheitsnetz
+// GEGEN BEREITS IN REDIS LIEGENDE Alt-Datensaetze (z. B. aus frueheren Versionen dieser Route, vor
+// einem der bisherigen Bugfixes) und schuetzt zugleich vor jedem zukuenftigen Regressionsfall,
+// OHNE dass dafuer Redis-Daten geloescht/migriert werden muessen (Nutzervorgabe: keine Redis-Daten
+// loeschen). Ein Datensatz, der nach diesem Filter kein einziges echtes Aenderungsfeld mehr hat,
+// wird beim Lesen vollstaendig unterdrueckt (bleibt aber unangetastet in Redis liegen).
+function hasRealChange(change) {
+  if (!change) return false;
+  const pairs = [
+    ['arrivalFrom', 'arrivalTo'], ['departureFrom', 'departureTo'], ['unitFrom', 'unitTo'],
+    ['adultsFrom', 'adultsTo'], ['childrenFrom', 'childrenTo'],
+  ];
+  return pairs.some(([fromKey, toKey]) => {
+    if (!(fromKey in change) && !(toKey in change)) return false;
+    return change[fromKey] !== change[toKey];
+  });
+}
+
 async function changesForUser(redis, user) {
   const all = await redis.hGetAll(CHANGES_HASH_KEY);
   const changes = {};
   for (const [reservationId, raw] of Object.entries(all)) {
     const change = parseJSON(raw, null);
     if (!change) continue;
+    if (!hasRealChange(change)) continue;
     // Die Property-Zugehoerigkeit ist Teil des mitgesendeten Snapshots (siehe unten), damit auch
     // beim reinen Lesen ohne erneuten Sync gefiltert werden kann.
     if (change.propertyCode && !hasPropertyAccess(user, change.propertyCode)) continue;
@@ -96,9 +135,10 @@ module.exports = async (req, res) => {
         unitId: r.unitId || null,
         propertyCode: r.propertyCode,
         // Nur eine bekannte Zahl (>=0) uebernehmen - fehlende/ungueltige Rohdaten (null/undefined)
-        // duerfen weder als "0 Gaeste" gespeichert noch mit einer echten spaeteren Zahl als
-        // Aenderung erkannt werden (siehe guestsChanged unten).
-        guests: typeof r.guests === 'number' ? r.guests : null,
+        // duerfen weder als "0" gespeichert noch mit einer echten spaeteren Zahl als Aenderung
+        // erkannt werden (siehe adultsChanged/childrenChanged unten).
+        adults: typeof r.adults === 'number' ? r.adults : null,
+        children: typeof r.children === 'number' ? r.children : null,
       };
       const previousRaw = parseJSON(snapshots[r.id], null);
       // Bugfix (Nutzerfeedback "jetzt werden alle Buchungen als geändert angezeigt"): ein VOR dem
@@ -108,21 +148,41 @@ module.exports = async (req, res) => {
       // erkennen (unabhaengig davon, ob sich tatsaechlich etwas geaendert hat). `previous` wird
       // deshalb beim Lesen ebenfalls durch dateOnly() normalisiert - bei einem bereits im neuen
       // Format gespeicherten Snapshot wirkungslos, bei einem alten heilt es den Formatwechsel ohne
-      // Migrationsschritt sofort aus.
+      // Migrationsschritt sofort aus. Ein Alt-Snapshot aus der Zeit VOR dem adults/children-Split
+      // hat noch ein `guests`-Feld statt `adults`/`children` - `previousRaw.adults`/`.children`
+      // sind dann schlicht `undefined` (== null), adults/childrenChanged bleiben also false, bis
+      // der naechste Sync einen neuen, bereits aufgeteilten Snapshot schreibt (kein Migrations-
+      // schritt noetig, exakt dasselbe Prinzip wie beim dateOnly()-Fix oben).
       const previous = previousRaw ? { ...previousRaw, arrival: dateOnly(previousRaw.arrival), departure: dateOnly(previousRaw.departure) } : null;
       if (previous) {
-        const guestsChanged = previous.guests != null && current.guests != null && previous.guests !== current.guests;
-        const changed = previous.arrival !== current.arrival || previous.departure !== current.departure
-          || previous.unitId !== current.unitId || guestsChanged;
+        // Bugfix (Nutzerfeedback-Folgerunde): Anreise/Abreise/Einheit gelten nur dann als
+        // geaendert, wenn BEIDE Seiten bekannt UND unterschiedlich sind (siehe fieldChanged()
+        // oben) - vorher reichte irgendein Unterschied, auch gegen eine fehlende/leere Seite.
+        const arrivalChanged = fieldChanged(previous.arrival, current.arrival);
+        const departureChanged = fieldChanged(previous.departure, current.departure);
+        const unitChanged = fieldChanged(previous.unitId, current.unitId);
+        const adultsChanged = fieldChanged(previous.adults, current.adults);
+        const childrenChanged = fieldChanged(previous.children, current.children);
+        const guestsChanged = adultsChanged || childrenChanged;
+        const changed = arrivalChanged || departureChanged || unitChanged || guestsChanged;
         if (changed) {
           const change = {
             reservationId: r.id,
             propertyCode: r.propertyCode,
             changedAt: now,
-            ...(previous.arrival !== current.arrival ? { arrivalFrom: previous.arrival, arrivalTo: current.arrival } : {}),
-            ...(previous.departure !== current.departure ? { departureFrom: previous.departure, departureTo: current.departure } : {}),
-            ...(previous.unitId !== current.unitId ? { unitFrom: previous.unitId, unitTo: current.unitId } : {}),
-            ...(guestsChanged ? { guestsFrom: previous.guests, guestsTo: current.guests } : {}),
+            ...(arrivalChanged ? { arrivalFrom: previous.arrival, arrivalTo: current.arrival } : {}),
+            ...(departureChanged ? { departureFrom: previous.departure, departureTo: current.departure } : {}),
+            ...(unitChanged ? { unitFrom: previous.unitId, unitTo: current.unitId } : {}),
+            // Erwachsene UND Kinder werden GEMEINSAM geschrieben, sobald sich EINE der beiden Zahlen
+            // geaendert hat (nicht nur das einzelne geaenderte Teilfeld) - die Detailansicht zeigt
+            // dadurch immer die vollstaendige Belegung beider Zeitpunkte ("2 Erw. · 1 Kind ->
+            // 3 Erw. · 1 Kind"), auch wenn nur die Erwachsenenzahl sich tatsaechlich geaendert hat.
+            ...(guestsChanged
+              ? {
+                adultsFrom: previous.adults, adultsTo: current.adults,
+                childrenFrom: previous.children, childrenTo: current.children,
+              }
+              : {}),
           };
           changeWrites.push([r.id, JSON.stringify(change)]);
         }
@@ -130,7 +190,7 @@ module.exports = async (req, res) => {
       // Baseline nur schreiben, wenn sie fehlt oder sich tatsaechlich geaendert hat - vermeidet
       // unnoetige Schreibzugriffe bei jedem Poll-Zyklus (Punkt 31 "keine unnoetigen Requests").
       if (!previous || previous.arrival !== current.arrival || previous.departure !== current.departure
-        || previous.unitId !== current.unitId || previous.guests !== current.guests) {
+        || previous.unitId !== current.unitId || previous.adults !== current.adults || previous.children !== current.children) {
         snapshotWrites.push([r.id, JSON.stringify(current)]);
       }
     }

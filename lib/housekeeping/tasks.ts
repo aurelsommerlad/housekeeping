@@ -114,6 +114,10 @@ function reservationSummary(r: ApaleoReservation): TaskReservationSummary {
     childAges: r.childrenAges || [],
     hasDog: hasBookedService(r, 'HUND'),
     hasCrib: hasBookedService(r, 'BABY'),
+    // Live verifiziert (siehe api.ts#loadReservations "status=InHouse,Confirmed,CheckedOut"): der
+    // einzige Wert, der "der Gast ist gerade eingecheckt" bedeutet, ist 'InHouse' - 'Confirmed'
+    // (noch nicht eingecheckt) und 'CheckedOut' (bereits ausgecheckt) zaehlen beide nicht.
+    checkedIn: r.status === 'InHouse',
   };
 }
 

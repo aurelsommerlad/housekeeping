@@ -256,6 +256,14 @@ export interface TaskReservationSummary {
    * gegenseitig ueberschreiben (Punkt "gebucht vs. manuell"). */
   hasDog: boolean;
   hasCrib: boolean;
+  /** Bereits eingecheckt (Apaleo `status === 'InHouse'`, live verifiziert gegen die bestehenden
+   * Reservierungsabfragen - siehe api.ts#loadReservations "status=InHouse,Confirmed,CheckedOut" -
+   * andere live vorkommende Werte sind 'Confirmed' (noch nicht eingecheckt) und 'CheckedOut'
+   * (bereits ausgecheckt); NIEMALS mit unserem eigenen Task-`status` verwechseln, siehe Punkt 23).
+   * Rein informativ fuer die "✓ Eingecheckt"-Anzeige bei Turnover (Punkt "Buchungsaenderung
+   * korrigieren") - fliesst bewusst NICHT in die Buchungsaenderungs-Erkennung ein
+   * (api/booking-changes.js vergleicht weiterhin nur Anreise/Abreise/Einheit/Personenanzahl). */
+  checkedIn: boolean;
 }
 
 /** Suchergebnis der Admin-Reservierungssuche (Punkt 5-8) - direkt aus einer live Apaleo-Suche
@@ -423,7 +431,10 @@ export type ManualTasksState = Record<string, ManualTask | null>;
  * Nur die vier housekeeping-relevanten Felder (Anreise/Abreise/Einheit/Personenanzahl) werden
  * verglichen - jedes andere Reservierungsfeld wird ignoriert (Punkt "nur housekeeping-relevante
  * Aenderungen loggen"). Nur die JEWEILS zuletzt erkannte Aenderung wird gehalten (kein volles Log
- * noetig).
+ * noetig). Jedes *From/*To-Paar erscheint NUR, wenn sich genau dieses Feld tatsaechlich geaendert
+ * hat (siehe api/booking-changes.js) - ein Paar mit identischen Werten wird serverseitig nie
+ * geschrieben und zusaetzlich defensiv beim Lesen herausgefiltert (Schutz vor evtl. bereits
+ * bestehenden Alt-Datensaetzen, ohne Redis-Daten zu loeschen).
  */
 export interface BookingChangeRecord {
   reservationId: string;
@@ -434,11 +445,16 @@ export interface BookingChangeRecord {
   departureTo?: string;
   unitFrom?: string;
   unitTo?: string;
-  /** Gesamtpersonenzahl (Erwachsene + Kinder, siehe tasks.ts#guestCount) - nur gesetzt, wenn beide
-   * Seiten (Snapshot und aktueller Stand) eine bekannte Zahl haben (kein "0 Gaeste" bei fehlenden
-   * Rohdaten). */
-  guestsFrom?: number;
-  guestsTo?: number;
+  /** Erwachsene/Kinder getrennt (Nutzerfeedback: konkrete Deltas wie "2 Erw. · 1 Kind ->
+   * 3 Erw. · 1 Kind" statt einer reinen Gesamtzahl) - beide Seiten (adultsFrom/-To bzw.
+   * childrenFrom/-To) werden gemeinsam geschrieben, sobald SICH EINE der beiden geaendert hat,
+   * damit die Detailansicht immer die volle Belegung beider Zeitpunkte zeigen kann, nicht nur das
+   * einzelne geaenderte Teilfeld. `null`, wenn die jeweilige Zahl zu diesem Zeitpunkt nicht bekannt
+   * war (kein "0" bei fehlenden Rohdaten). */
+  adultsFrom?: number | null;
+  adultsTo?: number | null;
+  childrenFrom?: number | null;
+  childrenTo?: number | null;
 }
 
 export type BookingChangeRecordsState = Record<string, BookingChangeRecord | null>;

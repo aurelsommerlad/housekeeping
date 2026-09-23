@@ -1061,7 +1061,26 @@ import type { ExtraEquipmentNeed } from './tasks';
 //   existiert unveraendert im Zuweisungsbereich (CleaningAssignmentSection), sobald aufgeklappt.
 // Verifiziert per tsc/eslint/build; die zugrunde liegende Buchungsaenderungs-/Vorbereitungs-/
 // BABY-Business-Logik selbst ist unveraendert (nur neue Darstellung derselben Daten).
-export const APP_VERSION = '2.33.0';
+//
+// v2.34.0 - Nutzerfeedback-Folgerunde "Buchung geändert" korrigiert (api/booking-changes.js,
+// gezielt in der bestehenden, einzigen Change-Detection - kein zweiter Mechanismus):
+// - Anreise/Abreise/Einheit gelten nur noch als geaendert, wenn BEIDE Seiten (Vorher/Nachher)
+//   bekannt UND tatsaechlich unterschiedlich sind (vorher konnte eine kurzzeitig fehlende/
+//   unvollstaendige Apaleo-Antwort faelschlich eine Aenderung wie "Anreise 23.09. -> " ausloesen).
+// - Personenanzahl wird jetzt getrennt nach Erwachsenen/Kindern verglichen und angezeigt
+//   (adultsFrom/-To, childrenFrom/-To statt einer Gesamtzahl) - die Detailansicht zeigt konkrete
+//   Deltas wie "2 Erw. · 1 Kind -> 3 Erw. · 1 Kind".
+// - Neuer defensiver Read-Filter (hasRealChange()) unterdrueckt jeden Change-Datensatz, dessen
+//   *From/*To-Paare (nach evtl. Alt-Format) keine einzige echte Aenderung mehr zeigen wuerden -
+//   ohne Redis-Daten zu loeschen (Sicherheitsnetz gegen evtl. bereits bestehende Alt-Datensaetze).
+// - Neu (rein additiv, TaskDetailSheet.tsx/tasks.ts): "✓ Eingecheckt"-Hinweis bei Turnover fuer die
+//   ABREISENDE Reservierung, aus dem live verifizierten Apaleo-Feld `status === 'InHouse'`
+//   abgeleitet (types.ts#TaskReservationSummary.checkedIn) - rein informativ, fliesst NICHT in die
+//   Buchungsaenderungs-Erkennung ein.
+// - Die bestehende Aenderungs-/Ungesehen-Punkt-Logik (orange vs. gruen, nie beide gleichzeitig,
+//   TasksScreen.tsx#cardAttentionState) sowie der Kenntnisnahme-Mechanismus beim Oeffnen der
+//   Detailansicht sind unveraendert und bereits korrekt.
+export const APP_VERSION = '2.34.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -1569,7 +1588,7 @@ export const manualTasksApi = {
 export async function syncBookingChanges(
   reservations: {
     id: string; arrival?: string | null; departure?: string | null; unitId?: string | null; propertyCode: string;
-    guests?: number | null;
+    adults?: number | null; children?: number | null;
   }[],
 ): Promise<BookingChangeRecordsState> {
   const data = await backendPost<{ changes?: BookingChangeRecordsState }>('booking-changes', { action: 'sync', reservations });

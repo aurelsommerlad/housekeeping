@@ -37,6 +37,18 @@ function formatDayMonth(iso: string | null): string {
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.`;
 }
 
+/** Nutzerfeedback "Buchung geändert": konkretes Delta statt einer reinen Gesamtzahl, z. B.
+ * "2 Erw. · 1 Kind -> 3 Erw. · 1 Kind" - dieselben kompakten Occ-Labels wie auf der Task-Karte
+ * (siehe TaskCard.tsx#formatOccupancy), hier ueber `t` statt `translate(lang, ...)` aufgerufen (der
+ * in dieser Datei durchgaengige Zugriffsweg). `null`/`undefined` (Zahl zu diesem Zeitpunkt nicht
+ * bekannt) zeigt einen Platzhalter statt einer falschen "0". */
+function formatOccupancyCompact(t: HousekeepingApp['t'], adults: number | null | undefined, children: number | null | undefined): string {
+  if (adults == null) return '–';
+  const parts = [t('occ_adults', { n: adults })];
+  if (children != null && children > 0) parts.push(t(children === 1 ? 'occ_child_one' : 'occ_children_many', { n: children }));
+  return parts.join(' · ');
+}
+
 function formatClock(ms: number): string {
   const d = new Date(ms);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -98,7 +110,7 @@ function ApaleoLinkButton({
 /** Punkt 5: "2 Erwachsene · 3 Kinder" statt separater Tabellenzeilen; keine Kinder -> nur
  * "2 Erwachsene", keine zusaetzliche "Kinder: -"-Zeile. */
 function CompactReservation({
-  info, heading, t, inlineTypeLabel, comment, apaleoLink,
+  info, heading, t, inlineTypeLabel, comment, apaleoLink, showCheckedIn,
 }: {
   info: TaskReservationSummary; heading?: string; t: HousekeepingApp['t'];
   /** Briefing "Reinigungsdetailansicht optimieren" Punkt 2/3: eine EINZELNE Reservierung (kein
@@ -113,12 +125,25 @@ function CompactReservation({
   /** Punkt 5: Apaleo-Deep-Link fuer GENAU diese Reservierung - `null`/`undefined` zeigt keinen
    * Link (Aufrufer prueft bereits `isAdmin`). */
   apaleoLink?: { propertyCode: string; reservationId: string } | null;
+  /** Nutzerfeedback "Buchung geändert" Punkt "Eingecheckt-Anzeige": nur bei Turnover, ausschliesslich
+   * fuer die ABREISENDE Reservierung gesetzt (siehe Aufrufer unten) - zeigt `info.checkedIn`
+   * (live verifizierter Apaleo-Status 'InHouse') als dezenten Hinweis, rein additiv und ohne jeden
+   * Einfluss auf die Buchungsaenderungs-Erkennung. */
+  showCheckedIn?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1">
       {heading ? (
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{heading}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{heading}</p>
+            {showCheckedIn && info.checkedIn ? (
+              <span className="inline-flex items-center gap-0.5 text-[10.5px] font-medium text-status-clean">
+                <IconCheck width={10} height={10} aria-hidden="true" />
+                {t('reservation_checked_in_label')}
+              </span>
+            ) : null}
+          </div>
           {apaleoLink ? <ApaleoLinkButton {...apaleoLink} t={t} /> : null}
         </div>
       ) : null}
@@ -220,8 +245,12 @@ function BookingChangeDetail({
   if (change.departureFrom !== undefined || change.departureTo !== undefined) {
     changedFields.push({ kind: 'departure', label: t('label_departure'), from: formatDayMonth(change.departureFrom || null), to: formatDayMonth(change.departureTo || null) });
   }
-  if (change.guestsFrom !== undefined || change.guestsTo !== undefined) {
-    changedFields.push({ kind: 'guests', label: t('booking_changed_guests_label'), from: String(change.guestsFrom ?? '–'), to: String(change.guestsTo ?? '–') });
+  if (change.adultsFrom !== undefined || change.adultsTo !== undefined || change.childrenFrom !== undefined || change.childrenTo !== undefined) {
+    changedFields.push({
+      kind: 'guests', label: t('booking_changed_guests_label'),
+      from: formatOccupancyCompact(t, change.adultsFrom, change.childrenFrom),
+      to: formatOccupancyCompact(t, change.adultsTo, change.childrenTo),
+    });
   }
   if (change.unitFrom !== undefined || change.unitTo !== undefined) {
     changedFields.push({ kind: 'unit', label: t('booking_changed_unit_label'), from: unitLabel(change.unitFrom), to: unitLabel(change.unitTo) });
@@ -1216,6 +1245,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                   <CompactReservation
                     info={task.reservationInfo} heading={t('reservation_departure_title')} t={t}
                     apaleoLink={canOpenInApaleo ? { propertyCode: task.propertyCode, reservationId: task.reservationInfo.reservationId } : null}
+                    showCheckedIn
                   />
                 ) : null}
                 {task.nextReservationInfo ? (

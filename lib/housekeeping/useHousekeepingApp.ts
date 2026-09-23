@@ -37,7 +37,7 @@ import { allowedProperties, buildRooms, roomKey, todayISO, addDaysISO } from './
 import { managedPropertyCodes } from './permissions';
 import { dayHeadingLabel } from './dayLabel';
 import {
-  buildTasks, canRescheduleTask, capacityForDay, computeExtraEquipmentNeeds, daySummary, guestCount, manualTaskToResolvedTask,
+  buildTasks, canRescheduleTask, capacityForDay, computeExtraEquipmentNeeds, daySummary, manualTaskToResolvedTask,
   nextArrivalDateForTask, requiredPreparationItemIds, requiresInspection, resolveTasks, sortTasksForDay,
   taskGenerationDays, teamCapacityForDay,
   type ResolvedTask, type TeamContext,
@@ -396,10 +396,11 @@ export function useHousekeepingApp() {
         departure: r.departure || null,
         unitId: r.unit?.id || r.unit?.code || null,
         propertyCode: r.property?.code || r.property?.id || '',
-        // Nutzerfeedback "Buchung geändert" Punkt: Personenanzahl ist jetzt ein viertes
-        // housekeeping-relevantes Vergleichsfeld (siehe api/booking-changes.js) - dieselbe
-        // Gesamtpersonenzahl-Berechnung wie in der Reservierungsanzeige (tasks.ts#guestCount).
-        guests: guestCount(r),
+        // Nutzerfeedback "Buchung geändert" Punkt: Erwachsene/Kinder getrennt statt einer
+        // Gesamtzahl (siehe api/booking-changes.js) - `children` ist nur bekannt, wenn auch
+        // `adults` bekannt ist (dieselbe Konvention wie zuvor bei tasks.ts#guestCount).
+        adults: typeof r.adults === 'number' ? r.adults : null,
+        children: typeof r.adults === 'number' ? (r.childrenAges?.length || 0) : null,
       })).filter((r) => r.propertyCode);
       if (syncInput.length > 0) bookingChanges = await syncBookingChanges(syncInput);
     } catch {
