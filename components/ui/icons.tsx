@@ -105,12 +105,22 @@ export function IconChevronDown(props: IconProps) {
   );
 }
 
-/** Zurueck-Pfeil fuer die neue "Offene Aufgaben"-Unteransicht (Housekeeping-Mobile-Redesign) -
- * dieselbe Strichstaerke/derselbe Stil wie IconChevronDown, nur horizontal statt vertikal. */
+/** Zurueck-Pfeil (Housekeeping-Mobile-Redesign) - dieselbe Strichstaerke/derselbe Stil wie
+ * IconChevronDown, nur horizontal statt vertikal. */
 export function IconChevronLeft(props: IconProps) {
   return (
     <svg {...base} {...props}>
       <path d="m15 6-6 6 6 6" />
+    </svg>
+  );
+}
+
+/** Tipp-Hinweis-Pfeil auf der tippbaren Statuskarte (Housekeeping-Mobile-Redesign) - signalisiert
+ * "fuehrt zu einer weiteren Ansicht", ohne selbst eine Statusfarbe zu tragen (immer `text-muted`). */
+export function IconChevronRight(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="m9 6 6 6-6 6" />
     </svg>
   );
 }

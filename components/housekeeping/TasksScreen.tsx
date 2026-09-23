@@ -19,7 +19,7 @@ import { BulkAssignSheet } from './BulkAssignSheet';
 import { BottomSheet } from './BottomSheet';
 import { Button } from '@/components/ui/Button';
 import {
-  IconCheck, IconCheckSquare, IconChevronDown, IconChevronLeft, IconClock, IconPlus, IconSparkles, IconTask, IconUsers,
+  IconCheck, IconCheckSquare, IconChevronDown, IconChevronRight, IconClock, IconPlus, IconSparkles, IconTask, IconUsers,
 } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
@@ -269,7 +269,6 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const teamLeadHere = isTeamLead(state.user);
   const locationManagerHere = isManagerHere && !isAdmin;
   const myTeamMemberships = getTeamMemberships(state.user);
-  const hasTeam = myTeamMemberships.length > 0;
   const elevatedHere = isAdmin || locationManagerHere || teamLeadHere;
   // Housekeeping-Mobile-Redesign (Reinigungskraft ohne/mit Team, aber NICHT deren Lead - Punkt 15
   // "Teamleader-Ansicht in diesem Schritt nicht anfassen"): da laut Rollenmodell (types.ts) nur
@@ -700,9 +699,14 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
           </div>
         ) : null}
         {renderRoleTaskCard(task)}
+        {/* Housekeeping-Mobile-Redesign (Feinschliff nach Zielbild) Punkt 12: hell mit dezenter
+         * dunkler Kontur statt eines dominanten schwarzen Balkens - `variant="secondary"` als Basis
+         * (bestehende Button-Komponente bleibt dabei fuer alle anderen Aufrufer unveraendert),
+         * Kontur/Text hier gezielt auf `ink` angehoben statt des Standard-`muted`, damit der Button
+         * trotz heller Flaeche klar als wichtige Aktion lesbar bleibt. */}
         <Button
-          variant="primary"
-          className="w-full"
+          variant="secondary"
+          className="w-full border-ink text-ink hover:bg-ink hover:text-warm-white"
           disabled={isClaiming}
           onClick={() => handleClaimOpenTask(task)}
         >
@@ -840,28 +844,55 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   return (
     <div className="pb-6">
       {compactInfoLine ? <p className="truncate px-4 pt-2 text-[12.5px] text-muted">{compactInfoLine}</p> : null}
-      {/* Housekeeping-Mobile-Redesign Punkt 4: tippbare Statuskarte statt einfacher Textzeile -
-       * "N Reinigungen für dich" (singular/plural, countLabel()) fuehrt bei Antippen DIREKT zu
-       * "Offene Aufgaben" (selectAllTasks()); die zweite Zeile zeigt die offenen, fuer diese Person
-       * claimbaren Aufgaben (openClaimableTasksToday, siehe oben - identische Zahl wie das
-       * Tab-Badge unten) oder, falls keine offen sind, den ruhigen "alles verteilt"-Text. Nur fuer
-       * "Meine Aufgaben" sichtbar (auf der "Offene Aufgaben"-Unteransicht uebernimmt Zurueck-Pfeil+
-       * Titel dieselbe Rolle, siehe showScopeRow-Block unten) - kein doppelter Einstieg. */}
-      {housekeeperRedesignHere && state.myTasksOnly ? (
-        <button
-          type="button"
-          onClick={selectAllTasks}
-          className="mx-4 mt-2 flex w-[calc(100%-2rem)] flex-col items-start gap-0.5 rounded-card-lg border border-status-attention/25 bg-status-attention-bg px-4 py-3 text-left"
-        >
-          <span className="text-[14px] font-medium text-ink">
-            {t('status_card_cleanings_line', { count: countLabel(t, myOpenTasksCount, 'noun_cleaning_one', 'noun_cleaning_many') })}
-          </span>
-          <span className="text-[12.5px] text-muted">
-            {openClaimableTasksToday.length > 0
-              ? (openClaimableTasksToday.length === 1 ? t('status_card_team_open_one') : t('status_card_team_open_many', { m: openClaimableTasksToday.length }))
-              : t('status_card_team_done')}
-          </span>
-        </button>
+      {/* Housekeeping-Mobile-Redesign (Feinschliff nach Zielbild): EINE ruhige, freundliche
+       * Statuskarte statt einer Warn-/Dashboard-Kachel - bewusst NICHT `status-attention` (das ist
+       * der bestehende Terracotta-/Orange-Ton fuer Abreise/Buchungsaenderung/Early-Check-in, siehe
+       * TaskCard.tsx - eine neutrale Zusammenfassung darf diese Bedeutung nicht mitbenutzen),
+       * sondern der bereits definierte, bisher ungenutzte warme Beige-Ton `sand` + dezente
+       * `border-line`-Kontur. Sie bleibt in BEIDEN Tabs sichtbar (kein Verschwinden/Ersetzen durch
+       * einen zweiten, andersfarbigen Banner) - nur Text und Tipp-Verhalten wechseln: in "Meine
+       * Aufgaben" fuehrt Antippen direkt zu "Im Team offen" (Pfeil als Hinweis), dort selbst ist
+       * die Karte rein informativ (kein Pfeil, kein Tap-Ziel, man ist ja schon dort). */}
+      {housekeeperRedesignHere ? (
+        state.myTasksOnly ? (
+          <button
+            type="button"
+            onClick={selectAllTasks}
+            className="mx-4 mt-2 flex w-[calc(100%-2rem)] items-center justify-between gap-3 rounded-card-lg border border-line bg-sand px-4 py-3 text-left"
+          >
+            <span className="flex flex-col items-start gap-0.5">
+              <span className="text-[14px] font-medium text-ink">
+                {t('status_card_cleanings_line', { count: countLabel(t, myOpenTasksCount, 'noun_cleaning_one', 'noun_cleaning_many') })}
+              </span>
+              <span className="text-[12.5px] text-muted">
+                {openClaimableTasksToday.length > 0
+                  ? (openClaimableTasksToday.length === 1 ? t('status_card_team_open_one') : t('status_card_team_open_many', { m: openClaimableTasksToday.length }))
+                  : t('status_card_team_done')}
+              </span>
+            </span>
+            <IconChevronRight width={16} height={16} className="shrink-0 text-muted" aria-hidden="true" />
+          </button>
+        ) : (
+          <div className="mx-4 mt-2 flex w-[calc(100%-2rem)] flex-col items-start gap-0.5 rounded-card-lg border border-line bg-sand px-4 py-3 text-left">
+            {openClaimableTasksToday.length > 0 ? (
+              <>
+                <span className="text-[14px] font-medium text-ink">
+                  {(() => {
+                    const n = openClaimableTasksToday.length;
+                    const allCleaning = openClaimableTasksToday.every((task) => task.type !== 'manual');
+                    const oneKey = allCleaning ? 'noun_cleaning_one' : 'noun_open_work_one';
+                    const manyKey = allCleaning ? 'noun_cleaning_many' : 'noun_open_work_many';
+                    const count = countLabel(t, n, oneKey, manyKey);
+                    return n === 1 ? t('status_card_open_line_singular', { count }) : t('status_card_open_line_plural', { count });
+                  })()}
+                </span>
+                <span className="text-[12.5px] text-muted">{t('status_card_open_help_line')}</span>
+              </>
+            ) : (
+              <span className="text-[14px] font-medium text-ink">{t('status_card_team_done')}</span>
+            )}
+          </div>
+        )
       ) : null}
       {/* Desktop-Admin-Layout (>= 1280px): der bisherige eigene xl:mx-auto/max-w-Wrapper hier
        * entfaellt - die Breitenbegrenzung/Zentrierung passiert jetzt einmalig auf Ebene der
@@ -883,52 +914,37 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
        * entfernen). */}
       <div className="xl:flex xl:flex-wrap xl:items-center xl:gap-x-3 xl:gap-y-2 xl:px-4 xl:pb-1 xl:pt-3">
       {housekeeperRedesignHere ? (
-        // Housekeeping-Mobile-Redesign Punkt 3/8: zwei grosse Tabs ersetzen fuer diese Rolle
-        // vollstaendig das alte Dropdown/native <select> UND den Standortfilter (siehe
-        // showPropertyChips oben) - beim Wechsel auf "Offene Aufgaben" (state.myTasksOnly=false)
-        // weicht die Tab-Zeile einem Zurueck-Pfeil+Titel (dieselbe Fläche, keine doppelte
-        // Navigation). `selectedDay`/`state.propertyScope` bleiben dabei unberuehrt (selectMine/
-        // selectAllTasks aendern ausschliesslich myTasksOnly, siehe oben) - Punkt 5.
-        state.myTasksOnly ? (
-          <div className="flex gap-2 px-4 py-2.5 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
-            <button
-              type="button"
-              onClick={selectMine}
-              aria-pressed
-              className="flex-1 rounded-full border border-ink bg-ink px-3.5 py-2 text-center text-[13px] font-medium text-warm-white"
-            >
-              {t('my_tasks_only')} {myOpenTasksCount}
-            </button>
-            <button
-              type="button"
-              onClick={selectAllTasks}
-              aria-pressed={false}
-              className="flex-1 rounded-full border border-line bg-warm-white px-3.5 py-2 text-center text-[13px] font-medium text-ink"
-            >
-              {t('dashboard_open_tasks_generic')}{' '}
-              <span className={openClaimableTasksToday.length > 0 ? 'text-status-attention' : 'text-muted'}>
-                {openClaimableTasksToday.length}
-              </span>
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2.5 px-4 py-2.5 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
-            <button
-              type="button"
-              onClick={selectMine}
-              aria-label={t('back_action')}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line text-ink"
-            >
-              <IconChevronLeft width={16} height={16} aria-hidden="true" />
-            </button>
-            <div className="min-w-0">
-              <p className="truncate text-[14px] font-medium text-ink">{t('dashboard_open_tasks_generic')}</p>
-              <p className="truncate text-[12px] text-muted">
-                {hasTeam ? t('open_tasks_subtitle_team') : t('open_tasks_subtitle_noteam')}
-              </p>
-            </div>
-          </div>
-        )
+        // Housekeeping-Mobile-Redesign (Feinschliff nach Zielbild) Punkt 6: BEIDE Tabs bleiben
+        // IMMER sichtbar, unabhaengig davon, welcher gerade aktiv ist - kein Zurueck-Pfeil, keine
+        // optisch abweichende Unterseite beim Wechsel zu "Im Team offen" (nur die Statuskarte/Liste
+        // darunter aendert ihren Inhalt, siehe oben/unten). Ersetzt fuer diese Rolle vollstaendig
+        // das alte Dropdown/native <select> UND den Standortfilter (siehe showPropertyChips oben).
+        // `selectedDay`/`state.propertyScope` bleiben dabei unberuehrt (selectMine/selectAllTasks
+        // aendern ausschliesslich myTasksOnly, siehe oben) - Punkt 5.
+        <div className="flex gap-2 px-4 py-2.5 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
+          <button
+            type="button"
+            onClick={selectMine}
+            aria-pressed={state.myTasksOnly}
+            className={cn(
+              'flex-1 rounded-full border px-3.5 py-2 text-center text-[13px] font-medium transition-colors',
+              state.myTasksOnly ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-ink',
+            )}
+          >
+            {t('my_tasks_only')} {myOpenTasksCount}
+          </button>
+          <button
+            type="button"
+            onClick={selectAllTasks}
+            aria-pressed={!state.myTasksOnly}
+            className={cn(
+              'flex-1 rounded-full border px-3.5 py-2 text-center text-[13px] font-medium transition-colors',
+              !state.myTasksOnly ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-ink',
+            )}
+          >
+            {t('open_team_tasks_tab')} {openClaimableTasksToday.length}
+          </button>
+        </div>
       ) : showScopeRow ? (
         <div className="flex gap-2 px-4 py-2.5 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
           {viewOptions ? (
@@ -994,7 +1010,14 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             className={cn(
               'flex flex-col items-center rounded-control border px-2 py-1.5 text-center transition-colors xl:h-9 xl:flex-row xl:items-center xl:justify-center xl:rounded-none xl:border-0 xl:border-b-2 xl:bg-transparent xl:px-1 xl:py-0',
               date === d
-                ? 'border-ink bg-ink text-warm-white xl:border-ink xl:bg-transparent xl:text-ink'
+                // Housekeeping-Mobile-Redesign (Feinschliff nach Zielbild) Punkt 7: fuer diese
+                // Rolle ein leicht getoenter Hintergrund (derselbe warme `sand`-Ton wie die
+                // Statuskarte) + kraeftigere Schrift statt einer zweiten massiven schwarzen
+                // Flaeche neben dem Haupttab-Paar - Admin/Standortverantwortliche/Teamleader
+                // behalten exakt die bisherige, vollflaechig dunkle Auswahl.
+                ? housekeeperRedesignHere
+                  ? 'border-line bg-sand text-ink font-semibold xl:border-ink xl:bg-transparent xl:text-ink'
+                  : 'border-ink bg-ink text-warm-white xl:border-ink xl:bg-transparent xl:text-ink'
                 : 'border-line bg-warm-white text-muted hover:text-ink xl:border-transparent xl:bg-transparent xl:text-muted xl:hover:text-ink xl:hover:border-line',
             )}
           >
@@ -1300,8 +1323,9 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         // eigenes Team) - "Meine Aufgaben" nutzt weiterhin dieselben, bereits nach Standort
         // gruppierbaren Bausteine (TaskGroup/toMixedLocationGroups/renderDoneSection) wie der
         // bisherige Default-Pfad, nur mit EINER gemeinsamen "Meine Aufgaben · N"-Ueberschrift statt
-        // der separaten Reinigungen-/Aufgaben-Abschnitte (Punkt 7). "Offene Aufgaben" ist die neue,
-        // dedizierte Ansicht (Banner/Sortierung/prominenter Early-Check-in-Hinweis/"Übernehmen").
+        // der separaten Reinigungen-/Aufgaben-Abschnitte (Punkt 7). "Im Team offen" zeigt dieselbe
+        // Statuskarte (siehe oben, jetzt inhaltlich umgeschaltet statt eines zweiten Banners),
+        // darunter Sortierung/prominenter Early-Check-in-Hinweis/"Übernehmen" je Karte.
         <>
           {state.myTasksOnly ? (
             <>
@@ -1322,32 +1346,22 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             </>
           ) : (
             <>
+              {/* Housekeeping-Mobile-Redesign (Feinschliff nach Zielbild) Punkt 11: kein zweiter,
+               * andersfarbiger Banner mehr hier - die Statuskarte oben traegt die Zusammenfassung
+               * bereits fuer diesen Tab. Punkt 10 (Sortierung): kompakter Wert+Chevron statt eines
+               * beschrifteten Auswahlfelds - derselbe leichte Dropdown-Baustein (TaskViewSelect)
+               * wie an anderer Stelle im Dashboard, nur rechtsbuendig und ohne umgebendes Label. */}
               {openClaimableTasksToday.length > 0 ? (
-                <div className="mx-4 mt-3 rounded-card-lg border border-status-attention/25 bg-status-attention-bg px-4 py-3">
-                  <p className="text-[13px] font-medium text-ink">
-                    {openClaimableTasksToday.length === 1
-                      ? t('open_tasks_banner_title_one')
-                      : t('open_tasks_banner_title_many', { n: openClaimableTasksToday.length })}
-                  </p>
-                  <p className="mt-0.5 text-[12px] text-muted">{t('open_tasks_banner_subtitle')}</p>
-                </div>
-              ) : null}
-              {openClaimableTasksToday.length > 0 ? (
-                <div className="flex items-center gap-2 px-4 pt-3">
-                  <span className="shrink-0 text-[12px] text-muted">{t('sort_label')}</span>
-                  <div className="relative min-w-0 flex-1">
-                    <select
-                      value={openTasksSort}
-                      onChange={(e) => setOpenTasksSort(e.target.value as 'arrival' | 'location' | 'apartment')}
-                      className={selectClass}
-                      data-focus-none
-                    >
-                      <option value="arrival">{t('sort_option_arrival')}</option>
-                      <option value="location">{t('sort_option_location')}</option>
-                      <option value="apartment">{t('sort_option_apartment')}</option>
-                    </select>
-                    <IconChevronDown width={13} height={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
-                  </div>
+                <div className="flex justify-end px-4 pt-3">
+                  <TaskViewSelect
+                    value={openTasksSort}
+                    options={[
+                      { value: 'arrival', label: t('sort_option_arrival') },
+                      { value: 'location', label: t('sort_option_location') },
+                      { value: 'apartment', label: t('sort_option_apartment') },
+                    ]}
+                    onChange={(value) => setOpenTasksSort(value as 'arrival' | 'location' | 'apartment')}
+                  />
                 </div>
               ) : null}
               {(() => {

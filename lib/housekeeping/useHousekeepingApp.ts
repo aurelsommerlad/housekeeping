@@ -1225,12 +1225,18 @@ export function useHousekeepingApp() {
   /** Wiederhergestellt (UX-Feinschliff-Korrektur): ermittelt GENAU die eine laufende/pausierte
    * Reinigung des eingeloggten Nutzers - Grundlage fuer den kontextabhaengigen Pause/Fortsetzen-
    * Hinweis rechts oben im Header (StaffHeader.tsx#CleaningPauseButton). Niemals eine manuelle
-   * Aufgabe (die hat keinen Reinigungs-Timer, siehe tasks.ts#manualTaskToResolvedTask). */
+   * Aufgabe (die hat keinen Reinigungs-Timer, siehe tasks.ts#manualTaskToResolvedTask). Housekeeping-
+   * Mobile-Redesign (Fortsetzen-Button-Praezisierung): zusaetzlich auf `scheduledDate === heute`
+   * eingegrenzt - "Fortsetzen" ist ausdruecklich der Wiedereinstieg in die eigene, am HEUTIGEN Tag
+   * begonnene Reinigung, nicht in eine (praktisch seltene, aber technisch moegliche) laufende/
+   * pausierte Reinigung eines anderen, ueber `resolvedTasksAll()` mitgeladenen Planungstages. */
   const activeCleaningTask = useCallback((): ResolvedTask | null => {
     const user = state.user;
     if (!user) return null;
+    const today = todayISO();
     const candidates = resolvedTasksAll().filter((t) =>
-      t.type !== 'manual' && t.assignedUserId === user.id && (t.status === 'in_progress' || t.status === 'paused'));
+      t.type !== 'manual' && t.assignedUserId === user.id && t.scheduledDate === today
+      && (t.status === 'in_progress' || t.status === 'paused'));
     if (candidates.length === 0) return null;
     const running = candidates.filter((t) => t.status === 'in_progress');
     const pool = running.length > 0 ? running : candidates;
