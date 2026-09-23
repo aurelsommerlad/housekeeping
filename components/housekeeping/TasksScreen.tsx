@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { sortTasksForDay, type ResolvedTask } from '@/lib/housekeeping/tasks';
@@ -208,6 +208,10 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
   const [doneOpen, setDoneOpen] = useState(false);
+  // Briefing "Dashboard fuer Teamleader optimieren" Punkt 4: "Bereits zugewiesen" ist wie "Fertig"
+  // per Default eingeklappt, damit die bereits verteilten Aufgaben nicht vor den noch zu
+  // verteilenden stehen/die mobile Ansicht unnoetig verlaengern.
+  const [assignedOpen, setAssignedOpen] = useState(false);
   // Briefing "Housekeeping-Dashboard anpassen": eine dritte, rein lokale Ansicht zusaetzlich zum
   // bestehenden `myTasksOnly` - ausschliesslich fuer Teamleader/Standortverantwortliche/Admin
   // genutzt (siehe elevatedHere unten). 'mine' spiegelt dabei exakt `myTasksOnly=true` (bestehender
@@ -238,28 +242,44 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const plainTeamMemberHere = !isAdmin && !locationManagerHere && !teamLeadHere && hasTeam;
   const elevatedHere = isAdmin || locationManagerHere || teamLeadHere;
 
-  // Default-Ansicht je Rolle (Punkt 4/5/6): Teamleader/Standortverantwortliche/Admin starten in
-  // 'home' ("Team heute"/"Standort heute"/"Uebersicht"), NICHT in "Meine Aufgaben" - fuer einen
-  // reinen Teamleader (role 'housekeeper' ohne managedProperties) setzt afterLogin() `myTasksOnly`
-  // beim Login weiterhin auf `true` (siehe useHousekeepingApp.ts#afterLogin, unveraendert), daher
-  // hier einmalig beim ersten Rendern korrigiert - jede spaetere Umschaltung laeuft ausschliesslich
-  // ueber selectViewHome/-Mine/-Open unten.
-  useEffect(() => {
-    if (elevatedHere && taskViewMode !== 'mine' && state.myTasksOnly) toggleMyTasksOnly();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  // Ursachenanalyse "Team heute an Datumsauswahl gekoppelt" (Briefing "Dashboard fuer Teamleader
+  // optimieren" Punkt 12): der fruehere Fix hielt `taskViewMode` (lokal, hier) und das GLOBALE
+  // `state.myTasksOnly` per Toggle synchron und liess den Teamleader-Renderpfad `visible`
+  // (= tasksForDay(date), also myTasksOnly-abhaengig) fuer die Leer-/Ladezustand-Pruefung
+  // mitbenutzen. Das brach in der Praxis: afterLogin() setzt `myTasksOnly` fuer einen Teamleader
+  // OHNE managedProperties beim Login auf `true` (kein Property-Manager) - und zwar ERST NACH dem
+  // Laden der Properties, also NACHDEM diese Komponente schon gemountet und ein einmaliger
+  // useEffect(...,[]) hier `myTasksOnly` bereits auf `false` korrigiert hatte. afterLogin()
+  // ueberschrieb die Korrektur damit unbemerkt wieder mit `true`, und blieb dort fuer die gesamte
+  // Session stehen (kein zweiter Korrekturlauf). Die Team-/Zuweisungs-Listen selbst
+  // (teamUnassignedTasks/teamAssignedTasks/teamDoneTasksToday, siehe unten) waren die ganze Zeit
+  // korrekt nach `date` gefiltert - nur die UEBERGEORDNETE "gibt es ueberhaupt etwas zu zeigen"-
+  // Pruefung nutzte `visible` (= NUR die eigenen Aufgaben des Teamleaders an diesem Tag). War der
+  // Teamleader an einem Tag zufaellig selbst nicht eingeteilt, war `visible` leer -> "Keine
+  // Aufgaben gefunden" ERSETZTE den kompletten (korrekten) Team-Bereich, unabhaengig vom
+  // gewaehlten Dropdown-Wert. Erneutes Waehlen von "Team heute" wirkte nur deshalb wie eine
+  // Reparatur, weil `selectViewHome()` `myTasksOnly` dabei aktiv zurueck auf `false` setzte.
+  //
+  // Sauberer Fix: der Teamleader-Renderpfad (Team/Meine Aufgaben/Offene Team-Aufgaben, siehe
+  // `showTeamLeadBranch`/`gateVisibleCount` unten) haengt jetzt in KEINEM der drei Modi mehr von
+  // `state.myTasksOnly`/`visible` ab - auch "Meine Aufgaben" wird fuer den Teamleader direkt aus
+  // `allTasksToday`/`openTasksToday` berechnet (myOwnCleaningToday/myOwnManualToday/
+  // myOwnDoneToday). `taskViewMode` (Ansichtsfilter), `state.selectedDay` (Tag) und
+  // `state.propertyScope` (Standort) sind dadurch drei vollstaendig unabhaengige Dimensionen -
+  // keine beeinflusst beim Wechsel eine der anderen. Fuer Standortverantwortliche/Admin bleibt
+  // die bisherige, bereits korrekt funktionierende Kopplung an `myTasksOnly` fuer deren "Meine
+  // Aufgaben"-Modus unveraendert (siehe selectViewMineElevated).
   function selectViewHome() {
     setTaskViewMode('home');
-    if (state.myTasksOnly) toggleMyTasksOnly();
+    if (!teamLeadHere && state.myTasksOnly) toggleMyTasksOnly();
   }
   function selectViewMineElevated() {
     setTaskViewMode('mine');
-    if (!state.myTasksOnly) toggleMyTasksOnly();
+    if (!teamLeadHere && !state.myTasksOnly) toggleMyTasksOnly();
   }
   function selectViewOpen() {
     setTaskViewMode('open');
-    if (state.myTasksOnly) toggleMyTasksOnly();
+    if (!teamLeadHere && state.myTasksOnly) toggleMyTasksOnly();
   }
 
   // Aufgaben des Tages OHNE "Meine Aufgaben"-Einschraenkung, aber weiterhin durch den bestehenden
@@ -281,16 +301,44 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   );
   const myTeamName = state.teams.find((tm) => myLeadTeamIds.has(tm.id))?.name || teamOpenTasksToday.find((task) => task.assignedTeamName)?.assignedTeamName || '';
 
+  // "Meine Aufgaben" fuer den Teamleader (Punkt 12): bewusst NICHT mehr ueber das globale
+  // `state.myTasksOnly` + den geteilten `tasksForDay()`-Renderpfad geloest (siehe Kommentar bei
+  // selectViewHome oben) - direkt aus `openTasksToday`/`allTasksToday` gefiltert, exakt dieselbe
+  // Definition ("meine Aufgaben" = dem eingeloggten Nutzer zugewiesen), nur ohne die
+  // myTasksOnly-Kopplung.
+  const myOwnCleaningToday = sortTasksForDay(openTasksToday.filter((task) => task.assignedUserId === state.user?.id && task.type !== 'manual'));
+  const myOwnManualToday = sortTasksForDay(openTasksToday.filter((task) => task.assignedUserId === state.user?.id && task.type === 'manual'));
+  const myOwnDoneToday = sortTasksForDay(allTasksToday.filter((task) => task.assignedUserId === state.user?.id && task.status === 'completed'));
+
   // Punkt 7: die Reinigungen-/Aufgaben-/Fertig-Kennzahl bleibt bestehen, nur ihr SCOPE wechselt je
-  // Rolle - fuer Standortverantwortliche/Admin ist `cleaningTasks`/`openManualTasks`/`doneTasks`
-  // (siehe dayOverviewFor) bereits korrekt auf den aktuellen Standort-Scope begrenzt; nur fuer den
-  // Teamleader in 'home'/'open' muss hier zusaetzlich auf das eigene Team eingegrenzt werden, da
-  // `visible` dort (myTasksOnly=false, kein Property-Manager) sonst den GESAMTEN Standort zeigen
-  // wuerde statt nur des eigenen Teams.
-  const teamScopedSummary = teamLeadHere && taskViewMode !== 'mine';
-  const summaryCleaningCount = teamScopedSummary ? teamOpenTasksToday.filter((task) => task.type !== 'manual').length : cleaningTasks.length;
-  const summaryManualCount = teamScopedSummary ? teamOpenTasksToday.filter((task) => task.type === 'manual').length : openManualTasks.length;
-  const summaryDoneCount = teamScopedSummary ? teamDoneTasksToday.length : doneTasks.length;
+  // Rolle UND (fuer den Teamleader neu) je Ansicht - "Meine Aufgaben" zeigt die eigenen Zahlen,
+  // "Team"/"Offene Team-Aufgaben" die Team-Zahlen. Fuer Standortverantwortliche/Admin ist
+  // `cleaningTasks`/`openManualTasks`/`doneTasks` (siehe dayOverviewFor) weiterhin bereits korrekt
+  // auf den aktuellen Standort-Scope begrenzt.
+  const summaryCleaningCount = teamLeadHere
+    ? (taskViewMode === 'mine' ? myOwnCleaningToday.length : teamOpenTasksToday.filter((task) => task.type !== 'manual').length)
+    : cleaningTasks.length;
+  const summaryManualCount = teamLeadHere
+    ? (taskViewMode === 'mine' ? myOwnManualToday.length : teamOpenTasksToday.filter((task) => task.type === 'manual').length)
+    : openManualTasks.length;
+  const summaryDoneCount = teamLeadHere
+    ? (taskViewMode === 'mine' ? myOwnDoneToday.length : teamDoneTasksToday.length)
+    : doneTasks.length;
+
+  // Ursachenanalyse Punkt 12 (Fortsetzung siehe selectViewHome oben): die Lade-/Leer-/KPI-Sichtbar-
+  // keitspruefung darf fuer den Teamleader in KEINEM Modus mehr `visible` (= tasksForDay(date),
+  // myTasksOnly-abhaengig) verwenden - stattdessen exakt die Summe der Listen, die im jeweiligen
+  // Modus tatsaechlich gerendert werden (siehe showTeamLeadBranch weiter unten).
+  const teamLeadModeCount =
+    taskViewMode === 'mine' ? myOwnCleaningToday.length + myOwnManualToday.length + myOwnDoneToday.length
+    : taskViewMode === 'open' ? teamUnassignedTasks.length
+    : teamUnassignedTasks.length + teamAssignedTasks.length + teamDoneTasksToday.length;
+  const gateVisibleCount = teamLeadHere ? teamLeadModeCount : visible.length;
+  // Der Teamleader nutzt fuer ALLE drei Ansichten (Team/Meine Aufgaben/Offene Team-Aufgaben) den
+  // eigenen Renderpfad unten - anders als Standortverantwortliche/Admin, deren 'mine'-Modus
+  // weiterhin den geteilten Standardpfad (renderCleaningAndManualTaskGroups(cleaningTasks,
+  // openManualTasks) via `visible`/`myTasksOnly`) nutzt, siehe selectViewMineElevated oben.
+  const showTeamLeadBranch = teamLeadHere || (elevatedHere && taskViewMode !== 'mine');
 
   // Standortverantwortlicher (Punkt 5): "Nicht zugewiesen" zuerst, unabhaengig vom Aufgabentyp
   // (Reinigung/Aufgabe) - der bestehende Reinigungen-/Aufgaben-Split bleibt fuer den Rest
@@ -334,8 +382,15 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       location: locationLabel, n: cleaningTasks.length, m: locationUnassignedTasks.length,
     });
   } else if (teamLeadHere) {
+    // Punkt 2: die Zusammenfassung bezieht sich immer auf den ausgewaehlten Tag (teamOpenTasksToday/
+    // teamUnassignedTasks sind bereits nach `date` gefiltert, siehe oben) und bleibt unabhaengig vom
+    // gewaehlten Ansichts-Dropdown (Team/Meine Aufgaben/Offene Team-Aufgaben) konstant sichtbar -
+    // Singular/Plural ueber dieselbe countLabel()-Hilfsfunktion wie ueberall sonst in dieser Datei.
+    const teamCleaningCountToday = teamOpenTasksToday.filter((task) => task.type !== 'manual').length;
     compactInfoLine = t('dashboard_team_summary_line', {
-      team: myTeamName, n: teamOpenTasksToday.length, m: teamUnassignedTasks.length,
+      team: myTeamName,
+      count: countLabel(t, teamCleaningCountToday, 'noun_cleaning_one', 'noun_cleaning_many'),
+      open: teamUnassignedTasks.length,
     });
   } else if (plainTeamMemberHere) {
     const myOwnCount = openTasksToday.filter((task) => task.assignedUserId === state.user?.id).length;
@@ -366,6 +421,41 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       tasks: g.tasks,
     }));
   }
+
+  // Briefing "Dashboard fuer Teamleader optimieren" Punkt 3/4/5: dieselbe Standortgruppierung wie
+  // toLocationGroups(), aber fuer Listen, die Reinigungen UND manuelle Aufgaben GEMISCHT enthalten
+  // (Team-"Noch zu verteilen"/"Bereits zugewiesen"/"Offene Team-Aufgaben" trennen bewusst NICHT
+  // nach Aufgabentyp, siehe Briefing Punkt 4/5) - toLocationGroups() selbst nimmt nur EIN
+  // Nomen-Paar entgegen und wuerde bei gemischten Listen z. B. eine Aufgabe faelschlich
+  // "Reinigung" nennen. Baut je Standort stattdessen bis zu zwei Teilzahlen ("2 Reinigungen ·
+  // 1 Aufgabe"), jeweils weiterhin ueber dieselbe countLabel()-Pluralisierung.
+  function toMixedLocationGroups(tasks: ResolvedTask[]) {
+    if (!groupByLocation) return null;
+    return groupTasksByProperty(tasks, orderedPropertyCodes).map((g) => {
+      const cleaningCount = g.tasks.filter((task) => task.type !== 'manual').length;
+      const manualCount = g.tasks.filter((task) => task.type === 'manual').length;
+      const parts = [
+        cleaningCount > 0 ? countLabel(t, cleaningCount, 'noun_cleaning_one', 'noun_cleaning_many') : null,
+        manualCount > 0 ? countLabel(t, manualCount, 'noun_task_one', 'noun_task_many') : null,
+      ].filter(Boolean);
+      return { propertyCode: g.propertyCode, label: `${g.propertyName} · ${parts.join(' · ')}`, tasks: g.tasks };
+    });
+  }
+
+  // Punkt 7: kontextabhaengige Leerzustaende fuer den Teamleader - berücksichtigen den aktiven
+  // Aufgabenfilter UND den ausgewaehlten Tag statt des generischen "Keine Aufgaben gefunden."
+  // "Heute"/"Morgen" bleiben Textphrasen (dieselbe Positionslogik wie dayHeadingLabel/DAY_LABEL_KEYS
+  // oben), jeder weitere Tag bekommt konkreten Wochentag + Datum (Intl, wie StaffHeader.tsx).
+  function dayPhraseFor(iso: string): string {
+    const idx = state.planningDays.indexOf(iso);
+    if (idx === 0) return t('day_phrase_today');
+    if (idx === 1) return t('day_phrase_tomorrow');
+    const locale = DAY_LOCALES[state.lang] || 'de-DE';
+    const formatted = new Intl.DateTimeFormat(locale, { weekday: 'long', day: '2-digit', month: 'long' }).format(new Date(`${iso}T00:00:00`));
+    return t('day_phrase_on_date', { date: formatted });
+  }
+  const teamLeadEmptyKey = taskViewMode === 'mine' ? 'empty_my_tasks' : taskViewMode === 'open' ? 'empty_open_team_tasks' : 'empty_team_tasks';
+  const teamLeadEmptyText = date ? t(teamLeadEmptyKey, { day: dayPhraseFor(date) }) : t('no_tasks');
 
   // Briefing "Reinigungskarten ueberarbeiten" Punkt 5/6/7: EIN gemeinsamer Aufmerksamkeits-Zustand
   // pro Karte - Buchungsaenderung (orange) hat immer Vorrang vor "ungesehen" (gruen), niemals
@@ -518,33 +608,92 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
     );
   }
 
-  function renderDoneSection(doneList: ResolvedTask[]) {
-    if (doneList.length === 0) return null;
+  // Verallgemeinert aus dem bisherigen "Fertig"-Abschnitt (Briefing "Dashboard fuer Teamleader
+  // optimieren" Punkt 4): identische Klapp-/Kopfzeilen-Struktur (mobile Kurzform + Desktop-
+  // Grossbuchstaben-Kategorie+Zahl, siehe TaskGroup weiter oben), jetzt zusaetzlich mit optionaler
+  // Standortgruppierung fuer den neuen "Bereits zugewiesen"-Abschnitt des Teamleaders - bestehende
+  // Aufrufer (renderDoneSection ohne dritten Parameter) bleiben visuell unveraendert.
+  function renderCollapsibleGroup(
+    list: ResolvedTask[],
+    opts: {
+      open: boolean; onToggle: () => void; icon: typeof IconCheck; toneClass: string;
+      mobileLabel: string; categoryLabel: string;
+      locationGroups: { propertyCode: string; label: string; tasks: ResolvedTask[] }[] | null;
+    },
+  ) {
+    if (list.length === 0) return null;
+    const { open, onToggle, icon: Icon, toneClass, mobileLabel, categoryLabel, locationGroups } = opts;
+    const cardGrid = (tasks: ResolvedTask[]) => (
+      <div className="grid grid-cols-1 gap-3 px-4 pt-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]">
+        {tasks.map((task) => renderRoleTaskCard(task, 'none'))}
+      </div>
+    );
     return (
       <div className="mt-1">
         <button
           type="button"
-          onClick={() => setDoneOpen((v) => !v)}
+          onClick={onToggle}
           className="flex w-full items-center justify-between gap-1.5 px-4 pt-4 pb-1 text-left"
         >
           <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink xl:hidden">
-            <IconCheck width={14} height={14} className="shrink-0 text-status-clean" aria-hidden="true" />
-            {doneList.length} {t('section_done_suffix')}
+            <Icon width={14} height={14} className={cn('shrink-0', toneClass)} aria-hidden="true" />
+            {mobileLabel}
           </span>
           <span className="hidden items-center gap-1.5 text-[11px] font-normal uppercase tracking-wide text-muted xl:flex">
-            <IconCheck width={13} height={13} className="shrink-0 text-status-clean" aria-hidden="true" />
-            {t('wf_done')}
-            <span className="font-medium normal-case text-ink">{doneList.length}</span>
+            <Icon width={13} height={13} className={cn('shrink-0', toneClass)} aria-hidden="true" />
+            {categoryLabel}
+            <span className="font-medium normal-case text-ink">{list.length}</span>
           </span>
-          <IconChevronDown width={14} height={14} className={cn('shrink-0 text-muted transition-transform', doneOpen && 'rotate-180')} aria-hidden="true" />
+          <IconChevronDown width={14} height={14} className={cn('shrink-0 text-muted transition-transform', open && 'rotate-180')} aria-hidden="true" />
         </button>
-        {doneOpen ? (
-          <div className="grid grid-cols-1 gap-3 px-4 pt-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]">
-            {doneList.map((task) => renderRoleTaskCard(task, 'none'))}
-          </div>
+        {open ? (
+          locationGroups ? (
+            <div className="flex flex-col gap-1">
+              {locationGroups.map((group) => (
+                <div key={group.propertyCode}>
+                  <p className="px-4 pb-1 pt-3 text-[12px] font-medium text-muted first:pt-1">{group.label}</p>
+                  {cardGrid(group.tasks)}
+                </div>
+              ))}
+            </div>
+          ) : (
+            cardGrid(list)
+          )
         ) : null}
       </div>
     );
+  }
+
+  function renderDoneSection(
+    doneList: ResolvedTask[],
+    locationGroups: { propertyCode: string; label: string; tasks: ResolvedTask[] }[] | null = null,
+  ) {
+    return renderCollapsibleGroup(doneList, {
+      open: doneOpen,
+      onToggle: () => setDoneOpen((v) => !v),
+      icon: IconCheck,
+      toneClass: 'text-status-clean',
+      mobileLabel: `${doneList.length} ${t('section_done_suffix')}`,
+      categoryLabel: t('wf_done'),
+      locationGroups,
+    });
+  }
+
+  // Briefing "Dashboard fuer Teamleader optimieren" Punkt 4: "Bereits zugewiesen" - dieselbe
+  // Klapp-Mechanik wie "Fertig", nur fuer bereits verteilte Team-Aufgaben statt erledigter.
+  function renderAssignedSection(
+    list: ResolvedTask[],
+    locationGroups: { propertyCode: string; label: string; tasks: ResolvedTask[] }[] | null,
+  ) {
+    return renderCollapsibleGroup(list, {
+      open: assignedOpen,
+      onToggle: () => setAssignedOpen((v) => !v),
+      icon: IconUsers,
+      toneClass: 'text-muted',
+      mobileLabel: `${list.length} ${t('dashboard_already_assigned_suffix')}`,
+      categoryLabel: t('dashboard_already_assigned'),
+      locationGroups,
+    });
   }
 
   return (
@@ -682,7 +831,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
        * Toolbar-Wrapper - als letztes Element in der Flex-Reihenfolge (`xl:order-4`) ist die
        * Kennzahlengruppe die einzige, die bei Platzmangel umbricht, waehrend Standort+Tagesnav
        * (order 1/2) immer in Zeile 1 bleiben. */}
-      {visible.length > 0 ? (
+      {gateVisibleCount > 0 ? (
         <div className="grid grid-cols-3 gap-2 px-4 pt-3 xl:order-4 xl:flex xl:flex-none xl:ml-auto xl:items-center xl:gap-5 xl:px-0 xl:pt-0">
           <SummaryStat
             value={summaryCleaningCount}
@@ -750,7 +899,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         </div>
       ) : null}
 
-      {state.loading && visible.length === 0 && !state.tasksLoadError ? (
+      {state.loading && gateVisibleCount === 0 && !state.tasksLoadError ? (
         <div className="px-4 py-10 text-center text-sm text-muted">{t('loading')}</div>
       ) : state.tasksLoadError ? (
         <div className="px-4 py-10 text-center">
@@ -759,8 +908,8 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             {t('retry')}
           </Button>
         </div>
-      ) : visible.length === 0 ? (
-        <div className="px-4 py-10 text-center text-sm text-muted">{t('no_tasks')}</div>
+      ) : gateVisibleCount === 0 ? (
+        <div className="px-4 py-10 text-center text-sm text-muted">{teamLeadHere ? teamLeadEmptyText : t('no_tasks')}</div>
       ) : state.taskMultiSelect ? (
         // Mehrfachauswahl (Bulk-Zuweisen) bleibt bewusst eine flache Liste ueber ALLE sichtbaren
         // Aufgaben statt der neuen Abschnitte - Punkt 12 "Assignment-Logik nicht veraendern".
@@ -779,10 +928,11 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             />
           ))}
         </div>
-      ) : elevatedHere && taskViewMode !== 'mine' ? (
-        // Briefing "Housekeeping-Dashboard anpassen" Punkt 4/5/6: Teamleader/Standortverantwortliche/
-        // Admin sehen in 'home'/'open' eigene, nach Zuweisungsstatus bzw. Handlungsbedarf sortierte
-        // Ausschnitte statt der Standard-Reinigungen/Aufgaben-Trennung - dieselben Karten/Gruppen
+      ) : showTeamLeadBranch ? (
+        // Briefing "Housekeeping-Dashboard anpassen" Punkt 4/5/6, erweitert um "Dashboard fuer
+        // Teamleader optimieren": Teamleader/Standortverantwortliche/Admin sehen in 'home'/'open'
+        // eigene, nach Zuweisungsstatus bzw. Handlungsbedarf sortierte Ausschnitte statt der
+        // Standard-Reinigungen/Aufgaben-Trennung - dieselben Karten/Gruppen
         // (renderCleaningAndManualTaskGroups/renderDoneSection/TaskGroup), nur mit vorab anders
         // gefilterten Listen. Bestehende Zuweisungsrechte/Assignment-APIs bleiben unangetastet.
         <>
@@ -861,23 +1011,32 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             </>
           ) : null}
 
+          {/* Briefing "Dashboard fuer Teamleader optimieren" Punkt 5: "Offene Team-Aufgaben" zeigt
+           * AUSSCHLIESSLICH die nicht zugewiesenen Team-Aufgaben des Tages, nach Standort gruppiert
+           * (toMixedLocationGroups statt `null`, da die Liste Reinigungen UND Aufgaben mischt) -
+           * bewusst OHNE die "Noch zu verteilen"/"Bereits zugewiesen"-Unterteilung, da in dieser
+           * Ansicht ohnehin nur offene Aufgaben vorkommen (siehe Briefing). */}
           {teamLeadHere && taskViewMode === 'open' ? (
             teamUnassignedTasks.length > 0 ? (
               <TaskGroup
-                text={`${t('dashboard_not_yet_assigned')} · ${teamUnassignedTasks.length}`}
+                text={`${t('dashboard_open_team_tasks')} · ${teamUnassignedTasks.length}`}
                 count={teamUnassignedTasks.length}
-                categoryLabel={t('dashboard_not_yet_assigned')}
+                categoryLabel={t('dashboard_open_team_tasks')}
                 icon={IconTask}
                 toneClass="text-status-attention"
                 tasks={teamUnassignedTasks}
-                locationGroups={null}
+                locationGroups={toMixedLocationGroups(teamUnassignedTasks)}
                 renderCard={(task) => renderRoleTaskCard(task)}
               />
             ) : (
-              <div className="px-4 py-10 text-center text-sm text-muted">{t('no_tasks')}</div>
+              <div className="px-4 py-10 text-center text-sm text-muted">{teamLeadEmptyText}</div>
             )
           ) : null}
 
+          {/* Punkt 4: "Team" (Default) zeigt zuerst die noch nicht verteilten, dann die bereits
+           * zugewiesenen Team-Aufgaben des Tages - beide Male nach Standort gruppiert. "Bereits
+           * zugewiesen" ist per Default eingeklappt (renderAssignedSection/assignedOpen), damit
+           * die noch offene Arbeit auf Mobile nicht nach unten verdraengt wird. */}
           {teamLeadHere && taskViewMode === 'home' ? (
             <>
               {teamUnassignedTasks.length > 0 ? (
@@ -888,25 +1047,28 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                   icon={IconTask}
                   toneClass="text-status-attention"
                   tasks={teamUnassignedTasks}
-                  locationGroups={null}
+                  locationGroups={toMixedLocationGroups(teamUnassignedTasks)}
                   renderCard={(task) => renderRoleTaskCard(task)}
                 />
               ) : null}
-              {teamAssignedTasks.length > 0 ? (
-                <TaskGroup
-                  text={t('dashboard_team_assigned_count', { n: teamAssignedTasks.length })}
-                  count={teamAssignedTasks.length}
-                  categoryLabel={t('capacity_title_short')}
-                  icon={IconUsers}
-                  toneClass="text-muted"
-                  tasks={teamAssignedTasks}
-                  locationGroups={null}
-                  renderCard={(task) => renderRoleTaskCard(task)}
-                />
-              ) : null}
-              {renderDoneSection(teamDoneTasksToday)}
+              {renderAssignedSection(teamAssignedTasks, toMixedLocationGroups(teamAssignedTasks))}
+              {renderDoneSection(teamDoneTasksToday, toMixedLocationGroups(teamDoneTasksToday))}
               {teamUnassignedTasks.length === 0 && teamAssignedTasks.length === 0 && teamDoneTasksToday.length === 0 ? (
-                <div className="px-4 py-10 text-center text-sm text-muted">{t('no_tasks')}</div>
+                <div className="px-4 py-10 text-center text-sm text-muted">{teamLeadEmptyText}</div>
+              ) : null}
+            </>
+          ) : null}
+
+          {/* Punkt 6: "Meine Aufgaben" - dem eingeloggten Teamleader zugewiesene Aufgaben des Tages,
+           * eigenstaendig berechnet (myOwnCleaningToday/myOwnManualToday/myOwnDoneToday, siehe
+           * oben) statt ueber den globalen myTasksOnly-Renderpfad - derselbe Reinigungen-/Aufgaben-
+           * Split wie im Standardpfad, jetzt zusaetzlich mit Standortgruppierung. */}
+          {teamLeadHere && taskViewMode === 'mine' ? (
+            <>
+              {renderCleaningAndManualTaskGroups(myOwnCleaningToday, myOwnManualToday)}
+              {renderDoneSection(myOwnDoneToday)}
+              {myOwnCleaningToday.length === 0 && myOwnManualToday.length === 0 && myOwnDoneToday.length === 0 ? (
+                <div className="px-4 py-10 text-center text-sm text-muted">{teamLeadEmptyText}</div>
               ) : null}
             </>
           ) : null}
@@ -958,7 +1120,12 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         </div>
       </BottomSheet>
 
-      <TaskDetailSheet app={app} task={state.detailTaskId ? visible.find((task) => task.id === state.detailTaskId) || null : null} />
+      {/* Ursachenanalyse Punkt 12: die Detailansicht muss JEDE Aufgabe des Tages finden koennen,
+       * auch wenn der Teamleader gerade eine nicht-eigene Karte aus "Team"/"Offene Team-Aufgaben"
+       * oeffnet - `visible` (myTasksOnly-abhaengig) waere dafuer zu eng, `allTasksToday` ist eine
+       * garantierte Obermenge fuer denselben Tag (siehe oben) und aendert fuer alle anderen Rollen
+       * nichts, da `visible` dort ohnehin ⊆ `allTasksToday` ist. */}
+      <TaskDetailSheet app={app} task={state.detailTaskId ? allTasksToday.find((task) => task.id === state.detailTaskId) || null : null} />
       <ManualTaskFormSheet app={app} />
     </div>
   );
