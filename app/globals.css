@@ -44,6 +44,15 @@
   --color-sand: #E7E0D2;
   --color-sand-dark: #CABF9F;
 
+  /* Housekeeping-Mobile: neutrale Zusammenfassungskarte ("N Reinigungen für dich" u. ae.) - ein
+     eigener, sehr heller Ton statt einer der Status-/Aufgabentyp-Farben oben, damit keine dieser
+     Bedeutungen (Reinigung erforderlich/Aufmerksamkeit/Aufgabentyp) hier mitschwingt. Dieselbe
+     Kombination (Flaeche + dazu passender dunkler Text) dient auch als neutrale Count-Badge auf
+     den Haupttabs ("Meine Aufgaben"/"Im Team offen") - bewusst OHNE Benachrichtigungs-/Warnwirkung,
+     unabhaengig davon, ob der jeweilige Tab aktiv (dunkel) oder inaktiv (hell) ist. */
+  --color-highlight: #F3EDE2;
+  --color-highlight-ink: #171817;
+
   /* Status: Reinigung erforderlich */
   --color-status-dirty: #BC6C4A;
   --color-status-dirty-bg: #F3E4DB;

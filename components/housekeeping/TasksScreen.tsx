@@ -40,6 +40,19 @@ function SummaryStat({ value, label, icon: Icon, toneClass }: { value: number; l
   );
 }
 
+/** Housekeeping-Mobile-Redesign: neutrale Count-Badge auf den Haupttabs ("Meine Aufgaben"/"Im Team
+ * offen", siehe TasksScreen weiter unten) - feste 28px-Kreisflaeche in `highlight`/`highlight-ink`
+ * (app/globals.css), bewusst UNABHAENGIG davon, ob der jeweilige Tab gerade aktiv (dunkler
+ * Hintergrund) oder inaktiv (heller Hintergrund) ist, damit sie niemals wie ein Benachrichtigungs-/
+ * Warnpunkt wirkt (keine der bestehenden Status-/Aufmerksamkeitsfarben). */
+function TabCountBadge({ count }: { count: number }) {
+  return (
+    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-highlight text-[12px] font-semibold tabular-nums text-highlight-ink">
+      {count}
+    </span>
+  );
+}
+
 /** Briefing "Reinigungskarten ueberarbeiten" Punkt 1: gruppiert eine BEREITS priorisierte
  * Task-Liste (sortTasksForDay() lief schon vorher, siehe useHousekeepingApp.ts#tasksForDay) nach
  * `task.propertyCode` - ausschliesslich die echte Apaleo Property-ID/-Code, niemals Unit-Namen
@@ -848,9 +861,9 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
        * einer Warn-/Dashboard-Kachel - bewusst NICHT `status-attention` (das ist der bestehende
        * Terracotta-/Orange-Ton fuer Abreise/Buchungsaenderung/Early-Check-in, siehe TaskCard.tsx -
        * eine neutrale Zusammenfassung darf diese Bedeutung nicht mitbenutzen), sondern der bereits
-       * definierte, bisher ungenutzte warme Beige-Ton `sand`, hier bewusst nur mit halber Deckkraft
-       * (`bg-sand/50`) und ohne eigene Kontur fuer einen leichteren, weniger "kachelhaften" Eindruck
-       * (Nachbesserung: kompakteres Padding + kleinerer Radius `rounded-card` statt `rounded-card-lg`).
+       * eigens dafuer definierte, sehr helle Neutralton `highlight` (#F3EDE2, app/globals.css) und
+       * ohne eigene Kontur fuer einen leichteren, weniger "kachelhaften" Eindruck (Nachbesserung:
+       * kompakteres Padding + kleinerer Radius `rounded-card` statt `rounded-card-lg`).
        * Sie bleibt in BEIDEN Tabs sichtbar (kein Verschwinden/Ersetzen durch einen zweiten,
        * andersfarbigen Banner) - nur Text und Tipp-Verhalten wechseln: in "Meine Aufgaben" fuehrt
        * Antippen direkt zu "Im Team offen" (Pfeil als Hinweis), dort selbst ist die Karte rein
@@ -860,7 +873,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
           <button
             type="button"
             onClick={selectAllTasks}
-            className="mx-4 mt-2 flex w-[calc(100%-2rem)] items-center justify-between gap-3 rounded-card bg-sand/50 px-4 py-2.5 text-left"
+            className="mx-4 mt-2 flex w-[calc(100%-2rem)] items-center justify-between gap-3 rounded-card bg-highlight px-4 py-2.5 text-left"
           >
             <span className="flex flex-col items-start gap-0.5">
               <span className="text-[14px] font-medium text-ink">
@@ -885,7 +898,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             <IconChevronRight width={16} height={16} className="shrink-0 text-muted" aria-hidden="true" />
           </button>
         ) : (
-          <div className="mx-4 mt-2 flex w-[calc(100%-2rem)] flex-col items-start gap-0.5 rounded-card bg-sand/50 px-4 py-2.5 text-left">
+          <div className="mx-4 mt-2 flex w-[calc(100%-2rem)] flex-col items-start gap-0.5 rounded-card bg-highlight px-4 py-2.5 text-left">
             {openClaimableTasksToday.length > 0 ? (
               <>
                 <span className="text-[14px] font-medium text-ink">
@@ -939,22 +952,24 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             onClick={selectMine}
             aria-pressed={state.myTasksOnly}
             className={cn(
-              'flex-1 rounded-full border px-3.5 py-1.5 text-center text-[13px] font-medium transition-colors',
+              'flex flex-1 items-center justify-center gap-2 rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors',
               state.myTasksOnly ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-ink',
             )}
           >
-            {t('my_tasks_only')} {myOpenTasksCount}
+            {t('my_tasks_only')}
+            <TabCountBadge count={myOpenTasksCount} />
           </button>
           <button
             type="button"
             onClick={selectAllTasks}
             aria-pressed={!state.myTasksOnly}
             className={cn(
-              'flex-1 rounded-full border px-3.5 py-1.5 text-center text-[13px] font-medium transition-colors',
+              'flex flex-1 items-center justify-center gap-2 rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors',
               !state.myTasksOnly ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-ink',
             )}
           >
-            {t('open_team_tasks_tab')} {openClaimableTasksToday.length}
+            {t('open_team_tasks_tab')}
+            <TabCountBadge count={openClaimableTasksToday.length} />
           </button>
         </div>
       ) : showScopeRow ? (
