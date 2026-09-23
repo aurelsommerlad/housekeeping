@@ -1108,7 +1108,19 @@ import type { ExtraEquipmentNeed } from './tasks';
 //   Redis-Eintrag wird nicht geloescht. Stale/doppelte sichtbare Tasks wurden analysiert und sind
 //   durch die bestehende, rein aus Live-Apaleo-Daten abgeleitete Task-Architektur strukturell
 //   bereits ausgeschlossen (keine Aenderung noetig).
-export const APP_VERSION = '2.35.0';
+//
+// v2.35.1 - Bugfix (live reproduziert): "Buchung geändert" zeigte weiterhin "17.09. -> 17.09." bzw.
+// "22.09. -> 22.09." trotz des in v2.34.0 eingefuehrten defensiven Read-Filters. Ursache:
+// hasRealChange() in api/booking-changes.js verglich die gespeicherten Rohwerte per `!==`, OHNE sie
+// erneut zu normalisieren - ein Alt-Datensatz aus der Zeit VOR dem allerersten dateOnly()-Fix
+// enthaelt arrivalFrom/-To bzw. departureFrom/-To noch als volle ISO-Datumszeit; unterscheiden sich
+// zwei solche Werte nur in der Uhrzeit, war der rohe String-Vergleich `!==` faelschlich wahr, obwohl
+// der angezeigte Kalendertag identisch ist. Jedes Feld wird jetzt vor dem Vergleich exakt so
+// normalisiert wie bei der Anzeige (Datumsfelder ueber dieselbe dateOnly()-Funktion, Personenzahlen
+// explizit als Number). Der fälschlich angezeigte orange Punkt auf der Karte war eine direkte Folge
+// desselben Bugs (task.bookingChange war nicht null) und ist mit diesem Fix ebenfalls behoben - keine
+// separate Aenderung an der Punkt-Logik selbst noetig, die war bereits korrekt.
+export const APP_VERSION = '2.35.1';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
