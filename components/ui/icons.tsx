@@ -432,6 +432,43 @@ export function IconGlobe(props: IconProps) {
   );
 }
 
+/** Fuer "Buchung in Apaleo öffnen" (Briefing "Reinigungsdetailansicht optimieren" Punkt 5) -
+ * schlichtes Standard-Symbol fuer einen externen Link/neuen Tab, admin-only neben der jeweiligen
+ * Reservierung. */
+export function IconExternalLink(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M9 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" />
+      <path d="M14 4h6v6" />
+      <path d="M20 4 10 14" />
+    </svg>
+  );
+}
+
+/** "•••"-Menuebutton (Briefing Punkt 9: Bearbeiten/Entfernen des wichtigen Hinweises nicht mehr
+ * dauerhaft sichtbar, sondern hinter diesem Menue). */
+export function IconMoreHorizontal(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="5" cy="12" r="1.3" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="12" r="1.3" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/** Fuer "Aus Buchung übernommen" (Briefing Punkt 15) - dezenter Info-Hinweis, ausschliesslich fuer
+ * Admin/Standortverantwortliche sichtbar. */
+export function IconInfo(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 11.2v5" />
+      <circle cx="12" cy="7.8" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export const NAV_ICONS = {
   bed: IconBed,
   chart: IconChart,

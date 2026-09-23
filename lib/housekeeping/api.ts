@@ -1028,7 +1028,40 @@ import type { ExtraEquipmentNeed } from './tasks';
 // Route (Mock-Redis, 7 Assertions): reine Uhrzeitaenderung weiterhin ignoriert, echte
 // Datumsaenderung weiterhin zuverlaessig erkannt, ein Alt-Snapshot im vollen ISO-Format loest keine
 // falsche Aenderung mehr aus, ein reiner Babybett-Wechsel wird nicht mehr als Aenderung erkannt.
-export const APP_VERSION = '2.32.2';
+// v2.33.0 - MINOR: Detailansicht einer Reinigung grundlegend nach neuer visueller Referenz
+// optimiert (KOPF -> ggf. BUCHUNGSÄNDERUNG -> BUCHUNG -> ggf. WICHTIGER HINWEIS -> ARBEITSAUFTRAG
+// -> Aktionen), ausschliesslich UI/UX - keine Aenderung an Task-Ableitung, DEPARTURE/TURNOVER-/
+// INTERCLEAN-/BABY-Logik, Timer/Pause, Uebersetzung, Aufgabenlogik, Standortgruppierung oder
+// Redis-Struktur:
+// - Kopf zeigt keine separate Gaesteinformationszeile mehr (vormals TaskCard.tsx#OccupancyLine) -
+//   Belegung steht ausschliesslich in "Buchung".
+// - "Buchung" fasst Reservierungsdaten, Belegung UND Reservierungskommentar in einem Bereich
+//   zusammen; bei einer einzelnen Reservierung jetzt "Abreise · 2 Erwachsene" statt einer
+//   Kennzahl ohne Kontext, bei Turnover bleibt die zweispaltige Abreise/Anreise-Trennung mit dem
+//   Reservierungskommentar eindeutig der richtigen Seite (Anreise) zugeordnet.
+// - Neuer Apaleo-Deep-Link ("Buchung in Apaleo öffnen", https://app.apaleo.com/{propertyCode}/
+//   reservations/{reservationId}/, URL-encodiert, neuer Tab) ausschliesslich fuer Admin, je
+//   Reservierung ein eigenes Icon bei Turnover.
+// - "Buchungsänderung" ist jetzt eine kompakte, standardmaessig eingeklappte Change-Bar (Icon +
+//   Zusammenfassung + Chevron) statt einer mehrzeiligen Karte, aufklappbar fuer die vollstaendige
+//   Aufschluesselung - unveraendert VOR "Buchung" positioniert.
+// - "Wichtiger Hinweis": Bearbeiten/Entfernen sind admin-only hinter einem "•••"-Menue verborgen
+//   statt dauerhaft sichtbarer Links. Ein blockierter Startversuch fuehrt jetzt zu einer
+//   PERSISTENTEN (nicht mehr nach 2s automatisch verschwindenden) Erklaerung direkt im
+//   Hinweisbereich plus hervorgehobenem Bestaetigen-Button - verschwindet erst nach echter
+//   Bestaetigung. Der Startbutton selbst sieht nie mehr vorsorglich "disabled" aus und zeigt keine
+//   Tooltip-Warnung mehr (Klick fuehrt bei fehlender Bestaetigung direkt zum Hinweisbereich).
+// - "Vorbereitung": die Checkliste steht jetzt VOR dem Admin-Editor; automatisch aus der Apaleo-
+//   Buchung (BABY) uebernommene Punkte zeigen fuer Admin/Standortverantwortliche dezent "Aus
+//   Buchung übernommen" (fuer Housekeeper nicht sichtbar). Der Admin-Editor ist nicht mehr
+//   dauerhaft als Chip-Reihe sichtbar, sondern hinter "+ Vorbereitung hinzufügen" verborgen. Ein
+//   blockierter Abschlussversuch zeigt denselben persistenten Erklaerungs-Mechanismus wie beim
+//   wichtigen Hinweis (nicht mehr dauerhaft sichtbar).
+// - "Freigeben" ist keine eigene dritte Aktion mehr unterhalb des Startbuttons - die Funktion
+//   existiert unveraendert im Zuweisungsbereich (CleaningAssignmentSection), sobald aufgeklappt.
+// Verifiziert per tsc/eslint/build; die zugrunde liegende Buchungsaenderungs-/Vorbereitungs-/
+// BABY-Business-Logik selbst ist unveraendert (nur neue Darstellung derselben Daten).
+export const APP_VERSION = '2.33.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

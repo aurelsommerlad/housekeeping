@@ -10,11 +10,12 @@ import type { HousekeepingApp, ResolvedTask } from '@/lib/housekeeping/useHousek
 import { BottomSheet } from './BottomSheet';
 import { TonePill } from './TonePill';
 import { TimeFlag } from './TimeFlag';
-import { OccupancyLine, WorkStatus } from './TaskCard';
+import { WorkStatus } from './TaskCard';
 import { Button } from '@/components/ui/Button';
 import {
   DoubleupIcon, IconAlertCircle, IconArrowRight, IconCalendar, IconCalendarClock, IconCheck, IconChevronDown, IconCircle, IconClock,
-  IconClose, IconEdit, IconGlobe, IconMessageCircle, IconPlus, IconRefresh, IconRotateCcw, IconTask, IconUser,
+  IconClose, IconEdit, IconExternalLink, IconGlobe, IconInfo, IconMessageCircle, IconMoreHorizontal, IconPlus, IconRefresh, IconRotateCcw,
+  IconTask, IconUser,
 } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
@@ -65,13 +66,66 @@ function cleanGuestComment(raw: string): string {
   return raw.split('|||').map((part) => part.trim()).filter(Boolean).join('\n');
 }
 
+/** Briefing "Reinigungsdetailansicht optimieren" Punkt 5: Deep-Link zur Reservierung in Apaleo -
+ * ausschliesslich fuer Admin sichtbar (der Aufrufer entscheidet ueber die Berechtigung, diese
+ * Komponente selbst rendert bedingungslos, sobald sie eingebunden wird). `propertyCode` ist der
+ * ECHTE technische Apaleo-Property-Code (siehe tasks.ts#unitPropertyCode - task.propertyCode,
+ * NICHT der Anzeigename wie "LÆKE"), `reservationId` die rohe Apaleo-Reservierungs-ID (r.id, siehe
+ * tasks.ts#reservationSummary). Beide Bestandteile werden URL-encodiert, keine Credentials in der
+ * URL. Oeffnet in einem neuen Tab; `stopPropagation`, damit ein Klick nicht versehentlich eine
+ * umschliessende Zeile/Karte mitausloest. */
+function ApaleoLinkButton({
+  propertyCode, reservationId, t,
+}: {
+  propertyCode: string; reservationId: string; t: HousekeepingApp['t'];
+}) {
+  const url = `https://app.apaleo.com/${encodeURIComponent(propertyCode)}/reservations/${encodeURIComponent(reservationId)}/`;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      title={t('open_in_apaleo_label')}
+      aria-label={t('open_in_apaleo_label')}
+      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-control text-muted transition-colors hover:bg-warm-white hover:text-ink"
+    >
+      <IconExternalLink width={13} height={13} aria-hidden="true" />
+    </a>
+  );
+}
+
 /** Punkt 5: "2 Erwachsene · 3 Kinder" statt separater Tabellenzeilen; keine Kinder -> nur
  * "2 Erwachsene", keine zusaetzliche "Kinder: -"-Zeile. */
-function CompactReservation({ info, heading, t }: { info: TaskReservationSummary; heading?: string; t: HousekeepingApp['t'] }) {
+function CompactReservation({
+  info, heading, t, inlineTypeLabel, comment, apaleoLink,
+}: {
+  info: TaskReservationSummary; heading?: string; t: HousekeepingApp['t'];
+  /** Briefing "Reinigungsdetailansicht optimieren" Punkt 2/3: eine EINZELNE Reservierung (kein
+   * Turnover, also keine eigene ABREISE/ANREISE-Ueberschrift) zeigt den Reservierungstyp
+   * stattdessen direkt in der Belegungszeile ("Abreise · 2 Erwachsene") statt einer separaten Zeile
+   * dazwischen. Nur gesetzt, wenn KEIN `heading` uebergeben wird. */
+  inlineTypeLabel?: string;
+  /** Punkt 4: der Reservierungskommentar gehoert eindeutig zu GENAU dieser Reservierung - wird
+   * deshalb direkt hier innerhalb ihres eigenen Blocks gerendert statt in einem gemeinsamen Block
+   * ausserhalb, der bei Turnover nicht erkennen liesse, zu welcher Seite der Kommentar gehoert. */
+  comment?: string;
+  /** Punkt 5: Apaleo-Deep-Link fuer GENAU diese Reservierung - `null`/`undefined` zeigt keinen
+   * Link (Aufrufer prueft bereits `isAdmin`). */
+  apaleoLink?: { propertyCode: string; reservationId: string } | null;
+}) {
   return (
     <div className="flex flex-col gap-1">
-      {heading ? <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{heading}</p> : null}
-      <p className="font-medium text-ink">{info.guestName || t('unassigned')}</p>
+      {heading ? (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{heading}</p>
+          {apaleoLink ? <ApaleoLinkButton {...apaleoLink} t={t} /> : null}
+        </div>
+      ) : null}
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-medium text-ink">{info.guestName || t('unassigned')}</p>
+        {!heading && apaleoLink ? <ApaleoLinkButton {...apaleoLink} t={t} /> : null}
+      </div>
       {/* Punkt 8: Buchungsnummer + "gebucht am" kompakt in EINER Zeile statt zweier Zeilen mit
        * eigener Ueberschrift ("Gebucht am\n10.08.2026") - dieselben Werte, nur zusammengefasst. */}
       <p className="text-[12px] text-muted">
@@ -80,6 +134,7 @@ function CompactReservation({ info, heading, t }: { info: TaskReservationSummary
       </p>
       {info.adults != null ? (
         <p className="text-[12.5px] text-ink">
+          {inlineTypeLabel ? `${inlineTypeLabel} · ` : ''}
           {t('search_adults_count', { n: info.adults })}
           {info.childrenCount > 0 ? ` · ${t('reservation_children_count', { n: info.childrenCount })}` : ''}
         </p>
@@ -110,6 +165,15 @@ function CompactReservation({ info, heading, t }: { info: TaskReservationSummary
           </div>
         </div>
       ) : null}
+      {comment ? (
+        <div className="mt-1.5 border-t border-line pt-1.5">
+          <p className="mb-0.5 flex items-center gap-1.5 text-[12px] font-medium text-muted">
+            <IconMessageCircle width={13} height={13} className="shrink-0" aria-hidden="true" />
+            {t('guest_comment')}
+          </p>
+          <p className="whitespace-pre-wrap text-[12.5px] text-ink">{cleanGuestComment(comment)}</p>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -130,10 +194,15 @@ function TimeBadge({ icon, tone, title, children }: { icon: Parameters<typeof Ti
  * (siehe types.ts#BookingChangeRecord/api/booking-changes.js). Apaleo liefert nur den aktuellen
  * Stand; der Vorher-Wert kommt ausschliesslich aus dem separat gespeicherten Snapshot.
  *
- * Nutzerfeedback: keine eigene "Zur Kenntnis nehmen"-Aktion mehr - die Karte zeigt ausschliesslich
- * die Aenderung selbst (Datum/Personenanzahl/Einheit). Die Kenntnisnahme (fuer den Aufmerksamkeits-
- * punkt auf der kompakten Karte, siehe TasksScreen.tsx) passiert jetzt automatisch beim Oeffnen
- * dieser Detailansicht (siehe TaskDetailSheet()#useEffect oben), ohne eigenen Klick. */
+ * Briefing "Reinigungsdetailansicht optimieren" Punkt 6: kompakte, warme Change-Bar statt einer
+ * mehrzeiligen Karte - standardmaessig eingeklappt (EIN Icon + EINE Zusammenfassungszeile + Chevron),
+ * die vollstaendige Aufschluesselung (Zeitstempel + jedes tatsaechlich geaenderte Feld) steht per
+ * Klick/Chevron aufklappbar zur Verfuegung. Die zugrunde liegende Aenderungs-/Ungesehen-Logik
+ * (Erkennung, Acknowledgement beim Oeffnen der Detailansicht) bleibt unveraendert - hier aendert
+ * sich ausschliesslich die Darstellung. Keine eigene "Zur Kenntnis nehmen"-Aktion mehr - die
+ * Kenntnisnahme passiert automatisch beim Oeffnen dieser Detailansicht (siehe TaskDetailSheet()
+ * #useEffect oben).
+ */
 function BookingChangeDetail({
   change, orphanedSchedule, t, unitLabel,
 }: {
@@ -143,38 +212,48 @@ function BookingChangeDetail({
    * bekannt ist - siehe TaskDetailSheet()#unitDisplayName. */
   unitLabel: (unitId: string | undefined) => string;
 }) {
-  // Nutzerfeedback "nicht schoen dargestellt": Titel/Datum standen bisher in einer eigenen,
-  // durch das Icon eingerueckten Zeile, waehrend die eigentliche Aenderung (Abreise/Anreise/
-  // Personen/Einheit) darunter bei der Karten-Innenkante begann - beide Bloecke hatten dadurch
-  // unterschiedliche linke Kanten (optisch "zerrissen"). Jetzt EINE gemeinsame Spalte neben dem
-  // Icon, alles auf derselben Kante ausgerichtet; die eigentliche Aenderung (der Grund, warum die
-  // Karte ueberhaupt da ist) ist zusaetzlich als klar hervorgehobene Zeile(n) mit einem Pfeil-Icon
-  // statt eines reinen Textpfeils gestaltet, statt mehrerer gleich schwerer "Label: Wert"-Zeilen.
-  const changedFields: { label: string; from: string; to: string }[] = [];
+  const [expanded, setExpanded] = useState(false);
+  const changedFields: { kind: 'arrival' | 'departure' | 'guests' | 'unit'; label: string; from: string; to: string }[] = [];
   if (change.arrivalFrom !== undefined || change.arrivalTo !== undefined) {
-    changedFields.push({ label: t('label_arrival'), from: formatDayMonth(change.arrivalFrom || null), to: formatDayMonth(change.arrivalTo || null) });
+    changedFields.push({ kind: 'arrival', label: t('label_arrival'), from: formatDayMonth(change.arrivalFrom || null), to: formatDayMonth(change.arrivalTo || null) });
   }
   if (change.departureFrom !== undefined || change.departureTo !== undefined) {
-    changedFields.push({ label: t('label_departure'), from: formatDayMonth(change.departureFrom || null), to: formatDayMonth(change.departureTo || null) });
+    changedFields.push({ kind: 'departure', label: t('label_departure'), from: formatDayMonth(change.departureFrom || null), to: formatDayMonth(change.departureTo || null) });
   }
   if (change.guestsFrom !== undefined || change.guestsTo !== undefined) {
-    changedFields.push({ label: t('booking_changed_guests_label'), from: String(change.guestsFrom ?? '–'), to: String(change.guestsTo ?? '–') });
+    changedFields.push({ kind: 'guests', label: t('booking_changed_guests_label'), from: String(change.guestsFrom ?? '–'), to: String(change.guestsTo ?? '–') });
   }
   if (change.unitFrom !== undefined || change.unitTo !== undefined) {
-    changedFields.push({ label: t('booking_changed_unit_label'), from: unitLabel(change.unitFrom), to: unitLabel(change.unitTo) });
+    changedFields.push({ kind: 'unit', label: t('booking_changed_unit_label'), from: unitLabel(change.unitFrom), to: unitLabel(change.unitTo) });
   }
+  // Bei genau EINER Aenderung eine sprechende Zusammenfassung direkt in der Kompaktzeile ("Termin
+  // geändert · 22.09. → 24.09."); bei mehreren gleichzeitigen Aenderungen bleibt die Kompaktzeile
+  // generisch, die Einzelheiten stehen nach dem Aufklappen zur Verfuegung.
+  const summaryKeyByKind = {
+    arrival: 'booking_changed_date_summary', departure: 'booking_changed_date_summary',
+    guests: 'booking_changed_guests_summary', unit: 'booking_changed_unit_summary',
+  } as const;
+  const summaryText = changedFields.length === 1
+    ? `${t(summaryKeyByKind[changedFields[0].kind])} · ${changedFields[0].from} → ${changedFields[0].to}`
+    : t('booking_changed_title');
   return (
-    <div className="rounded-control border border-status-progress/25 bg-status-progress-bg px-3.5 py-3">
-      <div className="flex items-start gap-2">
-        <IconRefresh width={16} height={16} className="mt-0.5 shrink-0 text-status-progress" aria-hidden="true" />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <p className="text-[11.5px] font-semibold uppercase tracking-wide text-status-progress">{t('booking_changed_title')}</p>
-            <p className="text-[11.5px] text-muted">{formatDateShort(change.changedAt)} · {formatClock(change.changedAt)}</p>
-          </div>
-          <div className="mt-2 flex flex-col gap-1.5">
+    <div className="rounded-control border border-status-progress/25 bg-status-progress-bg">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left"
+        aria-expanded={expanded}
+      >
+        <IconRefresh width={15} height={15} className="shrink-0 text-status-progress" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-status-progress">{summaryText}</span>
+        <IconChevronDown width={14} height={14} className={cn('shrink-0 text-status-progress transition-transform', expanded && 'rotate-180')} aria-hidden="true" />
+      </button>
+      {expanded ? (
+        <div className="border-t border-status-progress/20 px-3.5 pb-3 pt-2.5">
+          <p className="mb-2 text-[11.5px] text-muted">{formatDateShort(change.changedAt)} · {formatClock(change.changedAt)}</p>
+          <div className="flex flex-col gap-1.5">
             {changedFields.map((field) => (
-              <div key={field.label} className="flex items-center gap-2 text-[13px]">
+              <div key={field.kind} className="flex items-center gap-2 text-[13px]">
                 <span className="w-[82px] shrink-0 text-[11px] uppercase tracking-wide text-muted">{field.label}</span>
                 <span className="font-medium text-ink">{field.from}</span>
                 <IconArrowRight width={13} height={13} className="shrink-0 text-status-progress" aria-hidden="true" />
@@ -195,7 +274,7 @@ function BookingChangeDetail({
             </p>
           ) : null}
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -396,7 +475,7 @@ function PrimaryAction({
   onPreparationBlocked: () => void;
 }) {
   const {
-    t, claimTask, releaseTask, startTaskTimer, pauseTaskTimer, openLinenCompletion, completeTaskInspection, noticeForTask,
+    t, claimTask, startTaskTimer, pauseTaskTimer, openLinenCompletion, completeTaskInspection, noticeForTask,
     completeManualTask, reopenTask, reopenManualTask, shortStaffName, state,
   } = app;
   const canAct = isManager || mine;
@@ -490,41 +569,30 @@ function PrimaryAction({
   }
 
   if (task.status === 'assigned' && canAct) {
-    // Punkt 3 (UX-Feinschliff): Button bleibt an seiner normalen Position, wirkt aber ECHT
-    // disabled (opacity/pointer-events ueber Button.tsx#disabled, kein konkurrierender Text
-    // daneben) statt eines dauerhaft sichtbaren Warnhinweises. Da ein natives disabled-Element
-    // selbst keinen Klick mehr feuert, faengt die umschliessende <div> den Tap trotzdem ab
-    // (pointer-events-none auf dem Button gibt den Treffer an sie weiter) und hebt die
-    // Notice-Card hervor/scrollt dorthin (siehe onNoticeBlocked in der Elternkomponente) - so
-    // bleibt "trotzdem tippen -> Hinweis hervorheben" moeglich, ohne auf einen echten Klick-
-    // Handler am (fuer Tastatur/Screenreader) tatsaechlich deaktivierten Button zu verzichten.
-    const blocked = !isManager && !!notice && !currentUserAckCurrent;
+    // Briefing "Reinigungsdetailansicht optimieren" Punkt 8/17/18: der Button sieht IMMER wie ein
+    // normaler, klickbarer Primaerbutton aus (kein vorsorgliches `disabled`, keine Tooltip-Warnung
+    // am Button selbst) - ein unbestaetigter wichtiger Hinweis wird erst beim tatsaechlichen
+    // Klickversuch geloest (Scroll+Hervorhebung+Erklaerung direkt im Hinweisbereich, siehe
+    // onNoticeBlocked in der Elternkomponente), statt den Button vorab optisch zu entwerten.
+    // "Freigeben" ist keine eigene dritte Aktion mehr, sondern Teil des Zuweisungs-Bereichs
+    // (siehe CleaningAssignmentSection - dort bereits vorhanden, sobald aufgeklappt).
+    const notAckedByHousekeeper = !isManager && !!notice && !currentUserAckCurrent;
     return (
-      <div className="flex flex-col gap-2">
-        <div onClick={blocked ? onNoticeBlocked : undefined} className={blocked ? 'cursor-not-allowed' : undefined}>
-          <Button
-            variant="primary"
-            className="w-full"
-            disabled={blocked}
-            title={blocked ? t('notice_start_hint') : undefined}
-            onClick={() => startTaskTimer(task.id)}
-          >
-            {t('start_clean')}
-          </Button>
-        </div>
-        <Button variant="ghost" className="w-full" onClick={() => releaseTask(task.id)}>
-          {t('release_task')}
-        </Button>
-      </div>
+      <Button
+        variant="primary"
+        className="w-full"
+        onClick={() => { if (notAckedByHousekeeper) { onNoticeBlocked(); return; } startTaskTimer(task.id); }}
+      >
+        {t('start_clean')}
+      </Button>
     );
   }
 
   if (task.status === 'in_progress' && canAct) {
-    // Briefing "Vorbereitung als Checkliste" Punkt 4/5: eine offene Vorbereitung blockiert
-    // ausschliesslich den ABSCHLUSS, nie den Start (siehe onNoticeBlocked oben fuer die
-    // umgekehrte, separate Blockierung). Identisches Muster wie beim Start-Button: der Button
-    // bleibt sichtbar und wirkt ECHT disabled, kein konkurrierender Text daneben - die
-    // umschliessende <div> faengt den Tap trotzdem ab und fuehrt zum Problem (Vorbereitung).
+    // Briefing "Vorbereitung als Checkliste" Punkt 4/5, "Reinigungsdetailansicht optimieren" Punkt
+    // 14/17/18: identisches Prinzip wie beim Start-Button oben - der Abschluss-Button bleibt ein
+    // normaler Primaerbutton, eine offene Vorbereitung wird erst beim Klickversuch geloest (Scroll+
+    // Hervorhebung+Erklaerung im Vorbereitungsbereich, siehe onPreparationBlocked).
     const openPreparationCount = requiredPreparationItemIds(task).filter((id) => !task.preparationCompletions[id]).length;
     const prepBlocked = openPreparationCount > 0;
     return (
@@ -532,17 +600,13 @@ function PrimaryAction({
         <Button variant="secondary" className="w-full" onClick={() => pauseTaskTimer(task.id)}>
           {t('pause_clean')}
         </Button>
-        <div onClick={prepBlocked ? onPreparationBlocked : undefined} className={prepBlocked ? 'cursor-not-allowed' : undefined}>
-          <Button
-            variant="primary"
-            className="w-full"
-            disabled={prepBlocked}
-            title={prepBlocked ? t('preparation_incomplete_hint') : undefined}
-            onClick={() => openLinenCompletion(task)}
-          >
-            {t('finish_clean')}
-          </Button>
-        </div>
+        <Button
+          variant="primary"
+          className="w-full"
+          onClick={() => { if (prepBlocked) { onPreparationBlocked(); return; } openLinenCompletion(task); }}
+        >
+          {t('finish_clean')}
+        </Button>
       </div>
     );
   }
@@ -589,20 +653,43 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [scheduleFormOpen, setScheduleFormOpen] = useState(false);
   const [scheduleDraft, setScheduleDraft] = useState('');
-  // Punkt 7: kurzzeitige Hervorhebung der Notice-Card, wenn ein Housekeeper "Reinigung starten"
-  // versucht, ohne den wichtigen Hinweis bestaetigt zu haben (siehe onNoticeBlocked unten).
+  // Briefing "Reinigungsdetailansicht optimieren" Punkt 7/8/18: Scroll-Ziel fuer einen blockierten
+  // Startversuch. Anders als zuvor bleibt die Hervorhebung PERSISTENT (kein 2-Sekunden-Timeout) -
+  // sie verschwindet erst, sobald der Hinweis tatsaechlich bestaetigt wurde (siehe unten,
+  // `!currentUserAckCurrent`-Bedingungen ueberall dort, wo `noticeBlockedAttempted` gelesen wird).
   const noticeRef = useRef<HTMLDivElement>(null);
-  const [noticeHighlight, setNoticeHighlight] = useState(false);
-  // Briefing "Vorbereitung als Checkliste" Punkt 4/5: dieselbe Scroll+Highlight-Mechanik wie beim
-  // wichtigen Hinweis, aber vollstaendig getrennt - eine offene Vorbereitung blockiert den
-  // ABSCHLUSS, nie den Start (siehe onPreparationBlocked unten).
+  const [noticeBlockedAttempted, setNoticeBlockedAttempted] = useState(false);
+  // Briefing Punkt 9: "•••"-Menue statt dauerhaft sichtbarer Bearbeiten/Entfernen-Links unter dem
+  // Hinweis.
+  const [noticeMenuOpen, setNoticeMenuOpen] = useState(false);
+  // Briefing Punkt 14/18: identisches Prinzip wie bei `noticeBlockedAttempted`, aber fuer die
+  // separate Abschluss-Blockierung (offene Vorbereitung) - persistent bis alle Punkte abgehakt sind.
   const prepRef = useRef<HTMLDivElement>(null);
-  const [prepHighlight, setPrepHighlight] = useState(false);
+  const [prepBlockedAttempted, setPrepBlockedAttempted] = useState(false);
+  // Briefing Punkt 16: die admin-Editor-Chips fuer "welche Vorbereitung gilt ueberhaupt" sind nicht
+  // mehr dauerhaft sichtbar, sondern hinter "+ Vorbereitung hinzufügen" verborgen.
+  const [addPrepOpen, setAddPrepOpen] = useState(false);
   // Briefing "automatische Uebersetzung frei eingegebener operativer Texte" Punkt 9: zwei
   // getrennte "Original anzeigen"-Toggles (Hinweis/Aufgaben-Beschreibung), rein clientseitiger
   // UI-Zustand - keine eigene Persistenz noetig, faellt beim Schliessen des Sheets zurueck.
   const [noticeShowOriginal, setNoticeShowOriginal] = useState(false);
   const [descriptionShowOriginal, setDescriptionShowOriginal] = useState(false);
+
+  // Briefing "Reinigungsdetailansicht optimieren": beim Wechsel auf einen anderen Task duerfen
+  // Blockier-/Menue-Zustaende eines vorherigen Tasks nicht "durchscheinen". Reset waehrend des
+  // Renderns (React-Muster "Anpassen von State bei Prop-Aenderung", https://react.dev/learn/you-
+  // might-not-need-an-effect#adjusting-some-state-when-a-prop-changes, dort bewusst mit `useState`
+  // statt `useRef` fuer den Vorher-Wert - ein Ref darf laut React nicht waehrend des Renderns
+  // gelesen/geschrieben werden) statt in einem Effekt - ein synchrones setState direkt im
+  // Effekt-Body wuerde einen unnoetigen zusaetzlichen Renderdurchlauf ausloesen.
+  const [prevTaskId, setPrevTaskId] = useState<string | null>(null);
+  if (task && prevTaskId !== task.id) {
+    setPrevTaskId(task.id);
+    setNoticeBlockedAttempted(false);
+    setNoticeMenuOpen(false);
+    setPrepBlockedAttempted(false);
+    setAddPrepOpen(false);
+  }
 
   // Briefing "Reinigungskarten ueberarbeiten" Punkt 5: "gesehen" gilt GENAU dann, wenn die
   // Detailansicht fuer DIESEN Task tatsaechlich geoeffnet wurde - nicht schon beim Laden/Scrollen
@@ -768,30 +855,30 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   const requiredPrepIds = requiredPreparationItemIds(task);
   const openPreparationCount = requiredPrepIds.filter((id) => !task.preparationCompletions[id]).length;
 
-  // Nutzerfeedback "keine konkurrierende Meldung am Start-Button": KEIN Toast mehr (der erschien
-  // optisch wie ein zweiter, schwarzer Hinweis direkt neben dem schwarzen Start-Button) und KEIN
-  // zusaetzlicher, dauerhaft eingeblendeter Erklaerungstext in der Hinweis-Karte (Nutzerfeedback:
-  // die Variante ohne diesen Text war klarer) - ein blockierter Start-Versuch fuehrt ausschliesslich
-  // per Scroll+kurzem Rahmen-Highlight zur Hinweis-Karte, ohne dass irgendwo sonst eine Meldung
-  // aufploppt oder zusaetzlicher Text erscheint.
+  // Briefing "Reinigungsdetailansicht optimieren" Punkt 7/8/18: KEIN Toast, KEINE Warnmeldung am
+  // Startbutton selbst - ein blockierter Startversuch scrollt zum wichtigen Hinweis, hebt ihn
+  // hervor UND blendet dort (nicht am Button) die Erklaerung ein, warum die Reinigung noch nicht
+  // starten kann. Persistent (kein Timeout) - verschwindet erst mit der tatsaechlichen Bestaetigung
+  // (siehe `noticeBlockedAttempted` oben).
   function handleNoticeBlocked() {
-    setNoticeHighlight(true);
+    setNoticeBlockedAttempted(true);
     noticeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setTimeout(() => setNoticeHighlight(false), 2000);
   }
 
   // Briefing "Vorbereitung als Checkliste" Punkt 4/5: identisches Muster wie handleNoticeBlocked,
   // aber fuer die separate Abschluss-Blockierung (offene Vorbereitung) - fuehrt zum Bereich
   // "Vorbereitung" statt zum wichtigen Hinweis, ebenfalls ohne Toast/konkurrierende Meldung.
   function handlePreparationBlocked() {
-    setPrepHighlight(true);
+    setPrepBlockedAttempted(true);
     prepRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setTimeout(() => setPrepHighlight(false), 2000);
   }
 
   const hasTimeRow = task.type === 'turnover' || task.type === 'departure';
 
   const isManualTask = task.type === 'manual';
+  // Briefing "Reinigungsdetailansicht optimieren" Punkt 5: der Apaleo-Deep-Link ist ausschliesslich
+  // fuer echte Admins sichtbar (nicht Standortverantwortliche/Team-Leads/Housekeeper).
+  const canOpenInApaleo = isAdmin(state.user);
 
   return (
     <BottomSheet open={open} onClose={closeTaskModal}>
@@ -1090,50 +1177,63 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           </div>
         ) : null}
 
-        {/* Briefing "Reinigungsdetailansicht ueberarbeiten" Punkt 1: kompakte ABREISE/ANREISE-
-         * Belegungszeile - dieselbe, bereits bestehende Komponente wie auf der kompakten Karte
-         * (TaskCard.tsx#OccupancyLine), hier ohne die manuellen Vorbereitungs-Icons (die stehen
-         * weiter unten ausfuehrlich in "Arbeitsauftrag") - rendert fuer 'manual'/'extra' oder ohne
-         * Reservierungsdaten von selbst nichts. */}
-        {!isManualTask ? <OccupancyLine task={task} lang={state.lang} doubleTypes={[]} /> : null}
-
         {/* Punkt 6: die fruehere, hier zusaetzlich stehende Zuweisungszeile wurde entfernt - der
          * Name gehoert visuell eindeutig zur "Reinigung"-Sektion weiter unten (Mitarbeiter+Status
          * zusammengefuehrt), eine zweite Anzeige an dieser Stelle wirkte nur zerstreut. Fuer
          * manuelle Aufgaben (kein Reinigungs-Workflow) steht die Zuweisung stattdessen direkt vor
-         * der Hauptaktion (siehe unten). */}
+         * der Hauptaktion (siehe unten). Briefing "Reinigungsdetailansicht optimieren" Punkt 2:
+         * Guest-/Belegungsinformationen erscheinen NICHT mehr separat hier (vormals
+         * TaskCard.tsx#OccupancyLine) - sie stehen jetzt ausschliesslich innerhalb von "Buchung"
+         * unten (Punkt 3). */}
 
-        {/* "Buchung" (Briefing "Reinigungsdetailansicht ueberarbeiten" Punkt 2): Reservierungsdaten
-         * und Reservierungskommentar in EINEM gemeinsamen Bereich statt zweier gleichrangiger
-         * Karten - der Kommentar ist eine sekundaere Information INNERHALB der Buchung (kleinere
-         * Schrift, eigenes Sprechblasen-Icon, per Trennlinie abgesetzt statt eigener Card). Bei
-         * Turnover weiterhin zweispaltig (Desktop/Tablet), strikt getrennt in Abreise/Naechste
-         * Anreise (unveraendert). "Buchung in Apaleo öffnen" bewusst NICHT ergaenzt - es gibt
-         * aktuell keine zuverlaessige Web-URL/ID-Logik zu einer Apaleo-Reservierung im Bestand
-         * dieser App (nur der REST-API-Token-Fluss in api/_apaleo.js), siehe Abschlussbericht. */}
-        {task.reservationInfo || task.nextReservationInfo || task.comment ? (
+        {/* Buchungsaenderung (Punkt 9/6): steht laut Briefing VOR "Buchung" - nur fuer
+         * Apaleo-abgeleitete Tasks (turnover/departure/stayover) ueberhaupt moeglich, siehe
+         * types.ts#BookingChangeRecord. `key={task.id}` sorgt dafuer, dass der Aufklapp-Zustand
+         * beim Wechsel auf einen anderen Task nicht "durchscheint". */}
+        {task.bookingChange ? (
+          <BookingChangeDetail key={task.id} change={task.bookingChange} orphanedSchedule={orphanedSchedule} t={t} unitLabel={unitDisplayName} />
+        ) : null}
+
+        {/* "Buchung" (Briefing "Reinigungsdetailansicht optimieren" Punkt 2-5): Reservierungsdaten,
+         * Belegung UND Reservierungskommentar in EINEM gemeinsamen Bereich statt separater Bloecke -
+         * der Kommentar ist eine sekundaere Information INNERHALB der jeweiligen Reservierung
+         * (kleinere Schrift, eigenes Sprechblasen-Icon, siehe CompactReservation). Bei Turnover
+         * weiterhin zweispaltig (Desktop/Tablet), strikt getrennt in Abreise/Naechste Anreise
+         * (unveraendert) - EIN gemeinsamer Bereich, keine zwei separaten Cards. Punkt 5: der
+         * Apaleo-Deep-Link erscheint bei Turnover je Reservierung einzeln (innerhalb von
+         * CompactReservation), sonst als ein Icon-Button neben der Ueberschrift. */}
+        {task.reservationInfo || task.nextReservationInfo ? (
           <div className="rounded-control border border-line bg-surface px-3.5 py-3">
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted">{t('reservation_title')}</p>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('reservation_title')}</p>
+              {canOpenInApaleo && task.type !== 'turnover' && task.reservationInfo ? (
+                <ApaleoLinkButton propertyCode={task.propertyCode} reservationId={task.reservationInfo.reservationId} t={t} />
+              ) : null}
+            </div>
             {task.type === 'turnover' ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {task.reservationInfo ? <CompactReservation info={task.reservationInfo} heading={t('reservation_departure_title')} t={t} /> : null}
+                {task.reservationInfo ? (
+                  <CompactReservation
+                    info={task.reservationInfo} heading={t('reservation_departure_title')} t={t}
+                    apaleoLink={canOpenInApaleo ? { propertyCode: task.propertyCode, reservationId: task.reservationInfo.reservationId } : null}
+                  />
+                ) : null}
                 {task.nextReservationInfo ? (
                   <div className="border-t border-line pt-3 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0">
-                    <CompactReservation info={task.nextReservationInfo} heading={t('reservation_arrival_title')} t={t} />
+                    <CompactReservation
+                      info={task.nextReservationInfo} heading={t('reservation_arrival_title')} t={t}
+                      comment={task.comment || undefined}
+                      apaleoLink={canOpenInApaleo ? { propertyCode: task.propertyCode, reservationId: task.nextReservationInfo.reservationId } : null}
+                    />
                   </div>
                 ) : null}
               </div>
             ) : task.reservationInfo ? (
-              <CompactReservation info={task.reservationInfo} t={t} />
-            ) : null}
-            {task.comment ? (
-              <div className={cn('text-[12.5px] text-ink', (task.reservationInfo || task.nextReservationInfo) && 'mt-3 border-t border-line pt-2.5')}>
-                <p className="mb-0.5 flex items-center gap-1.5 text-[12px] font-medium text-muted">
-                  <IconMessageCircle width={13} height={13} className="shrink-0" aria-hidden="true" />
-                  {t('guest_comment')}
-                </p>
-                <p className="whitespace-pre-wrap">{cleanGuestComment(task.comment)}</p>
-              </div>
+              <CompactReservation
+                info={task.reservationInfo} t={t}
+                inlineTypeLabel={task.type === 'departure' ? t('label_departure') : undefined}
+                comment={task.comment || undefined}
+              />
             ) : null}
           </div>
         ) : null}
@@ -1188,12 +1288,6 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           </div>
         ) : null}
 
-        {/* Buchungsaenderung (Punkt 9) - nur fuer Apaleo-abgeleitete Tasks (turnover/departure/
-         * stayover) ueberhaupt moeglich, siehe types.ts#BookingChangeRecord. */}
-        {task.bookingChange ? (
-          <BookingChangeDetail change={task.bookingChange} orphanedSchedule={orphanedSchedule} t={t} unitLabel={unitDisplayName} />
-        ) : null}
-
         {/* Wichtiger Hinweis - NIE aus dem Apaleo-Kommentar abgeleitet/ueberschrieben (Punkt 12).
          * Briefing "Reinigungsdetailansicht ueberarbeiten" Punkt 4: deutlich staerker hervorgehoben
          * als eine normale Info-Karte (warme, aber nicht grellrote Flaeche + Akzentfarbe/-linie,
@@ -1209,8 +1303,10 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
           <div
             ref={noticeRef}
             className={cn(
-              'rounded-control border px-3.5 py-3 transition-colors',
-              noticeHighlight ? 'border-status-attention bg-status-attention-bg' : 'border-status-attention/25 bg-status-attention-bg',
+              'rounded-control border px-3.5 py-3 transition-colors duration-500',
+              noticeBlockedAttempted && !currentUserAckCurrent
+                ? 'border-status-attention bg-status-attention-bg'
+                : 'border-status-attention/25 bg-status-attention-bg',
             )}
           >
             <div className="flex items-start justify-between gap-2">
@@ -1218,17 +1314,53 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                 <IconAlertCircle width={18} height={18} className="mt-0.5 shrink-0 text-status-attention" aria-hidden="true" />
                 <p className="text-[12px] font-semibold uppercase tracking-wide text-status-attention">{t('important_notice_title')}</p>
               </div>
-              {/* Briefing Punkt 5: dezenter Hinweis, dass eine automatische Uebersetzung angezeigt
-               * wird - bewusst sehr sekundaer (kleine graue Schrift, kein eigenes Gewicht), nie mit
-               * dem WICHTIGER-HINWEIS-Titel konkurrierend. Nur wenn tatsaechlich eine Uebersetzung
-               * fuer die aktuelle Sprache existiert (dieselbe Bedingung wie "Original anzeigen") -
-               * keine Fake-Anzeige, wenn (noch) keine Uebersetzung vorliegt. */}
-              {canShowOriginal(notice.translation, state.lang) ? (
-                <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted">
-                  <IconGlobe width={12} height={12} className="shrink-0" aria-hidden="true" />
-                  {t('auto_translated_label')}
-                </span>
-              ) : null}
+              <div className="flex shrink-0 items-center gap-2">
+                {/* Briefing Punkt 5: dezenter Hinweis, dass eine automatische Uebersetzung angezeigt
+                 * wird - bewusst sehr sekundaer (kleine graue Schrift, kein eigenes Gewicht), nie mit
+                 * dem WICHTIGER-HINWEIS-Titel konkurrierend. Nur wenn tatsaechlich eine Uebersetzung
+                 * fuer die aktuelle Sprache existiert (dieselbe Bedingung wie "Original anzeigen") -
+                 * keine Fake-Anzeige, wenn (noch) keine Uebersetzung vorliegt. */}
+                {canShowOriginal(notice.translation, state.lang) ? (
+                  <span className="flex items-center gap-1 text-[11px] text-muted">
+                    <IconGlobe width={12} height={12} className="shrink-0" aria-hidden="true" />
+                    {t('auto_translated_label')}
+                  </span>
+                ) : null}
+                {/* Briefing "Reinigungsdetailansicht optimieren" Punkt 9: "•••"-Menue statt
+                 * dauerhaft sichtbarer Bearbeiten/Entfernen-Links - ausschliesslich fuer
+                 * Admin/Standortverantwortliche, Housekeeper sehen dieses Menue gar nicht. */}
+                {isManager ? (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setNoticeMenuOpen((v) => !v)}
+                      aria-label={t('more_options_label')}
+                      aria-haspopup="menu"
+                      className="rounded-full p-1 text-muted transition-colors hover:bg-warm-white hover:text-ink"
+                    >
+                      <IconMoreHorizontal width={16} height={16} aria-hidden="true" />
+                    </button>
+                    {noticeMenuOpen ? (
+                      <div className="absolute right-0 top-full z-10 mt-1 flex w-36 flex-col overflow-hidden rounded-control border border-line bg-warm-white shadow-sm">
+                        <button
+                          type="button"
+                          onClick={() => { setNoticeMenuOpen(false); openNoticeForm(); }}
+                          className="px-3 py-2 text-left text-[13px] text-ink hover:bg-surface"
+                        >
+                          {t('edit')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setNoticeMenuOpen(false); handleRemoveNotice(); }}
+                          className="px-3 py-2 text-left text-[13px] text-ink hover:bg-surface"
+                        >
+                          {t('remove')}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             </div>
             <div className="ml-[26px] min-w-0">
                 <p className="mt-1 whitespace-pre-wrap text-[13px] text-ink">
@@ -1262,6 +1394,15 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                     </button>
                   </div>
                 ) : null}
+                {/* Briefing Punkt 7/8/18: KEINE dauerhafte Erklaerung im Normalzustand - diese Zeile
+                 * erscheint ausschliesslich, NACHDEM ein Startversuch trotz fehlender Bestaetigung
+                 * blockiert wurde (siehe handleNoticeBlocked), und verschwindet automatisch wieder,
+                 * sobald bestaetigt wurde (Bedingung `!currentUserAckCurrent` unten). */}
+                {noticeBlockedAttempted && !currentUserAckCurrent ? (
+                  <p className="mt-2.5 whitespace-pre-line text-[12.5px] font-medium text-status-attention">
+                    {t('notice_confirm_required_hint')}
+                  </p>
+                ) : null}
                 <div className="mt-2.5">
                   {currentUserAckCurrent && currentUserAck ? (
                     <span className="inline-flex items-center gap-1.5 text-[12.5px] text-muted">
@@ -1272,19 +1413,16 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                     <button
                       type="button"
                       onClick={() => acknowledgeTaskNotice(task!.id)}
-                      className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-ink hover:text-sage"
+                      className={cn(
+                        'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors',
+                        noticeBlockedAttempted ? 'bg-status-attention text-warm-white' : 'text-ink hover:text-sage',
+                      )}
                     >
                       <IconCircle width={14} height={14} aria-hidden="true" />
                       {t('notice_ack_prompt')}
                     </button>
                   )}
                 </div>
-                {isManager ? (
-                  <div className="mt-2 flex gap-3 text-[12px] text-muted">
-                    <button type="button" onClick={openNoticeForm} className="hover:text-ink">{t('edit')}</button>
-                    <button type="button" onClick={handleRemoveNotice} className="hover:text-ink">{t('remove')}</button>
-                  </div>
-                ) : null}
             </div>
           </div>
         ) : isManager && !noticeFormOpen && !isManualTask ? (
@@ -1371,60 +1509,23 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
               </div>
             </div>
 
-            {/* "Vorbereitung" (vormals "Zusatzausstattung"), aufgeteilt in zwei getrennte Bereiche
-             * (Briefing "UX-Optimierung Reinigungsdetail" Punkt 6/7): (a) ein Admin-/Standort-
-             * verantwortlichen-Editor zum Festlegen, welche Vorbereitung ueberhaupt gilt (die
-             * bisherigen Toggle-Chips, nur umbenannt), und (b) eine fuer die Reinigungskraft
-             * bestimmte, echte Checkliste (kein Chip/Filter-Look) mit antippbaren Zeilen fuer
-             * requiredPreparationItemIds(task) - das sind die manuell gesetzten Flags PLUS ein per
-             * Apaleo-Service (BABY) gebuchtes Babybett (siehe requiredPreparationItemIds in
-             * lib/housekeeping/tasks.ts). Ein nur gebuchter Hund ohne manuelles 'dog'-Flag taucht
-             * bewusst NICHT in der Checkliste auf, sondern bleibt reine Gaesteinformation
-             * (prep_apaleo_note weiter unten). toggleTaskDoubleType bleibt ausschliesslich der
-             * Admin-Editor fuer den manuellen Flag; togglePreparationItem ist die neue, getrennte
-             * Persistenz fuer den Erledigt-Status je Aufgabe (TaskAssignment.preparationCompletions). */}
+            {/* "Vorbereitung" (Briefing "Reinigungsdetailansicht optimieren" Punkt 12/13/15/16):
+             * ZUERST die fuer die Reinigungskraft bestimmte, echte Checkliste (kein Chip/Filter-
+             * Look) mit antippbaren Zeilen fuer requiredPreparationItemIds(task) - das sind die
+             * manuell gesetzten Flags PLUS ein per Apaleo-Service (BABY) gebuchtes Babybett (siehe
+             * requiredPreparationItemIds in lib/housekeeping/tasks.ts, unveraendert). Ein nur
+             * gebuchter Hund ohne manuelles 'dog'-Flag taucht bewusst NICHT in der Checkliste auf,
+             * sondern bleibt reine Gaesteinformation (prep_apaleo_note weiter unten). DANACH,
+             * sekundaer, der Admin-/Standortverantwortlichen-Editor zum Festlegen, welche
+             * Vorbereitung ueberhaupt gilt - nicht mehr dauerhaft als Chip-Reihe sichtbar, sondern
+             * hinter "+ Vorbereitung hinzufügen" verborgen (Punkt 16), damit die Checkliste fuer
+             * Housekeeper nicht durch Admin-Werkzeuge ueberladen wirkt. toggleTaskDoubleType bleibt
+             * ausschliesslich der Admin-Editor fuer den manuellen Flag; togglePreparationItem ist
+             * die getrennte Persistenz fuer den Erledigt-Status je Aufgabe
+             * (TaskAssignment.preparationCompletions). */}
             <div className="flex flex-col gap-3 border-t border-line pt-3">
-              {isManager ? (
-                <div className="flex flex-col gap-1.5">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('preparation_settings_title')}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {DOUBLEUP_TYPES.map((dt) => {
-                      const manuallyOn = selectedTypes.includes(dt.id);
-                      const apaleoOn = (dt.id === 'crib' && apaleoHasCrib) || (dt.id === 'dog' && apaleoHasDog);
-                      const on = manuallyOn || apaleoOn;
-                      const isAddExtra = dt.id === 'extra' && !on;
-                      return (
-                        <button
-                          key={dt.id}
-                          type="button"
-                          onClick={() => toggleTaskDoubleType(task!, dt.id)}
-                          className={cn(
-                            'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors',
-                            on
-                              ? 'border-sage bg-warm-white text-ink'
-                              : isAddExtra
-                                ? 'border-dashed border-line bg-warm-white text-muted hover:text-ink'
-                                : 'border-line bg-warm-white text-muted hover:text-ink',
-                          )}
-                        >
-                          {isAddExtra ? <IconPlus width={13} height={13} aria-hidden="true" /> : <DoubleupIcon id={dt.id} width={14} height={14} aria-hidden="true" />}
-                          {isAddExtra ? t('doubleup_extra_add') : t(dt.label)}
-                          {on ? <IconCheck width={12} height={12} className="text-sage" aria-hidden="true" /> : null}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-
               {requiredPrepIds.length > 0 ? (
-                <div
-                  ref={prepRef}
-                  className={cn(
-                    'flex flex-col gap-1.5 rounded-control transition-colors',
-                    prepHighlight ? '-mx-1.5 bg-warm-white/70 px-1.5 py-1.5 ring-2 ring-sage/40' : undefined,
-                  )}
-                >
+                <div ref={prepRef} className="flex flex-col gap-1.5">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{t('task_prep_title')}</p>
                   {/* Nutzerfeedback: die vorherige, groessere Chip-Darstellung war besser lesbar als
                    * die schmale Listenzeile - jetzt wieder als groesserer Pill wie zuvor, nur
@@ -1436,6 +1537,10 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                       if (!dt) return null;
                       const completion = task.preparationCompletions[id];
                       const done = !!completion;
+                      // Briefing Punkt 15: nur fuer Admin/Standortverantwortliche sichtbar, dass
+                      // dieser Punkt automatisch aus der Apaleo-Buchung (Servicecode BABY) uebernommen
+                      // wurde - fuer Housekeeper keine zusaetzliche/technische Information.
+                      const fromBooking = isManager && id === 'crib' && apaleoHasCrib;
                       return (
                         <button
                           key={id}
@@ -1455,11 +1560,77 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
                             : <IconCircle width={16} height={16} className="shrink-0 text-muted" aria-hidden="true" />}
                           <DoubleupIcon id={dt.id} width={16} height={16} className="shrink-0" aria-hidden="true" />
                           {t(dt.label)}
+                          {fromBooking ? (
+                            <span className="ml-0.5 flex items-center gap-1 text-[10.5px] font-normal text-muted" title={t('preparation_from_booking_label')}>
+                              {t('preparation_from_booking_label')}
+                              <IconInfo width={11} height={11} aria-hidden="true" />
+                            </span>
+                          ) : null}
                         </button>
                       );
                     })}
                   </div>
-                  {openPreparationCount > 0 ? <p className="text-[11px] text-muted">{t('preparation_incomplete_hint')}</p> : null}
+                  {/* Briefing Punkt 14/18: KEIN dauerhafter Hinweis im Normalzustand - dieser Text
+                   * erscheint ausschliesslich nach einem blockierten Abschlussversuch (siehe
+                   * handlePreparationBlocked) und verschwindet automatisch wieder, sobald alle
+                   * Punkte abgehakt wurden (Bedingung `openPreparationCount > 0`). */}
+                  {prepBlockedAttempted && openPreparationCount > 0 ? (
+                    <p className="rounded-control border border-status-attention/40 bg-status-attention-bg px-2.5 py-2 text-[12px] font-medium text-status-attention">
+                      {t('preparation_incomplete_hint')}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {isManager ? (
+                <div className="flex flex-col gap-1.5">
+                  {addPrepOpen ? (
+                    <>
+                      <div className="flex flex-wrap gap-1.5">
+                        {DOUBLEUP_TYPES.map((dt) => {
+                          const manuallyOn = selectedTypes.includes(dt.id);
+                          const apaleoOn = (dt.id === 'crib' && apaleoHasCrib) || (dt.id === 'dog' && apaleoHasDog);
+                          const on = manuallyOn || apaleoOn;
+                          const isAddExtra = dt.id === 'extra' && !on;
+                          return (
+                            <button
+                              key={dt.id}
+                              type="button"
+                              onClick={() => toggleTaskDoubleType(task!, dt.id)}
+                              className={cn(
+                                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors',
+                                on
+                                  ? 'border-sage bg-warm-white text-ink'
+                                  : isAddExtra
+                                    ? 'border-dashed border-line bg-warm-white text-muted hover:text-ink'
+                                    : 'border-line bg-warm-white text-muted hover:text-ink',
+                              )}
+                            >
+                              {isAddExtra ? <IconPlus width={13} height={13} aria-hidden="true" /> : <DoubleupIcon id={dt.id} width={14} height={14} aria-hidden="true" />}
+                              {isAddExtra ? t('doubleup_extra_add') : t(dt.label)}
+                              {on ? <IconCheck width={12} height={12} className="text-sage" aria-hidden="true" /> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAddPrepOpen(false)}
+                        className="self-start text-[12px] font-medium text-muted hover:text-ink"
+                      >
+                        {t('close')}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setAddPrepOpen(true)}
+                      className="inline-flex items-center gap-1.5 self-start text-[13px] font-medium text-muted hover:text-ink"
+                    >
+                      <IconPlus width={15} height={15} aria-hidden="true" />
+                      {t('add_preparation_action')}
+                    </button>
+                  )}
                 </div>
               ) : null}
 
