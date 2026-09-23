@@ -48,11 +48,9 @@ function hasBookedService(r: ApaleoReservation | undefined, code: 'ECI' | 'LCO' 
   return !!r?.services?.some((s) => s.service?.code === code);
 }
 
-/** Exportiert (statt modul-privat), damit useHousekeepingApp.ts#loadPlanningData denselben
- * BABY-Erkennungsweg fuer den Buchungsaenderungs-Sync (api/booking-changes.js, Feld `crib`) nutzen
- * kann statt einer zweiten, potenziell abweichenden Kopie von hasBookedService() - Briefing
- * "BABY-Business-Logik" Punkt 8: Apaleo-Servicecode bleibt die EINZIGE Quelle der Wahrheit. */
-export function reservationHasCrib(r: ApaleoReservation): boolean {
+/** Briefing "BABY-Business-Logik" Punkt 8: Apaleo-Servicecode bleibt die EINZIGE Quelle der
+ * Wahrheit fuer einen Babybett-Bedarf, siehe computeExtraEquipmentNeeds() unten. */
+function reservationHasCrib(r: ApaleoReservation): boolean {
   return hasBookedService(r, 'BABY');
 }
 

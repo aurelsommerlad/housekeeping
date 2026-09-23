@@ -1006,7 +1006,29 @@ import type { ExtraEquipmentNeed } from './tasks';
 // per tsc/eslint/build sowie einem neuen Node-Regressionstest gegen die echte api/booking-changes.js-
 // Route (Mock-Redis): reine Uhrzeitaenderung loest keine Aenderung mehr aus, echte Datumsaenderung
 // weiterhin zuverlaessig mit zwei unterschiedlichen Tagen.
-export const APP_VERSION = '2.32.1';
+// v2.32.2 - PATCH: Bugfix "jetzt werden alle Buchungen als geändert angezeigt" (Regression aus
+// v2.32.1). Ursache: der vorherige dateOnly()-Fix normalisierte NUR den neu berechneten `current`-
+// Wert auf Tagesebene, waehrend ein VOR diesem Fix in Redis gespeicherter Snapshot weiterhin die
+// volle ISO-Datumszeit enthielt - ein Vergleich zwischen altem Vollformat und neuem Tagesformat
+// unterschied sich dadurch bei praktisch JEDER Reservierung, unabhaengig davon, ob sich tatsaechlich
+// etwas geaendert hatte. `previous` wird jetzt beim Lesen ebenfalls durch dateOnly() normalisiert -
+// bei einem bereits im neuen Format vorliegenden Snapshot wirkungslos, bei einem alten heilt es den
+// einmaligen Formatwechsel sofort und ohne separaten Migrationsschritt aus.
+// Zugleich Nutzerfeedback umgesetzt: "Eine Änderung ist nur bei Umbuchung (Datum, Einheit) und
+// Änderung Anzahl der Personen relevant. Alle anderen Änderungen sind nicht relevant." - das in
+// v2.32.0 ergaenzte fuenfte Vergleichsfeld `crib` (Babybett) wird wieder vollstaendig aus
+// api/booking-changes.js entfernt (zurueck auf die urspruenglichen vier Felder Anreise/Abreise/
+// Einheit/Personenanzahl); ein mitgesendetes `crib`-Feld wird ignoriert und loest nie mehr eine
+// "Buchung geändert"-Anzeige aus. `cribFrom`/`cribTo` aus BookingChangeRecord sowie die zugehoerige
+// "+ Babybett hinzugefügt"-Zeile in TaskDetailSheet.tsx#BookingChangeDetail wurden entsprechend
+// entfernt. Die davon UNABHAENGIGE BABY-Vorbereitungslogik (Pflicht-Checklistenpunkt/Blockade des
+// Reinigungsabschlusses, automatische Zusatzausstattung-Aufgabe) bleibt komplett unveraendert - das
+// betrifft ausschliesslich, WAS als "Buchung geändert" angezeigt wird. Verifiziert per tsc/eslint/
+// build sowie einer erweiterten Node-Regressionstestsuite gegen die echte api/booking-changes.js-
+// Route (Mock-Redis, 7 Assertions): reine Uhrzeitaenderung weiterhin ignoriert, echte
+// Datumsaenderung weiterhin zuverlaessig erkannt, ein Alt-Snapshot im vollen ISO-Format loest keine
+// falsche Aenderung mehr aus, ein reiner Babybett-Wechsel wird nicht mehr als Aenderung erkannt.
+export const APP_VERSION = '2.32.2';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -1515,8 +1537,6 @@ export async function syncBookingChanges(
   reservations: {
     id: string; arrival?: string | null; departure?: string | null; unitId?: string | null; propertyCode: string;
     guests?: number | null;
-    /** Briefing "BABY-Business-Logik" Punkt 9 - siehe api/booking-changes.js#cribChanged. */
-    crib?: boolean | null;
   }[],
 ): Promise<BookingChangeRecordsState> {
   const data = await backendPost<{ changes?: BookingChangeRecordsState }>('booking-changes', { action: 'sync', reservations });

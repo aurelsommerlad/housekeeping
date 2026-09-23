@@ -439,14 +439,6 @@ export interface BookingChangeRecord {
    * Rohdaten). */
   guestsFrom?: number;
   guestsTo?: number;
-  /** Briefing "BABY-Business-Logik" Punkt 9: ein per Apaleo-Service `BABY` gebuchtes/wieder
-   * entferntes Babybett auf einer bereits offenen/laufenden Reinigung - genutzt, um in der
-   * Detailansicht "Zusatzausstattung hinzugefuegt / + Babybett" anzuzeigen, OHNE ein zweites
-   * Farbsystem einzufuehren (dieselbe Buchungsaenderungs-/Ungesehen-Logik wie Anreise/Abreise/
-   * Personen/Einheit oben). Nur gesetzt, wenn sich GENAU dieses Feld geaendert hat (analog zu
-   * guestsFrom/-To). */
-  cribFrom?: boolean;
-  cribTo?: boolean;
 }
 
 export type BookingChangeRecordsState = Record<string, BookingChangeRecord | null>;

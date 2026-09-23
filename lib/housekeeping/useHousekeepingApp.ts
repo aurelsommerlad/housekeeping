@@ -38,7 +38,7 @@ import { managedPropertyCodes } from './permissions';
 import { dayHeadingLabel } from './dayLabel';
 import {
   buildTasks, canRescheduleTask, capacityForDay, computeExtraEquipmentNeeds, daySummary, guestCount, manualTaskToResolvedTask,
-  nextArrivalDateForTask, requiredPreparationItemIds, requiresInspection, reservationHasCrib, resolveTasks, sortTasksForDay,
+  nextArrivalDateForTask, requiredPreparationItemIds, requiresInspection, resolveTasks, sortTasksForDay,
   taskGenerationDays, teamCapacityForDay,
   type ResolvedTask, type TeamContext,
 } from './tasks';
@@ -400,10 +400,6 @@ export function useHousekeepingApp() {
         // housekeeping-relevantes Vergleichsfeld (siehe api/booking-changes.js) - dieselbe
         // Gesamtpersonenzahl-Berechnung wie in der Reservierungsanzeige (tasks.ts#guestCount).
         guests: guestCount(r),
-        // Briefing "BABY-Business-Logik" Punkt 9: fuenftes Vergleichsfeld, damit ein nachtraeglich
-        // gebuchtes/entferntes Babybett auf einer bereits offenen/laufenden Reinigung dieselbe
-        // Aenderungs-/Ungesehen-Logik nutzt wie Anreise/Abreise/Personen/Einheit.
-        crib: reservationHasCrib(r),
       })).filter((r) => r.propertyCode);
       if (syncInput.length > 0) bookingChanges = await syncBookingChanges(syncInput);
     } catch {

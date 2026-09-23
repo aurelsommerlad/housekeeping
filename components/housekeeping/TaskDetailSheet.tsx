@@ -163,12 +163,6 @@ function BookingChangeDetail({
   if (change.unitFrom !== undefined || change.unitTo !== undefined) {
     changedFields.push({ label: t('booking_changed_unit_label'), from: unitLabel(change.unitFrom), to: unitLabel(change.unitTo) });
   }
-  // Briefing "BABY-Business-Logik" Punkt 9: ein nachtraeglich gebuchtes/entferntes Babybett auf
-  // einer bereits offenen/laufenden Reinigung ist kein "Alt -> Neu"-Wertepaar wie die Felder oben,
-  // sondern eine reine Hinzufuegung/Entfernung - deshalb eine eigene, deutlich als "+"/"-"
-  // gekennzeichnete Zeile statt eines erzwungenen Pfeil-Vergleichs (z. B. "false -> true").
-  const cribAdded = change.cribTo === true;
-  const cribRemoved = change.cribTo === false;
   return (
     <div className="rounded-control border border-status-progress/25 bg-status-progress-bg px-3.5 py-3">
       <div className="flex items-start gap-2">
@@ -187,16 +181,6 @@ function BookingChangeDetail({
                 <span className="font-semibold text-ink">{field.to}</span>
               </div>
             ))}
-            {cribAdded || cribRemoved ? (
-              <div className="flex items-center gap-2 text-[13px]">
-                <span className="w-[82px] shrink-0 text-[11px] uppercase tracking-wide text-muted">{t('extra_equipment_category_label')}</span>
-                <span className={cn('flex items-center gap-1 font-semibold', cribAdded ? 'text-ink' : 'text-muted line-through')}>
-                  {cribAdded ? <IconPlus width={13} height={13} className="shrink-0 text-status-progress" aria-hidden="true" /> : null}
-                  <DoubleupIcon id="crib" width={13} height={13} aria-hidden="true" />
-                  {t('doubleup_crib')}
-                </span>
-              </div>
-            ) : null}
           </div>
           {/* Briefing "Tag ändern" Punkt 16: die bestehende Buchungsaenderungs-Erkennung (Punkt
            * "Buchungsaenderung sichtbar machen") erkennt bereits, dass sich die Abreise geaendert

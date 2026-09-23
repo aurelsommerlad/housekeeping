@@ -6,14 +6,14 @@
 // Rest der App (gepruft: einzig CleaningCompletionReport ist ein fachlich unabhaengiger Snapshot
 // fuer Waescheverbrauch) - dieser Mechanismus hier ist der einzige.
 //
-// Nur die fuenf housekeeping-relevanten Felder Anreise/Abreise/Einheit/Personenanzahl/Babybett
-// werden verglichen (Punkt "nur housekeeping-relevante Aenderungen loggen") - jede andere
-// Reservierungsaenderung wird ignoriert. `crib` (Briefing "BABY-Business-Logik" Punkt 9): ein
-// nachtraeglich gebuchtes/entferntes Babybett auf einer bereits offenen/laufenden Reinigung nutzt
-// bewusst DIESELBE Aenderungs-/Ungesehen-Logik wie Anreise/Abreise/Personen/Einheit, statt ein
-// weiteres Farbsystem einzufuehren. Redis housekeeping:booking_change_snapshots (Baseline je
-// reservationId) + housekeeping:booking_changes (nur die JEWEILS zuletzt erkannte Aenderung je
-// reservationId, kein volles Log noetig, siehe types.ts#BookingChangeRecord).
+// Nur die VIER housekeeping-relevanten Felder Anreise/Abreise/Einheit/Personenanzahl werden
+// verglichen (Nutzerfeedback: "Eine Änderung ist nur bei Umbuchung (Datum, Einheit) und Änderung
+// Anzahl der Personen relevant. Alle anderen Änderungen sind nicht relevant.") - jede andere
+// Reservierungsaenderung wird bewusst ignoriert (ein zwischenzeitlich hier mitgefuehrtes
+// Babybett-Feld wurde deshalb wieder entfernt, siehe Git-Historie). Redis
+// housekeeping:booking_change_snapshots (Baseline je reservationId) + housekeeping:booking_changes
+// (nur die JEWEILS zuletzt erkannte Aenderung je reservationId, kein volles Log noetig, siehe
+// types.ts#BookingChangeRecord).
 //
 // Aufgerufen vom Client nach jedem Laden der Apaleo-Reservierungen fuer den Planungszeitraum
 // (siehe useHousekeepingApp.ts#loadPlanningData) - EIN Sync-Request mit den aktuell geladenen,
@@ -99,17 +99,21 @@ module.exports = async (req, res) => {
         // duerfen weder als "0 Gaeste" gespeichert noch mit einer echten spaeteren Zahl als
         // Aenderung erkannt werden (siehe guestsChanged unten).
         guests: typeof r.guests === 'number' ? r.guests : null,
-        // Punkt 9: nur eine bekannte Boolean-Angabe uebernehmen (analog zu `guests` oben) - ein
-        // fehlender/unbekannter Wert wird weder als "kein Babybett" gespeichert noch faelschlich
-        // als Aenderung erkannt (siehe cribChanged unten).
-        crib: typeof r.crib === 'boolean' ? r.crib : null,
       };
-      const previous = parseJSON(snapshots[r.id], null);
+      const previousRaw = parseJSON(snapshots[r.id], null);
+      // Bugfix (Nutzerfeedback "jetzt werden alle Buchungen als geändert angezeigt"): ein VOR dem
+      // dateOnly()-Fix gespeicherter Snapshot enthaelt arrival/departure noch als volle
+      // ISO-Datumszeit - ein direkter Vergleich mit dem jetzt auf Tagesebene normalisierten
+      // `current` wuerde deshalb bei JEDER einzigen Reservierung faelschlich einen Unterschied
+      // erkennen (unabhaengig davon, ob sich tatsaechlich etwas geaendert hat). `previous` wird
+      // deshalb beim Lesen ebenfalls durch dateOnly() normalisiert - bei einem bereits im neuen
+      // Format gespeicherten Snapshot wirkungslos, bei einem alten heilt es den Formatwechsel ohne
+      // Migrationsschritt sofort aus.
+      const previous = previousRaw ? { ...previousRaw, arrival: dateOnly(previousRaw.arrival), departure: dateOnly(previousRaw.departure) } : null;
       if (previous) {
         const guestsChanged = previous.guests != null && current.guests != null && previous.guests !== current.guests;
-        const cribChanged = previous.crib != null && current.crib != null && previous.crib !== current.crib;
         const changed = previous.arrival !== current.arrival || previous.departure !== current.departure
-          || previous.unitId !== current.unitId || guestsChanged || cribChanged;
+          || previous.unitId !== current.unitId || guestsChanged;
         if (changed) {
           const change = {
             reservationId: r.id,
@@ -119,7 +123,6 @@ module.exports = async (req, res) => {
             ...(previous.departure !== current.departure ? { departureFrom: previous.departure, departureTo: current.departure } : {}),
             ...(previous.unitId !== current.unitId ? { unitFrom: previous.unitId, unitTo: current.unitId } : {}),
             ...(guestsChanged ? { guestsFrom: previous.guests, guestsTo: current.guests } : {}),
-            ...(cribChanged ? { cribFrom: previous.crib, cribTo: current.crib } : {}),
           };
           changeWrites.push([r.id, JSON.stringify(change)]);
         }
@@ -127,7 +130,7 @@ module.exports = async (req, res) => {
       // Baseline nur schreiben, wenn sie fehlt oder sich tatsaechlich geaendert hat - vermeidet
       // unnoetige Schreibzugriffe bei jedem Poll-Zyklus (Punkt 31 "keine unnoetigen Requests").
       if (!previous || previous.arrival !== current.arrival || previous.departure !== current.departure
-        || previous.unitId !== current.unitId || previous.guests !== current.guests || previous.crib !== current.crib) {
+        || previous.unitId !== current.unitId || previous.guests !== current.guests) {
         snapshotWrites.push([r.id, JSON.stringify(current)]);
       }
     }
