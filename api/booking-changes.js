@@ -26,6 +26,19 @@ const { hasPropertyAccess } = require('./_permissions');
 const SNAPSHOT_HASH_KEY = 'housekeeping:booking_change_snapshots';
 const CHANGES_HASH_KEY = 'housekeeping:booking_changes';
 
+// Bugfix (Nutzerfeedback: "Buchung geändert" erschien mit "Anreise 23.09. -> 23.09.", obwohl sich
+// sichtbar nichts geaendert hatte): Apaleo liefert Anreise/Abreise als vollstaendige ISO-Datumszeit
+// inkl. Uhrzeit (z. B. eine aktualisierte geschaetzte Ankunftszeit) - ein reiner Uhrzeit-Wechsel
+// OHNE Tageswechsel wurde bisher durch den direkten String-Vergleich der vollen ISO-Werte
+// faelschlich als Aenderung erkannt, obwohl housekeeping-relevant ausschliesslich der KALENDERTAG
+// ist (die Uhrzeit selbst wird bereits getrennt ueber LCO/ECI/Zeiten-Override abgebildet, siehe
+// lib/housekeeping/tasks.ts). Vergleich/Speicherung erfolgen deshalb ausschliesslich auf Tagesebene
+// (yyyy-mm-dd) - macht die Anzeige nebenbei robust: zwei tatsaechlich unterschiedliche Tage werden
+// nie mehr als "X -> X" angezeigt.
+function dateOnly(iso) {
+  return iso ? String(iso).slice(0, 10) : null;
+}
+
 async function changesForUser(redis, user) {
   const all = await redis.hGetAll(CHANGES_HASH_KEY);
   const changes = {};
@@ -78,8 +91,8 @@ module.exports = async (req, res) => {
 
     for (const r of visible) {
       const current = {
-        arrival: r.arrival || null,
-        departure: r.departure || null,
+        arrival: dateOnly(r.arrival),
+        departure: dateOnly(r.departure),
         unitId: r.unitId || null,
         propertyCode: r.propertyCode,
         // Nur eine bekannte Zahl (>=0) uebernehmen - fehlende/ungueltige Rohdaten (null/undefined)

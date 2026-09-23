@@ -990,7 +990,23 @@ import type { ExtraEquipmentNeed } from './tasks';
 // Node-Logiktestsuiten (26 Assertions gegen die transpilierte tasks.ts fuer die Faelle A-J aus dem
 // Briefing; 7 Assertions gegen die echte api/manual-tasks.js-Route mit Mock-Redis fuer Anlegen/
 // Idempotenz/Entfernen/Nie-Loeschen-bei-Erledigt).
-export const APP_VERSION = '2.32.0';
+// v2.32.1 - PATCH: Bugfix "Buchung geändert" erschien mit "Anreise 23.09. -> 23.09." (Nutzerfeedback:
+// "Bei dieser Abreise kam es zu keiner sichtbaren Änderung des Datum, der Einheit oder der
+// Personenanzahl. Buchung geändert sollte nicht erscheinen."). Ursache: api/booking-changes.js
+// verglich Anreise/Abreise als VOLLE ISO-Datumszeit inkl. Uhrzeit - eine reine Uhrzeitaenderung ohne
+// Tageswechsel (z. B. eine von Apaleo aktualisierte geschaetzte Ankunftszeit) wurde dadurch
+// faelschlich als housekeeping-relevante Aenderung erkannt, obwohl fuer Housekeeping ausschliesslich
+// der Kalendertag relevant ist (die Uhrzeit selbst laeuft bereits getrennt ueber LCO/ECI/Zeiten-
+// Override). Angezeigt wurde das durch formatDayMonth()s Truncation auf Tag.Monat als "X -> X" -
+// sichtbar "keine Aenderung", obwohl die Karte trotzdem erschien. Vergleich/Speicherung erfolgen
+// jetzt konsequent auf Tagesebene (neue dateOnly()-Normalisierung in api/booking-changes.js) - eine
+// echte Datumsaenderung wird weiterhin zuverlaessig erkannt und zeigt dann auch zwei tatsaechlich
+// unterschiedliche Tage (behebt nebenbei denselben Bug latent auch fuer den "verwaister Schedule-
+// Override"-Abgleich in TaskDetailSheet.tsx, der exakt dasselbe Datumsformat erwartet). Verifiziert
+// per tsc/eslint/build sowie einem neuen Node-Regressionstest gegen die echte api/booking-changes.js-
+// Route (Mock-Redis): reine Uhrzeitaenderung loest keine Aenderung mehr aus, echte Datumsaenderung
+// weiterhin zuverlaessig mit zwei unterschiedlichen Tagen.
+export const APP_VERSION = '2.32.1';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
