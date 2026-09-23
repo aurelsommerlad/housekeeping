@@ -61,6 +61,20 @@ function groupTasksByProperty(
     .map((code) => ({ propertyCode: code, propertyName: byCode.get(code)![0].propertyName, tasks: byCode.get(code)! }));
 }
 
+/**
+ * Korrektur "Admin-Desktop-Dashboard": das bisherige `xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]`
+ * erzeugt bei WENIGEN Karten pro Standort auf sehr breiten Bildschirmen zusaetzliche LEERE Spalten
+ * (auto-fill legt so viele 340px-Spalten an, wie in den Container passen, unabhaengig von der
+ * tatsaechlichen Kartenzahl) - genau das erzeugte den gemeldeten Eindruck "einspaltig mit viel
+ * ungenutzter Flaeche rechts daneben", sobald ein Standort nur 1-2 Karten hat. Fuer den Admin-
+ * Desktop-Bereich (siehe Verwendung unten, ausschliesslich `isAdmin`-gated) daher eine GEDECKELTE
+ * Spaltenzahl (2 ab `xl`, 3 ab `2xl`) statt variabler auto-fill-Spalten - Karten fuellen die
+ * Bildschirmbreite dadurch zuverlaessig, ohne bei sehr breiten Monitoren zu sehr auseinandergezogen
+ * zu werden. Betrifft AUSSCHLIESSLICH die Admin-Desktop-Ansicht (siehe TaskGroup#cardGridClassName) -
+ * Mobile, Teamleader und Standortverantwortlicher nutzen weiterhin exakt die bisherige Grid-Klasse.
+ */
+const ADMIN_DESKTOP_CARD_GRID_CLASS = 'grid grid-cols-1 gap-3 px-4 pt-1 sm:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3';
+
 /** Korrektur (UX-Feinschliff Runde 3): keine farbige Grossbuchstaben-Ueberschrift mehr - nur
  * noch die Anzahl in normaler Textfarbe ("3 Reinigungen"), optional mit demselben kleinen
  * Outline-Icon wie die zugehoerige Kennzahl oben (in deren dezentem Akzent) fuer den visuellen
@@ -78,14 +92,19 @@ function groupTasksByProperty(
  * bleibt exakt das bisherige, einzelne Grid bestehen (keine redundante Standortueberschrift). Auf
  * Mobile identisch zu Desktop, nur dasselbe bereits bestehende responsive Grid je Gruppe. */
 function TaskGroup({
-  text, count, categoryLabel, icon: Icon, toneClass, tasks, locationGroups, renderCard,
+  text, count, categoryLabel, icon: Icon, toneClass, tasks, locationGroups, renderCard, cardGridClassName,
 }: {
   text: string; count: number; categoryLabel: string; icon?: typeof IconCheck; toneClass?: string;
   tasks: ResolvedTask[];
   locationGroups: { propertyCode: string; label: string; tasks: ResolvedTask[] }[] | null;
   renderCard: (task: ResolvedTask) => ReactNode;
+  // Korrektur "Admin-Desktop-Dashboard": optionaler Override der Grid-Klasse, AUSSCHLIESSLICH von
+  // der Admin-Desktop-Kartenansicht genutzt (siehe ADMIN_DESKTOP_CARD_GRID_CLASS unten) - ohne
+  // Angabe unveraendertes Standardverhalten fuer alle anderen Aufrufer (Mobile, Teamleader,
+  // Standortverantwortlicher, "Fertig"/"Bereits zugewiesen").
+  cardGridClassName?: string;
 }) {
-  const gridClass = 'grid grid-cols-1 gap-3 px-4 pt-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]';
+  const gridClass = cardGridClassName || 'grid grid-cols-1 gap-3 px-4 pt-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]';
   return (
     <div>
       {/* Desktop-Toolbar-Redesign (Punkt 9/10): auf Desktop bewusst etwas kleiner/ruhiger
@@ -577,7 +596,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
     );
   }
 
-  function renderCleaningAndManualTaskGroups(cleaningList: ResolvedTask[], manualList: ResolvedTask[]) {
+  function renderCleaningAndManualTaskGroups(cleaningList: ResolvedTask[], manualList: ResolvedTask[], cardGridClassName?: string) {
     return (
       <>
         {cleaningList.length > 0 ? (
@@ -590,6 +609,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             tasks={cleaningList}
             locationGroups={toLocationGroups(cleaningList, 'noun_cleaning_one', 'noun_cleaning_many')}
             renderCard={(task) => renderRoleTaskCard(task)}
+            cardGridClassName={cardGridClassName}
           />
         ) : null}
         {manualList.length > 0 ? (
@@ -602,6 +622,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             tasks={manualList}
             locationGroups={toLocationGroups(manualList, 'noun_task_one', 'noun_task_many')}
             renderCard={(task) => renderRoleTaskCard(task, 'none')}
+            cardGridClassName={cardGridClassName}
           />
         ) : null}
       </>
@@ -619,12 +640,14 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       open: boolean; onToggle: () => void; icon: typeof IconCheck; toneClass: string;
       mobileLabel: string; categoryLabel: string;
       locationGroups: { propertyCode: string; label: string; tasks: ResolvedTask[] }[] | null;
+      cardGridClassName?: string;
     },
   ) {
     if (list.length === 0) return null;
-    const { open, onToggle, icon: Icon, toneClass, mobileLabel, categoryLabel, locationGroups } = opts;
+    const { open, onToggle, icon: Icon, toneClass, mobileLabel, categoryLabel, locationGroups, cardGridClassName } = opts;
+    const gridClass = cardGridClassName || 'grid grid-cols-1 gap-3 px-4 pt-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]';
     const cardGrid = (tasks: ResolvedTask[]) => (
-      <div className="grid grid-cols-1 gap-3 px-4 pt-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]">
+      <div className={gridClass}>
         {tasks.map((task) => renderRoleTaskCard(task, 'none'))}
       </div>
     );
@@ -667,6 +690,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   function renderDoneSection(
     doneList: ResolvedTask[],
     locationGroups: { propertyCode: string; label: string; tasks: ResolvedTask[] }[] | null = null,
+    cardGridClassName?: string,
   ) {
     return renderCollapsibleGroup(doneList, {
       open: doneOpen,
@@ -676,6 +700,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       mobileLabel: `${doneList.length} ${t('section_done_suffix')}`,
       categoryLabel: t('wf_done'),
       locationGroups,
+      cardGridClassName,
     });
   }
 
@@ -936,16 +961,25 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         // (renderCleaningAndManualTaskGroups/renderDoneSection/TaskGroup), nur mit vorab anders
         // gefilterten Listen. Bestehende Zuweisungsrechte/Assignment-APIs bleiben unangetastet.
         <>
+          {/* Korrektur "Admin-Desktop-Dashboard" Punkt 3: auf Mobile bleibt der Kasten unveraendert
+           * (gestapelte Zeilen) - ab `xl` wird er kompakt und horizontal: `xl:flex` verwandelt den
+           * Kasten in eine einzeilige Reihe, `xl:contents` loest den inneren Detail-Wrapper in
+           * eigenstaendige Flex-Kinder auf (jede Detailzeile wird dadurch ein eigenes Flex-Item
+           * NEBEN der Ueberschrift, statt darunter gestapelt), `xl:flex-wrap` erlaubt einen Umbruch
+           * bei schmaleren Desktop-Breiten statt eines erzwungenen Ueberlaufs. Nur `xl:`-Klassen -
+           * am Mobile-Markup/-Verhalten aendert sich nichts. */}
           {isAdmin && taskViewMode === 'home' && actionNeededTasks.length > 0 ? (
-            <div className="mx-4 mt-4 rounded-card-lg border border-line bg-warm-white px-4 py-3">
-              <p className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
+            <div className="mx-4 mt-4 rounded-card-lg border border-line bg-warm-white px-4 py-3 xl:flex xl:flex-wrap xl:items-center xl:gap-x-4 xl:gap-y-1 xl:py-2.5">
+              <p className="flex items-center gap-1.5 text-[13px] font-medium text-ink xl:shrink-0">
                 {t('dashboard_action_needed')}
                 <span className="text-status-attention">· {actionNeededTasks.length}</span>
               </p>
-              <div className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-muted">
-                {adminUnassignedTasks.length > 0 ? <p>{t('dashboard_action_needed_unassigned_line', { n: adminUnassignedTasks.length })}</p> : null}
+              <div className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-muted xl:mt-0 xl:contents">
+                {adminUnassignedTasks.length > 0 ? (
+                  <p className="xl:whitespace-nowrap">{t('dashboard_action_needed_unassigned_line', { n: adminUnassignedTasks.length })}</p>
+                ) : null}
                 {adminEarlyCheckinTasks.length > 0 ? (
-                  <p>
+                  <p className="xl:whitespace-nowrap">
                     {adminEarlyCheckinTasks.length === 1 && singleEarlyCheckinTime
                       ? t('dashboard_action_needed_early_checkin_line_time', { n: 1, time: singleEarlyCheckinTime })
                       : t('dashboard_action_needed_early_checkin_line', { n: adminEarlyCheckinTasks.length })}
@@ -966,6 +1000,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                 tasks={actionNeededTasks}
                 locationGroups={toLocationGroups(actionNeededTasks, 'noun_task_one', 'noun_task_many')}
                 renderCard={(task) => renderRoleTaskCard(task)}
+                cardGridClassName={ADMIN_DESKTOP_CARD_GRID_CLASS}
               />
             ) : (
               <div className="px-4 py-10 text-center text-sm text-muted">{t('no_tasks')}</div>
@@ -1006,8 +1041,9 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
               {renderCleaningAndManualTaskGroups(
                 locationManagerHere ? cleaningTasks.filter((task) => !locationUnassignedIds.has(task.id)) : cleaningTasks,
                 locationManagerHere ? openManualTasks.filter((task) => !locationUnassignedIds.has(task.id)) : openManualTasks,
+                isAdmin ? ADMIN_DESKTOP_CARD_GRID_CLASS : undefined,
               )}
-              {renderDoneSection(doneTasks)}
+              {renderDoneSection(doneTasks, null, isAdmin ? ADMIN_DESKTOP_CARD_GRID_CLASS : undefined)}
             </>
           ) : null}
 
@@ -1080,8 +1116,8 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         // weggelassen (kein grosser Empty-State). Genutzt fuer normale Housekeeper (mit/ohne Team)
         // UND fuer Teamleader/Standortverantwortliche/Admin im 'mine'-Modus (identisch zu vorher).
         <>
-          {renderCleaningAndManualTaskGroups(cleaningTasks, openManualTasks)}
-          {renderDoneSection(doneTasks)}
+          {renderCleaningAndManualTaskGroups(cleaningTasks, openManualTasks, isAdmin ? ADMIN_DESKTOP_CARD_GRID_CLASS : undefined)}
+          {renderDoneSection(doneTasks, null, isAdmin ? ADMIN_DESKTOP_CARD_GRID_CLASS : undefined)}
         </>
       )}
 
