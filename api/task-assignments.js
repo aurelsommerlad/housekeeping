@@ -14,6 +14,7 @@ const { requireSession } = require('./_auth');
 const { getUserRawById } = require('./_users');
 const {
   hasPropertyAccess, isPropertyManager, propertyCodeFromTaskId, dateFromTaskId, unitIdFromTaskId, reservationIdFromTaskId,
+  isTeamMemberOf, isTeamLeadOf,
 } = require('./_permissions');
 const { isAcknowledged } = require('./_task-notices');
 const { resolveAssignedTeamId } = require('./_teams');
@@ -30,7 +31,7 @@ function canClaimTeamTask(user, propertyCode, assignedTeamId) {
   if (user.role === 'admin') return true;
   if (isPropertyManager(user, propertyCode)) return true;
   if (!assignedTeamId) return true;
-  return user.housekeepingTeamId === assignedTeamId;
+  return isTeamMemberOf(user, assignedTeamId);
 }
 
 const HASH_KEY = 'housekeeping:task_assignments';
@@ -176,8 +177,7 @@ module.exports = async (req, res) => {
       // ausschliesslich fuer Tasks des EIGENEN Teams - abgeleitet ueber resolveAssignedTeamId,
       // nicht ueber eine (moeglicherweise inzwischen veraltete) Teamzugehoerigkeit der bereits
       // zugewiesenen Person.
-      const isLeadOfTask = user.teamRole === 'lead' && !!user.housekeepingTeamId &&
-        user.housekeepingTeamId === (await resolveAssignedTeamId(redis, taskId));
+      const isLeadOfTask = isTeamLeadOf(user, await resolveAssignedTeamId(redis, taskId));
       const allowed = user.role === 'admin' || isPropertyManager(user, propertyCode) || isOwn || isLeadOfTask;
       if (!allowed) { res.status(403).json({ error: 'Diese Aufgabe gehört einer anderen Person.' }); return; }
       // Punkt 14: eigene Aufgabe nur freigeben, solange die Reinigung noch nicht begonnen wurde.
@@ -196,14 +196,14 @@ module.exports = async (req, res) => {
       // Aufgaben Team-Mitgliedern zu") - ausschliesslich innerhalb des eigenen Teams, nie fuer
       // fremde Teams oder Personen ausserhalb des Teams.
       const assignedTeamId = await resolveAssignedTeamId(redis, taskId);
-      const isLeadOfTask = user.teamRole === 'lead' && !!user.housekeepingTeamId && user.housekeepingTeamId === assignedTeamId;
+      const isLeadOfTask = isTeamLeadOf(user, assignedTeamId);
       if (!manager && !isLeadOfTask) {
         res.status(403).json({ error: 'Nur für Standortverantwortliche oder den Team-Verantwortlichen dieses Teams.' });
         return;
       }
       if (!manager && isLeadOfTask) {
         const target = await getUserRawById(redis, housekeeperId);
-        if (!target || target.housekeepingTeamId !== assignedTeamId || target.active === false || !hasPropertyAccess(target, propertyCode)) {
+        if (!target || !isTeamMemberOf(target, assignedTeamId) || target.active === false || !hasPropertyAccess(target, propertyCode)) {
           res.status(403).json({ error: 'Nur aktive Mitglieder des eigenen Teams mit Zugriff auf dieses Property.' });
           return;
         }

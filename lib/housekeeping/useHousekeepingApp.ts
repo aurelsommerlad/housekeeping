@@ -870,25 +870,32 @@ export function useHousekeepingApp() {
 
   /** Sichtbare, priorisierte Aufgabenliste fuer die Aufgaben-Ansicht - respektiert
    * "Meine Aufgaben" (Punkt 3/14). Briefing "Housekeeping-Dashboard anpassen" Punkt 3: fuer eine
-   * Reinigungskraft, die (nicht-leitendes) Mitglied eines Teams ist, bedeutet die zweite Option
-   * ("nicht nur meine") NICHT mehr "alle Aufgaben ueberhaupt", sondern "noch nicht zugewiesene
-   * Aufgaben des eigenen Teams" - genau die Aufgaben, die laut Briefing "nicht mehr uebersehen
-   * werden duerfen". Admin/Standortverantwortliche/Teamleader nutzen fuer ihre eigenen neuen
-   * Ansichten (taskViewMode in TasksScreen.tsx) bewusst NICHT diesen Zweig, sondern lesen direkt
-   * tasksForDayAll() - ihr Verhalten hier bleibt unveraendert (myTasksOnly=false liefert weiterhin
-   * uneingeschraenkt alles). */
+   * Reinigungskraft (egal ob mit oder ohne eigenes Team), die nicht Team-Lead ist, bedeutet die
+   * zweite Option ("nicht nur meine") NICHT mehr "alle Aufgaben ueberhaupt", sondern "noch nicht
+   * zugewiesene, fuer sie claimbare Aufgaben" - genau die Aufgaben, die laut Briefing "nicht mehr
+   * uebersehen werden duerfen". Ist die Person Mitglied eines Teams, gilt das nur fuer offene
+   * Aufgaben GENAU dieses Teams; ist sie keinem Team zugeordnet, gilt es fuer offene Aufgaben ohne
+   * Team-Zuordnung (Property ohne konfiguriertes Standard-Team) - exakt dieselbe Bedingung wie
+   * canClaimTeamTask() serverseitig in api/task-assignments.js, damit "Offene Aufgaben" nie mehr
+   * anzeigt, als die Person tatsaechlich per "Übernehmen" claimen darf. Admin/Standortverantwortliche/
+   * Teamleader nutzen fuer ihre eigenen Ansichten (taskViewMode in TasksScreen.tsx) bewusst NICHT
+   * diesen Zweig, sondern lesen direkt tasksForDayAll() - ihr Verhalten hier bleibt unveraendert
+   * (myTasksOnly=false liefert weiterhin uneingeschraenkt alles). */
   const tasksForDay = useCallback((date: string): ResolvedTask[] => {
     const all = tasksForDayAll(date);
     const user = state.user;
     if (state.myTasksOnly && user) {
       return sortTasksForDay(all.filter((task) => task.assignedUserId === user.id));
     }
-    const isPlainTeamMember =
-      !!user && user.role === 'housekeeper' && getTeamMemberships(user).length > 0 && !isTeamLead(user);
-    if (isPlainTeamMember) {
+    const isClaimingHousekeeper = !!user && user.role === 'housekeeper' && !isTeamLead(user);
+    if (isClaimingHousekeeper) {
       const myTeamIds = new Set(getTeamMemberships(user).map((m) => m.teamId));
-      const openTeamTasks = all.filter((task) => !task.assignedUserId && task.assignedTeamId && myTeamIds.has(task.assignedTeamId));
-      return sortTasksForDay(openTeamTasks);
+      const openClaimableTasks = all.filter((task) => {
+        if (task.assignedUserId) return false;
+        if (!task.assignedTeamId) return true;
+        return myTeamIds.has(task.assignedTeamId);
+      });
+      return sortTasksForDay(openClaimableTasks);
     }
     return sortTasksForDay(all);
   }, [state.myTasksOnly, state.user, tasksForDayAll]);

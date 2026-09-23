@@ -105,6 +105,16 @@ export function IconChevronDown(props: IconProps) {
   );
 }
 
+/** Zurueck-Pfeil fuer die neue "Offene Aufgaben"-Unteransicht (Housekeeping-Mobile-Redesign) -
+ * dieselbe Strichstaerke/derselbe Stil wie IconChevronDown, nur horizontal statt vertikal. */
+export function IconChevronLeft(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="m15 6-6 6 6 6" />
+    </svg>
+  );
+}
+
 /** Ersetzt das Babybett-Emoji - kein exaktes "Krippe"-Icon im bestehenden Set, daher ein
  * eigenes, stilistisch passendes Gitterbett gezeichnet (Rahmen + Seitenstreben), statt auf ein
  * Emoji zurueckzufallen. */

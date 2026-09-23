@@ -18,7 +18,9 @@ import { MultiSelectBar } from './MultiSelectBar';
 import { BulkAssignSheet } from './BulkAssignSheet';
 import { BottomSheet } from './BottomSheet';
 import { Button } from '@/components/ui/Button';
-import { IconCheck, IconCheckSquare, IconChevronDown, IconPlus, IconSparkles, IconTask, IconUsers } from '@/components/ui/icons';
+import {
+  IconCheck, IconCheckSquare, IconChevronDown, IconChevronLeft, IconClock, IconPlus, IconSparkles, IconTask, IconUsers,
+} from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
 /** Punkt 6/7 (UX-Feinschliff): Icon DIREKT neben der Zahl (statt darunter beim Label) - eine
@@ -221,7 +223,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
     state, t, selectDay, selectPropertyScope, toggleMyTasksOnly,
     toggleTaskMultiSelect, toggleTaskSelection, openTask, bulkAssignTasks, clearDayAssignments, retryTasksLoad,
     noticeForTask, isNoticeAcknowledgedBy, openManualTaskForm, shortStaffName, tasksForDayAll,
-    isTaskSeenByMe, isBookingChangeAckedByMe,
+    isTaskSeenByMe, isBookingChangeAckedByMe, claimTask, showToast,
   } = app;
   const [bulkOpen, setBulkOpen] = useState(false);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
@@ -237,6 +239,16 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   // Renderpfad bleibt fuer diesen Fall vollstaendig unveraendert), 'home'/'open' sind neue,
   // zusaetzliche Ansichten, die ausschliesslich mit bereits vorhandenen Daten arbeiten.
   const [taskViewMode, setTaskViewMode] = useState<'home' | 'mine' | 'open'>('home');
+  // Housekeeping-Mobile-Redesign (Reinigungskraft ohne/mit Team, siehe housekeeperRedesignHere
+  // unten): rein lokale Sortier-Auswahl fuer die neue "Offene Aufgaben"-Ansicht - betrifft
+  // ausschliesslich die DARSTELLUNGSREIHENFOLGE dieser einen Liste, keine neue Prioritaets-/
+  // Zuweisungslogik (siehe sortOpenTasksFor unten, das den bestehenden sortTasksForDay()-Rang fuer
+  // 'arrival' unveraendert weiterverwendet). `claimingTaskId` verhindert lediglich doppeltes
+  // Antippen desselben "Übernehmen"-Buttons waehrend die Anfrage laeuft - die eigentliche
+  // Race-Sicherheit kommt weiterhin ausschliesslich vom atomaren HSETNX-Claim serverseitig
+  // (api/task-assignments.js), hier geht es nur um UI-Feedback.
+  const [openTasksSort, setOpenTasksSort] = useState<'arrival' | 'location' | 'apartment'>('arrival');
+  const [claimingTaskId, setClaimingTaskId] = useState<string | null>(null);
 
   // Punkt 17 (Desktop-Admin-Layout): dieselbe Ableitung wie zuvor hier inline, jetzt in
   // lib/housekeeping/dayOverview.ts ausgelagert - die neue DesktopAdminSidebar.tsx nutzt exakt
@@ -258,8 +270,14 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const locationManagerHere = isManagerHere && !isAdmin;
   const myTeamMemberships = getTeamMemberships(state.user);
   const hasTeam = myTeamMemberships.length > 0;
-  const plainTeamMemberHere = !isAdmin && !locationManagerHere && !teamLeadHere && hasTeam;
   const elevatedHere = isAdmin || locationManagerHere || teamLeadHere;
+  // Housekeeping-Mobile-Redesign (Reinigungskraft ohne/mit Team, aber NICHT deren Lead - Punkt 15
+  // "Teamleader-Ansicht in diesem Schritt nicht anfassen"): da laut Rollenmodell (types.ts) nur
+  // `role === 'housekeeper'` ueberhaupt admin/location_manager ausschliesst, deckt dieser eine
+  // Schalter sowohl "mit Team" als auch "ohne Team" (frueher zwei getrennte Faelle,
+  // plainTeamMemberHere/der generische else-Zweig) einheitlich ab - beide Faelle erhalten laut
+  // Briefing exakt dieselbe neue Oberflaeche (Statuskarte/Tabs/eigene "Offene Aufgaben"-Ansicht).
+  const housekeeperRedesignHere = state.user?.role === 'housekeeper' && !teamLeadHere;
 
   // Ursachenanalyse "Team heute an Datumsauswahl gekoppelt" (Briefing "Dashboard fuer Teamleader
   // optimieren" Punkt 12): der fruehere Fix hielt `taskViewMode` (lokal, hier) und das GLOBALE
@@ -308,6 +326,21 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   // "Uebersicht" unabhaengig vom aktuellen Ansichts-Modus dieselben Tageszahlen zeigen.
   const allTasksToday = date ? tasksForDayAll(date) : [];
   const openTasksToday = allTasksToday.filter((task) => task.status !== 'completed');
+
+  // Housekeeping-Mobile-Redesign Punkt 2/9/13/14: die fuer eine Reinigungskraft (mit ODER ohne
+  // eigenes Team) tatsaechlich per "Übernehmen" claimbaren offenen Aufgaben des Tages - exakt
+  // dieselbe Bedingung wie serverseitig `canClaimTeamTask()` (api/task-assignments.js) UND wie
+  // `tasksForDay()`s housekeeper-Zweig (useHousekeepingApp.ts): unassigned, und entweder OHNE
+  // Team-Zuordnung (Property ohne konfiguriertes Standard-Team) ODER mit Zuordnung zu einem der
+  // EIGENEN Teams. Direkt aus `openTasksToday` berechnet statt ueber `tasksForDay()`/`myTasksOnly`
+  // (siehe dortiger Kommentar), damit die Zahl unabhaengig vom aktuell aktiven Tab (Statuskarte/
+  // Tab-Badge sollen die Zahl auch zeigen, WAEHREND "Meine Aufgaben" aktiv ist) verfuegbar ist.
+  const myTeamIdSet = new Set(myTeamMemberships.map((m) => m.teamId));
+  const openClaimableTasksToday = sortTasksForDay(openTasksToday.filter((task) => {
+    if (task.assignedUserId) return false;
+    if (!task.assignedTeamId) return true;
+    return myTeamIdSet.has(task.assignedTeamId);
+  }));
 
   // Teamleader (Punkt 4): nur die Teams, in denen der Nutzer TATSAECHLICH Lead ist (nicht jede
   // blosse Mitgliedschaft) - "Team heute" zeigt bewusst nur das/die eigenen geleiteten Teams.
@@ -411,15 +444,11 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       count: countLabel(t, teamCleaningCountToday, 'noun_cleaning_one', 'noun_cleaning_many'),
       open: teamUnassignedTasks.length,
     });
-  } else if (plainTeamMemberHere) {
-    const myOwnCount = openTasksToday.filter((task) => task.assignedUserId === state.user?.id).length;
-    const openTeamCount = openTasksToday.filter(
-      (task) => !task.assignedUserId && task.assignedTeamId && myTeamMemberships.some((m) => m.teamId === task.assignedTeamId),
-    ).length;
-    compactInfoLine =
-      openTeamCount > 0
-        ? t('dashboard_cleanings_for_you_with_open', { n: myOwnCount, m: openTeamCount })
-        : t('dashboard_cleanings_for_you', { n: myOwnCount });
+  } else if (housekeeperRedesignHere) {
+    // Housekeeping-Mobile-Redesign Punkt 4: fuer die Reinigungskraft (mit ODER ohne Team) ersetzt
+    // die neue, tippbare Statuskarte (siehe unten) diese einfache Textzeile vollstaendig - keine
+    // doppelte Anzeige derselben Zahlen.
+    compactInfoLine = null;
   } else {
     const myOwnCount = openTasksToday.filter((task) => task.assignedUserId === state.user?.id).length;
     compactInfoLine = t('dashboard_cleanings_for_you', { n: myOwnCount });
@@ -459,6 +488,55 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       ].filter(Boolean);
       return { propertyCode: g.propertyCode, label: `${g.propertyName} · ${parts.join(' · ')}`, tasks: g.tasks };
     });
+  }
+
+  // Housekeeping-Mobile-Redesign Punkt 9: dieselbe Standortgruppierung wie toMixedLocationGroups(),
+  // nur mit der fuer "Offene Aufgaben" verlangten kompakten Beschriftung ("LÆKE · 2 offen" statt
+  // einer Typ-Aufschluesselung) - offene Aufgaben sind ohnehin ausschliesslich ueber ihren
+  // Zuweisungsstatus definiert (siehe openClaimableTasksToday oben), eine Typ-Angabe waere hier
+  // redundant.
+  function toOpenLocationGroups(tasks: ResolvedTask[]) {
+    if (!groupByLocation) return null;
+    return groupTasksByProperty(tasks, orderedPropertyCodes).map((g) => ({
+      propertyCode: g.propertyCode,
+      label: `${g.propertyName} · ${g.tasks.length} ${t('open_tasks_group_suffix')}`,
+      tasks: g.tasks,
+    }));
+  }
+
+  // Housekeeping-Mobile-Redesign Punkt 10: "Anreisezeit (früh zuerst)" ist bereits exakt die
+  // Reihenfolge, die die bestehende sortTasksForDay()-Prioritaet fuer eine Liste liefert, die
+  // ausschliesslich offene Aufgaben enthaelt (alle Eintraege teilen sich denselben statusTier,
+  // die tatsaechliche Reihenfolge kommt dort schon aus nextRequiredAtKey() = effektive Anreisezeit)
+  // - openClaimableTasksToday ist deshalb fuer 'arrival' bereits fertig sortiert, keine zweite
+  // Prioritaets-Implementierung noetig. "Standort"/"Apartment" sind rein darstellungsbezogene
+  // Zusatz-Sortierungen dieser einen Liste, keine neue Task-Prioritaet.
+  function applyOpenTasksSort(tasks: ResolvedTask[], sort: 'arrival' | 'location' | 'apartment'): ResolvedTask[] {
+    if (sort === 'location') {
+      return tasks.slice().sort((a, b) => a.propertyName.localeCompare(b.propertyName) || a.unitName.localeCompare(b.unitName, undefined, { numeric: true }));
+    }
+    if (sort === 'apartment') {
+      return tasks.slice().sort((a, b) => a.unitName.localeCompare(b.unitName, undefined, { numeric: true }));
+    }
+    return tasks;
+  }
+
+  // Housekeeping-Mobile-Redesign Punkt 13: Wiederverwendung der bestehenden, bereits Race-
+  // Condition-sicheren claimTask()-Aktion (HSETNX serverseitig, siehe api/task-assignments.js) -
+  // hier ausschliesslich UI-Ablauf (kurzzeitige Sperre gegen Doppel-Tap + dezente Erfolgsmeldung).
+  // Ob der Claim tatsaechlich erfolgreich war, wird NICHT aus einem Rueckgabewert von claimTask()
+  // gelesen (die Aktion faengt Fehler bereits selbst ab und zeigt sie ueber runAction()/showToast
+  // an, siehe useHousekeepingApp.ts) - stattdessen nach dem Await direkt am aktualisierten
+  // state.taskAssignments geprueft: gehoert die Aufgabe jetzt dem eingeloggten Nutzer, hat der
+  // Claim gewonnen (Punkt 13.2/13.6), sonst hat z. B. ein anderes Teammitglied gewonnen (Punkt
+  // 13's "verstaendliche Meldung" kam in dem Fall bereits als Toast von runAction/dem 409-Fehler).
+  async function handleClaimOpenTask(task: ResolvedTask) {
+    setClaimingTaskId(task.id);
+    await claimTask(task.id);
+    setClaimingTaskId(null);
+    if (state.taskAssignments[task.id]?.housekeeperId === state.user?.id) {
+      showToast(t('claim_open_task_success'));
+    }
   }
 
   // Punkt 7: kontextabhaengige Leerzustaende fuer den Teamleader - berücksichtigen den aktiven
@@ -513,7 +591,11 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
     if (state.propertyScope !== scope) selectPropertyScope(scope);
   }
 
-  const showPropertyChips = allowedProps.length > 1;
+  // Housekeeping-Mobile-Redesign Punkt 2/16: fuer eine Reinigungskraft (mit oder ohne Team) entfaellt
+  // der Standortfilter komplett ("Meine Aufgaben"/"Offene Aufgaben" zeigen automatisch alle
+  // relevanten Standorte, siehe openClaimableTasksToday/tasksForDay oben) - fuer Admin/
+  // Standortverantwortliche/Teamleader bleibt er unveraendert bestehen.
+  const showPropertyChips = allowedProps.length > 1 && !housekeeperRedesignHere;
   // Briefing "Housekeeping-Dashboard anpassen": vorher gab es fuer Admin/Standortverantwortliche
   // (isManagerHere) UEBERHAUPT keinen "Ansicht"-Picker (nur ggf. den Standortfilter) - jetzt
   // bekommen Admin/Standortverantwortliche/Teamleader (elevatedHere) ebenfalls einen eigenen
@@ -568,12 +650,10 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
     ];
     viewValue = taskViewMode;
     onViewChange = (value) => (value === 'home' ? selectViewHome() : value === 'mine' ? selectViewMineElevated() : selectViewOpen());
-  } else if (plainTeamMemberHere) {
-    viewOptions = [
-      { value: 'mine', label: t('my_tasks_only'), count: myOpenTasksCount },
-      { value: 'all', label: t('dashboard_open_team_tasks'), count: openTasksToday.filter((task) => !task.assignedUserId && task.assignedTeamId && myTeamMemberships.some((m) => m.teamId === task.assignedTeamId)).length, highlightCount: true },
-    ];
   }
+  // housekeeperRedesignHere (Reinigungskraft mit/ohne Team, siehe oben) nutzt bewusst KEINE der
+  // beiden bestehenden Picker-Varianten (TaskViewSelect-Dropdown/natives <select>) mehr - siehe die
+  // neuen, grossen Tab-Buttons weiter unten im JSX, die direkt state.myTasksOnly umschalten.
 
   // Briefing "Housekeeping-Dashboard anpassen": gemeinsame Kartenrender-Helfer fuer die neuen
   // rollenabhaengigen Abschnitte unten - dieselbe Karten-/Gruppen-Darstellung (TaskCard/TaskGroup)
@@ -593,6 +673,42 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         attentionState={cardAttentionState(task)}
         onOpen={() => openTask(task.id)}
       />
+    );
+  }
+
+  // Housekeeping-Mobile-Redesign Punkt 11/12/13: die bestehende TaskCard bleibt VOELLIG
+  // unveraendert (kein neuer Claim-Button INNERHALB der Karte, siehe TaskCard.tsx#onOpen - das
+  // ist der einzige Interaktionspunkt der Karte) - der prominente Early-Check-in-Hinweis und der
+  // "Übernehmen"-Button sitzen als EIGENE Elemente ausserhalb/darunter. Punkt 12: bewusst KEIN
+  // orangener Seitenstreifen o.ae. AUF der Karte selbst (das wuerde mit der bestehenden Buchungs-
+  // aenderungs-Orange-Semantik kollidieren) - die Dringlichkeit wird stattdessen ueber die konkrete
+  // Anreisezeit in einem separaten Banner-Element oberhalb der Karte kommuniziert, ausschliesslich
+  // mit bereits vorhandenen Daten (task.hasEarlyCheckin/effectiveArrivalTime/bookedArrivalTime,
+  // siehe tasks.ts) - keine neue Geschaeftslogik.
+  function renderOpenTaskCard(task: ResolvedTask) {
+    const isClaiming = claimingTaskId === task.id;
+    return (
+      <div key={task.id} className="flex flex-col gap-2">
+        {task.hasEarlyCheckin ? (
+          <div className="flex items-center gap-1.5 rounded-control border border-status-attention/30 bg-status-attention-bg px-3 py-2 text-[12.5px] font-medium text-status-attention">
+            <IconClock width={14} height={14} className="shrink-0" aria-hidden="true" />
+            <span>
+              {t('early_checkin_prominent_time', { time: task.effectiveArrivalTime || task.bookedArrivalTime || '' })}
+              {' · '}
+              {t('early_checkin_prominent_title')}
+            </span>
+          </div>
+        ) : null}
+        {renderRoleTaskCard(task)}
+        <Button
+          variant="primary"
+          className="w-full"
+          disabled={isClaiming}
+          onClick={() => handleClaimOpenTask(task)}
+        >
+          {isClaiming ? t('loading') : t('claim_open_task_action')}
+        </Button>
+      </div>
     );
   }
 
@@ -724,6 +840,29 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   return (
     <div className="pb-6">
       {compactInfoLine ? <p className="truncate px-4 pt-2 text-[12.5px] text-muted">{compactInfoLine}</p> : null}
+      {/* Housekeeping-Mobile-Redesign Punkt 4: tippbare Statuskarte statt einfacher Textzeile -
+       * "N Reinigungen für dich" (singular/plural, countLabel()) fuehrt bei Antippen DIREKT zu
+       * "Offene Aufgaben" (selectAllTasks()); die zweite Zeile zeigt die offenen, fuer diese Person
+       * claimbaren Aufgaben (openClaimableTasksToday, siehe oben - identische Zahl wie das
+       * Tab-Badge unten) oder, falls keine offen sind, den ruhigen "alles verteilt"-Text. Nur fuer
+       * "Meine Aufgaben" sichtbar (auf der "Offene Aufgaben"-Unteransicht uebernimmt Zurueck-Pfeil+
+       * Titel dieselbe Rolle, siehe showScopeRow-Block unten) - kein doppelter Einstieg. */}
+      {housekeeperRedesignHere && state.myTasksOnly ? (
+        <button
+          type="button"
+          onClick={selectAllTasks}
+          className="mx-4 mt-2 flex w-[calc(100%-2rem)] flex-col items-start gap-0.5 rounded-card-lg border border-status-attention/25 bg-status-attention-bg px-4 py-3 text-left"
+        >
+          <span className="text-[14px] font-medium text-ink">
+            {t('status_card_cleanings_line', { count: countLabel(t, myOpenTasksCount, 'noun_cleaning_one', 'noun_cleaning_many') })}
+          </span>
+          <span className="text-[12.5px] text-muted">
+            {openClaimableTasksToday.length > 0
+              ? (openClaimableTasksToday.length === 1 ? t('status_card_team_open_one') : t('status_card_team_open_many', { m: openClaimableTasksToday.length }))
+              : t('status_card_team_done')}
+          </span>
+        </button>
+      ) : null}
       {/* Desktop-Admin-Layout (>= 1280px): der bisherige eigene xl:mx-auto/max-w-Wrapper hier
        * entfaellt - die Breitenbegrenzung/Zentrierung passiert jetzt einmalig auf Ebene der
        * Grid-Spalte in app/page.tsx (Hauptbereich), damit Header/Toolbar/Sidebar konsistent
@@ -743,7 +882,54 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
        * derselben Property gewinnen ab diesem Breakpoint, ohne die mobilen Klassen zu
        * entfernen). */}
       <div className="xl:flex xl:flex-wrap xl:items-center xl:gap-x-3 xl:gap-y-2 xl:px-4 xl:pb-1 xl:pt-3">
-      {showScopeRow ? (
+      {housekeeperRedesignHere ? (
+        // Housekeeping-Mobile-Redesign Punkt 3/8: zwei grosse Tabs ersetzen fuer diese Rolle
+        // vollstaendig das alte Dropdown/native <select> UND den Standortfilter (siehe
+        // showPropertyChips oben) - beim Wechsel auf "Offene Aufgaben" (state.myTasksOnly=false)
+        // weicht die Tab-Zeile einem Zurueck-Pfeil+Titel (dieselbe Fläche, keine doppelte
+        // Navigation). `selectedDay`/`state.propertyScope` bleiben dabei unberuehrt (selectMine/
+        // selectAllTasks aendern ausschliesslich myTasksOnly, siehe oben) - Punkt 5.
+        state.myTasksOnly ? (
+          <div className="flex gap-2 px-4 py-2.5 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
+            <button
+              type="button"
+              onClick={selectMine}
+              aria-pressed
+              className="flex-1 rounded-full border border-ink bg-ink px-3.5 py-2 text-center text-[13px] font-medium text-warm-white"
+            >
+              {t('my_tasks_only')} {myOpenTasksCount}
+            </button>
+            <button
+              type="button"
+              onClick={selectAllTasks}
+              aria-pressed={false}
+              className="flex-1 rounded-full border border-line bg-warm-white px-3.5 py-2 text-center text-[13px] font-medium text-ink"
+            >
+              {t('dashboard_open_tasks_generic')}{' '}
+              <span className={openClaimableTasksToday.length > 0 ? 'text-status-attention' : 'text-muted'}>
+                {openClaimableTasksToday.length}
+              </span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2.5 px-4 py-2.5 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
+            <button
+              type="button"
+              onClick={selectMine}
+              aria-label={t('back_action')}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line text-ink"
+            >
+              <IconChevronLeft width={16} height={16} aria-hidden="true" />
+            </button>
+            <div className="min-w-0">
+              <p className="truncate text-[14px] font-medium text-ink">{t('dashboard_open_tasks_generic')}</p>
+              <p className="truncate text-[12px] text-muted">
+                {hasTeam ? t('open_tasks_subtitle_team') : t('open_tasks_subtitle_noteam')}
+              </p>
+            </div>
+          </div>
+        )
+      ) : showScopeRow ? (
         <div className="flex gap-2 px-4 py-2.5 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
           {viewOptions ? (
             <TaskViewSelect value={viewValue} options={viewOptions} onChange={onViewChange} className="flex-1 xl:w-[210px] xl:flex-none" />
@@ -1109,12 +1295,92 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             </>
           ) : null}
         </>
+      ) : housekeeperRedesignHere ? (
+        // Housekeeping-Mobile-Redesign Punkt 7/8/9/10/11/13: Reinigungskraft (mit ODER ohne
+        // eigenes Team) - "Meine Aufgaben" nutzt weiterhin dieselben, bereits nach Standort
+        // gruppierbaren Bausteine (TaskGroup/toMixedLocationGroups/renderDoneSection) wie der
+        // bisherige Default-Pfad, nur mit EINER gemeinsamen "Meine Aufgaben · N"-Ueberschrift statt
+        // der separaten Reinigungen-/Aufgaben-Abschnitte (Punkt 7). "Offene Aufgaben" ist die neue,
+        // dedizierte Ansicht (Banner/Sortierung/prominenter Early-Check-in-Hinweis/"Übernehmen").
+        <>
+          {state.myTasksOnly ? (
+            <>
+              {(() => {
+                const myTasksMerged = sortTasksForDay([...cleaningTasks, ...openManualTasks]);
+                return myTasksMerged.length > 0 ? (
+                  <TaskGroup
+                    text={`${t('my_tasks_only')} · ${myTasksMerged.length}`}
+                    count={myTasksMerged.length}
+                    categoryLabel={t('my_tasks_only')}
+                    tasks={myTasksMerged}
+                    locationGroups={toMixedLocationGroups(myTasksMerged)}
+                    renderCard={(task) => renderRoleTaskCard(task)}
+                  />
+                ) : null;
+              })()}
+              {renderDoneSection(doneTasks)}
+            </>
+          ) : (
+            <>
+              {openClaimableTasksToday.length > 0 ? (
+                <div className="mx-4 mt-3 rounded-card-lg border border-status-attention/25 bg-status-attention-bg px-4 py-3">
+                  <p className="text-[13px] font-medium text-ink">
+                    {openClaimableTasksToday.length === 1
+                      ? t('open_tasks_banner_title_one')
+                      : t('open_tasks_banner_title_many', { n: openClaimableTasksToday.length })}
+                  </p>
+                  <p className="mt-0.5 text-[12px] text-muted">{t('open_tasks_banner_subtitle')}</p>
+                </div>
+              ) : null}
+              {openClaimableTasksToday.length > 0 ? (
+                <div className="flex items-center gap-2 px-4 pt-3">
+                  <span className="shrink-0 text-[12px] text-muted">{t('sort_label')}</span>
+                  <div className="relative min-w-0 flex-1">
+                    <select
+                      value={openTasksSort}
+                      onChange={(e) => setOpenTasksSort(e.target.value as 'arrival' | 'location' | 'apartment')}
+                      className={selectClass}
+                      data-focus-none
+                    >
+                      <option value="arrival">{t('sort_option_arrival')}</option>
+                      <option value="location">{t('sort_option_location')}</option>
+                      <option value="apartment">{t('sort_option_apartment')}</option>
+                    </select>
+                    <IconChevronDown width={13} height={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
+                  </div>
+                </div>
+              ) : null}
+              {(() => {
+                const sortedOpen = applyOpenTasksSort(openClaimableTasksToday, openTasksSort);
+                if (sortedOpen.length === 0) {
+                  return <div className="px-4 py-10 text-center text-sm text-muted">{t('no_tasks')}</div>;
+                }
+                const gridClass = 'grid grid-cols-1 gap-3 px-4 pt-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]';
+                const locationGroups = toOpenLocationGroups(sortedOpen);
+                if (locationGroups) {
+                  return (
+                    <div className="flex flex-col gap-1">
+                      {locationGroups.map((group) => (
+                        <div key={group.propertyCode}>
+                          <p className="px-4 pb-1 pt-3 text-[12px] font-medium text-muted first:pt-1">{group.label}</p>
+                          <div className={gridClass}>{group.tasks.map((task) => renderOpenTaskCard(task))}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+                return <div className={gridClass}>{sortedOpen.map((task) => renderOpenTaskCard(task))}</div>;
+              })()}
+            </>
+          )}
+        </>
       ) : (
         // Punkt 10: Reinigungen/Aufgaben/Fertig als eigene, klein beschriftete Abschnitte statt
         // einer einzigen gemischten Liste - "Fertig" per Default eingeklappt, damit erledigte
         // Elemente die noch offene Arbeit nicht verdraengen. Eine leere Kategorie wird komplett
-        // weggelassen (kein grosser Empty-State). Genutzt fuer normale Housekeeper (mit/ohne Team)
-        // UND fuer Teamleader/Standortverantwortliche/Admin im 'mine'-Modus (identisch zu vorher).
+        // weggelassen (kein grosser Empty-State). Genutzt fuer Teamleader/Standortverantwortliche/
+        // Admin im 'mine'-Modus (identisch zu vorher) - eine normale Reinigungskraft (mit/ohne
+        // Team) nutzt jetzt den eigenen housekeeperRedesignHere-Zweig oben.
         <>
           {renderCleaningAndManualTaskGroups(cleaningTasks, openManualTasks, isAdmin ? ADMIN_DESKTOP_CARD_GRID_CLASS : undefined)}
           {renderDoneSection(doneTasks, null, isAdmin ? ADMIN_DESKTOP_CARD_GRID_CLASS : undefined)}
