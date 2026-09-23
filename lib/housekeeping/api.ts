@@ -1122,7 +1122,39 @@ import type { ExtraEquipmentNeed } from './tasks';
 // explizit als Number). Der fälschlich angezeigte orange Punkt auf der Karte war eine direkte Folge
 // desselben Bugs (task.bookingChange war nicht null) und ist mit diesem Fix ebenfalls behoben - keine
 // separate Aenderung an der Punkt-Logik selbst noetig, die war bereits korrekt.
-export const APP_VERSION = '2.35.1';
+// v2.36.0 - Team-/Benutzerverwaltung ueberarbeitet (Briefing "Team-/Benutzerverwaltung
+// ueberarbeiten"): 3-Rollen-Modell admin/location_manager/housekeeper statt der bisherigen
+// zwei Rollen, mit abwaertskompatibler Selbstheilungs-Migration bestehender Datensaetze
+// (migrateUserRecord in api/_users.js) - kein manueller Migrationsschritt noetig, bestehende
+// Logins/Passwoerter/Sessions/Teams bleiben unveraendert gueltig. Teamleader ist bewusst KEINE
+// eigene Rolle mehr, sondern eine Eigenschaft einer einzelnen Teammitgliedschaft
+// (StaffUser.teamMemberships[], ein User kann Mitglied mehrerer Teams gleichzeitig sein) -
+// ersetzt die fruehere, auf ein einzelnes Team begrenzte housekeepingTeamId/teamRole-Kombination
+// (bleibt als Kompat-Lesepfad bestehen, wird nicht mehr neu geschrieben). Neues, sicheres
+// Einladungssystem ersetzt die fruehere direkte Kontoerstellung durch einen Admin: ein
+// kryptographisch zufaelliges Single-Use-Token (nur als SHA-256-Hash gespeichert) wird je nach
+// einladender Rolle serverseitig strikt gescoped (admin frei; Standortverantwortlicher nur
+// housekeeper fuer eigene Standorte; Teamleader nur housekeeper ins eigene Team, niemals
+// Teamleader-Ernennung) - Rolle/Team/isLeader kommen nie ungeprueft aus dem Client
+// (api/invitations.js#resolveInvitationScope). Die eingeladene Person setzt ihr Passwort selbst
+// auf einer neuen, von der App-Shell unabhaengigen Seite (app/invite/[token]). Admin sieht den
+// Einladungsstatus (Aktiv/Einladung ausstehend/Deaktiviert) direkt in der neuen, um zwei Tabs
+// ("Mitarbeiter"/"Reinigungsteams") erweiterten TeamScreen.tsx - mit Suche/Filter und
+// Desktop-Tabelle+Mobile-Karten (AdminTable) - Standortverantwortliche sehen dieselbe Ansicht
+// auf eigene Standorte/Teams beschraenkt, ein Teamleader eine reduzierte "Mein Team"-Ansicht
+// (nur eigene Teammitglieder + Einladen-Button). Deaktivieren ersetzt Loeschen als Standardweg
+// (Punkt "Deaktivieren statt loeschen"): invalidiert sofort alle aktiven Sessions
+// (housekeeping:user_sessions:<userId>, siehe api/_auth.js#invalidateUserSessions - vorher
+// blockierte active:false nur neue Logins) und warnt den Admin vor bestehenden zukuenftigen
+// Zuweisungen. Zentrale, benannte Authorization-Helfer (canManageUser/canManageTeam/
+// canAssignTask/canInviteUser/canManageProperty/canViewStatistics/canOpenApaleo) ersetzen
+// verstreute role===...-Bedingungen, identisch in api/_permissions.js (Server, tatsaechlich
+// durchgesetzt) und lib/housekeeping/permissions.ts (Client-Spiegel) - beide Implementierungen
+// gegeneinander UND gegen eine 77 Faelle umfassende Privilege-Escalation-Testsuite verifiziert
+// (u. a. Reinigungskraft->Admin, Standortverantwortlicher->fremder Standort/Admin-Rolle,
+// Teamleader->fremdes Team/neuer Teamleader - alle serverseitig abgelehnt bzw. auf das erlaubte
+// Minimum zurechtgestutzt, unabhaengig vom Client-Request).
+export const APP_VERSION = '2.36.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
