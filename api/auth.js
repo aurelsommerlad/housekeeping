@@ -1,9 +1,11 @@
-// Authentifizierung: Ersteinrichtung (einmalige Admin-Registrierung), Login, Logout, Session-Status.
+// Authentifizierung: Ersteinrichtung (einmalige Admin-Registrierung), Login, Logout, Session-Status,
+// Einladung-annehmen (Briefing "Einladungssystem" - siehe api/_invitations.js).
 // GET  -> aktueller Session-Status ({authenticated, user, setupRequired}).
-// POST -> { action: 'register-admin' | 'login' | 'logout', ... }.
+// POST -> { action: 'register-admin' | 'login' | 'logout' | 'invitation-info' | 'accept-invite', ... }.
 const { getRedis, migrateLegacyKey } = require('./_redis');
 const { createSession, destroySession, getSession, SETUP_LOCK_KEY, LEGACY_SETUP_LOCK_KEY } = require('./_auth');
 const { hasAnyAdmin, getUserRawById, sanitizeUser, createUser, verifyLogin } = require('./_users');
+const { getInvitationInfo, acceptInvitation } = require('./_invitations');
 
 function isValidEmail(email) {
   return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -108,6 +110,46 @@ module.exports = async (req, res) => {
     if (action === 'logout') {
       await destroySession(req, res);
       res.status(200).json({ ok: true });
+      return;
+    }
+
+    // Bewusst OHNE requireSession - die einladende Person ist zu diesem Zeitpunkt noch gar kein
+    // angemeldeter Nutzer dieser App (siehe app/invite/[token]/page.tsx). Die einzige "Berechtigung"
+    // ist der Besitz des unerratbaren Tokens selbst.
+    if (action === 'invitation-info') {
+      const { token } = req.body || {};
+      if (!token) {
+        res.status(400).json({ error: 'token ist erforderlich.' });
+        return;
+      }
+      res.status(200).json(await getInvitationInfo(redis, token));
+      return;
+    }
+
+    if (action === 'accept-invite') {
+      const { token, firstName, lastName, password, passwordConfirm } = req.body || {};
+      if (!token || !firstName || !lastName || !password) {
+        res.status(400).json({ error: 'Bitte alle Felder ausfüllen.' });
+        return;
+      }
+      if (String(password).length < 8) {
+        res.status(400).json({ error: 'Das Passwort muss mindestens 8 Zeichen lang sein.' });
+        return;
+      }
+      if (password !== passwordConfirm) {
+        res.status(400).json({ error: 'Die Passwörter stimmen nicht überein.' });
+        return;
+      }
+      try {
+        // Rolle/Standorte/Team kommen ausschliesslich aus der bereits serverseitig gescopten
+        // Einladung selbst (siehe api/_invitations.js#acceptInvitation) - dieser Request-Body
+        // beeinflusst NICHTS davon, unabhaengig davon, was ein manipulierter Client mitschicken wuerde.
+        const { user } = await acceptInvitation(redis, token, { firstName, lastName, password });
+        await createSession(req, res, user);
+        res.status(200).json({ user: sanitizeUser(user) });
+      } catch (err) {
+        res.status(400).json({ error: err.message });
+      }
       return;
     }
 

@@ -18,7 +18,7 @@ import { NextResponse } from 'next/server';
  */
 const { getRedis, migrateLegacyKey } = require('../../api/_redis');
 const {
-  SESSION_TTL_SECONDS, COOKIE_NAME, SESSION_PREFIX, LEGACY_SESSION_PREFIX, SETUP_LOCK_KEY, LEGACY_SETUP_LOCK_KEY,
+  SESSION_TTL_SECONDS, COOKIE_NAME, SESSION_PREFIX, LEGACY_SESSION_PREFIX, USER_SESSIONS_PREFIX, SETUP_LOCK_KEY, LEGACY_SETUP_LOCK_KEY,
 } = require('../../api/_auth');
 const { hasAnyAdmin, getUserRawById, verifyLogin, createUser, sanitizeUser } = require('../../api/_users');
 
@@ -32,6 +32,9 @@ async function issueSessionToken(user: { id: string; role: string }): Promise<st
   const token = randomBytes(32).toString('hex');
   const record = { userId: user.id, role: user.role, createdAt: Date.now() };
   await redis.set(SESSION_PREFIX + token, JSON.stringify(record), { EX: SESSION_TTL_SECONDS });
+  // Haelt api/_auth.js#invalidateUserSessions (Deaktivierung) synchron mit diesem zweiten
+  // Session-Ausstellungspfad - siehe dortiger Kommentar.
+  await redis.sAdd(USER_SESSIONS_PREFIX + user.id, token).catch(() => {});
   return token;
 }
 
@@ -95,8 +98,15 @@ export async function loginUser(
 export async function logoutSessionToken(token: string | undefined): Promise<void> {
   if (!token) return;
   const redis = await getRedis();
+  const raw = await redis.get(SESSION_PREFIX + token).catch(() => null);
   await redis.del(SESSION_PREFIX + token);
   await redis.del(LEGACY_SESSION_PREFIX + token);
+  if (raw) {
+    try {
+      const record = JSON.parse(raw) as { userId?: string };
+      if (record.userId) await redis.sRem(USER_SESSIONS_PREFIX + record.userId, token).catch(() => {});
+    } catch { /* leere Session-Daten ignorieren, Cookie ist ohnehin bereits geloescht */ }
+  }
 }
 
 export async function getSessionUser(token: string | undefined): Promise<SanitizedUser | null> {
@@ -124,6 +134,11 @@ export async function getSessionUser(token: string | undefined): Promise<Sanitiz
   await redis.expire(key, SESSION_TTL_SECONDS);
   const user = await getUserRawById(redis, record.userId);
   if (!user) return null;
+  // Zusaetzliche Absicherung (dieser Pfad laedt ohnehin bereits den vollen User-Datensatz, siehe
+  // Kommentar oben): eine Deaktivierung wirkt hier sofort, auch fuer ein Session-Token, das
+  // invalidateUserSessions() aus irgendeinem Grund nicht erfasst hat (z. B. vor dessen Einfuehrung
+  // ausgestellt).
+  if ((user as { active?: boolean }).active === false) return null;
   return sanitizeUser(user);
 }
 

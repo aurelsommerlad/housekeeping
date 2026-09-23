@@ -1,18 +1,24 @@
 /**
- * Zentrale Rechte-Helfer fuer das Standortverantwortlichen-Modell (Punkt 13-16). Es gibt
- * weiterhin nur zwei Rollen ('admin' | 'housekeeping', siehe types.ts#Role) - "Standort-
- * verantwortlich" ist kein dritter Rollenwert, sondern ergibt sich rein aus
- * `managedProperties` auf einem housekeeping-User. Admin hat implizit ueberall alle Rechte.
+ * Zentrale Rechte-Helfer fuer das Rollen-/Standortverantwortlichen-/Team-Modell (Briefing
+ * "Team-/Benutzerverwaltung ueberarbeiten"). Drei Rollen ('admin' | 'location_manager' |
+ * 'housekeeper', siehe types.ts#Role) - Teamleader ist bewusst KEINE eigene Rolle, sondern eine
+ * Eigenschaft einer einzelnen Teammitgliedschaft (siehe getTeamMemberships). Admin hat implizit
+ * ueberall alle Rechte.
  *
  * Diese Datei ist die EINZIGE Quelle der Wahrheit fuer diese Pruefungen im Next.js-Client-Code.
- * Die serverseitigen API-Routen (api/*.js, CommonJS) duplizieren dieselbe, sehr kleine Logik
- * bewusst separat (siehe api/_permissions.js), da sie nicht direkt TS-Module importieren koennen -
- * beide Implementierungen muessen bei Aenderungen synchron gehalten werden.
+ * Die serverseitigen API-Routen (api/*.js, CommonJS) duplizieren dieselbe Logik bewusst separat
+ * (siehe api/_permissions.js), da sie nicht direkt TS-Module importieren koennen - beide
+ * Implementierungen muessen bei Aenderungen synchron gehalten werden. Client-Sichtbarkeit
+ * SPIEGELT dieselbe Logik, ersetzt aber NIE die serverseitige Pruefung.
  */
-import type { StaffUser } from './types';
+import type { StaffUser, TeamMembership } from './types';
 
 export function isAdmin(user: StaffUser | null): boolean {
   return user?.role === 'admin';
+}
+
+export function isLocationManager(user: StaffUser | null): boolean {
+  return user?.role === 'location_manager';
 }
 
 export function hasPropertyAccess(user: StaffUser | null, propertyCode: string): boolean {
@@ -23,10 +29,11 @@ export function hasPropertyAccess(user: StaffUser | null, propertyCode: string):
 }
 
 /** Standortverantwortlich fuer GENAU dieses Property - Admin zaehlt ueberall als Standort-
- * verantwortlich, ein housekeeping-User nur, wenn das Property in managedProperties steht UND
- * er ueberhaupt Zugriff darauf hat (managedProperties MUSS Teilmenge von properties sein, siehe
+ * verantwortlich, sonst nur, wenn das Property in managedProperties steht UND der User
+ * ueberhaupt Zugriff darauf hat (managedProperties MUSS Teilmenge von properties sein, siehe
  * sanitizeManagedProperties - diese Funktion verlaesst sich zusaetzlich selbst nochmal darauf,
- * falls ein Datensatz das je verletzen sollte). */
+ * falls ein Datensatz das je verletzen sollte). Bewusst NICHT auf `role==='location_manager'`
+ * geprueft (Admin ist ebenfalls "Property Manager" ueberall, siehe erste Zeile). */
 export function isPropertyManager(user: StaffUser | null, propertyCode: string): boolean {
   if (!user) return false;
   if (user.role === 'admin') return true;
@@ -41,28 +48,47 @@ export function managedPropertyCodes(user: StaffUser | null, allPropertyCodes: s
   return (user.managedProperties || []).filter((p) => allPropertyCodes.includes(p));
 }
 
-/** Team-Verantwortlicher (Housekeeping Teams) - unabhaengig von isPropertyManager/
- * managedProperties (siehe types.ts#StaffUser-Kommentar: beide Rechte duerfen sich nie
- * vermischen). Admin zaehlt hier bewusst NICHT automatisch als "lead" - Admin-Rechte werden
- * ueberall separat ueber isAdmin() geprueft, nie ueber teamRole. */
+/** Briefing "Team-/Benutzerverwaltung ueberarbeiten": liest die Teammitgliedschaften eines Users -
+ * bevorzugt das neue `teamMemberships`-Array (mehrere Teams moeglich), synthetisiert es
+ * andernfalls aus den aelteren Skalarfeldern `housekeepingTeamId`/`teamRole` (kein destruktiver
+ * Migrationsschritt fuer historische Datensaetze noetig). Identische Logik wie api/_users.js/
+ * api/_permissions.js (Server-Zwillinge). */
+export function getTeamMemberships(user: StaffUser | null): TeamMembership[] {
+  if (!user) return [];
+  if (Array.isArray(user.teamMemberships)) return user.teamMemberships;
+  if (user.housekeepingTeamId) return [{ teamId: user.housekeepingTeamId, isLeader: user.teamRole === 'lead' }];
+  return [];
+}
+
+/** Team-Verantwortlicher IRGENDEINES Teams (fuer generische UI-Sichtbarkeit, z. B. Navigation) -
+ * unabhaengig von isPropertyManager/managedProperties (siehe types.ts#StaffUser-Kommentar: beide
+ * Zustaendigkeiten duerfen sich nie vermischen). Admin zaehlt hier bewusst NICHT automatisch als
+ * "lead" - Admin-Rechte werden ueberall separat ueber isAdmin() geprueft. */
 export function isTeamLead(user: StaffUser | null): boolean {
-  return !!user && user.teamRole === 'lead' && !!user.housekeepingTeamId;
+  return getTeamMemberships(user).some((m) => m.isLeader);
+}
+
+/** Team-Verantwortlicher GENAU dieses Teams - fuer Rechtepruefungen (z. B. Einladen/Zuweisen
+ * innerhalb eines bestimmten Teams), seit ein User Mitglied mehrerer Teams gleichzeitig sein
+ * kann und in jedem davon unabhaengig Teamleader sein oder nicht. */
+export function isTeamLeadOf(user: StaffUser | null, teamId: string | null): boolean {
+  return !!teamId && getTeamMemberships(user).some((m) => m.teamId === teamId && m.isLeader);
 }
 
 /** Ist dieser User Mitglied (irgendeiner Rolle) GENAU dieses Teams? `teamId` kann null sein
  * (Task ohne Team-Zuordnung) - dann immer false, da niemand Mitglied von "keinem Team" ist. */
 export function isTeamMemberOf(user: StaffUser | null, teamId: string | null): boolean {
-  return !!user && !!teamId && user.housekeepingTeamId === teamId;
+  return !!teamId && getTeamMemberships(user).some((m) => m.teamId === teamId);
 }
 
 /** Darf dieser User Personen-Zuweisungen INNERHALB von `teamId` verwalten (zuweisen/umverteilen/
- * freigeben)? Admin ueberall, sonst nur der Team-Verantwortliche GENAU dieses Teams - ein
- * normales Mitglied oder der Lead eines ANDEREN Teams darf das nicht (Briefing: "Lead darf keine
- * fremden Teams verwalten"). */
+ * freigeben)? Admin ueberall, sonst nur ein Teamleader GENAU dieses Teams - ein normales Mitglied
+ * oder der Lead eines ANDEREN Teams darf das nicht (Briefing: "Lead darf keine fremden Teams
+ * verwalten"). */
 export function canManageTeamAssignments(user: StaffUser | null, teamId: string | null): boolean {
   if (!user || !teamId) return false;
   if (isAdmin(user)) return true;
-  return isTeamLead(user) && user.housekeepingTeamId === teamId;
+  return isTeamLeadOf(user, teamId);
 }
 
 /** "Elevated" (Briefing "Vorfall melden"/Navigation): admin ODER Standortverantwortlich
@@ -73,6 +99,60 @@ export function canManageTeamAssignments(user: StaffUser | null, teamId: string 
  * niemals auseinanderlaufen koennen. */
 export function isElevatedHousekeepingUser(user: StaffUser | null, allPropertyCodes: string[]): boolean {
   return isAdmin(user) || managedPropertyCodes(user, allPropertyCodes).length > 0 || isTeamLead(user);
+}
+
+// --- Briefing "Authorization zentralisieren" (Punkt 23): benannte Helfer statt verstreuter
+// `role === ...`-Bedingungen. Dieselben sieben Funktionen existieren identisch in
+// api/_permissions.js (Server-Zwilling, dort die tatsaechlich durchgesetzte Pruefung) - hier nur
+// zur konsistenten UI-Sichtbarkeit, ersetzt NIE die serverseitige Pruefung. ------------------
+
+/** Briefing Punkt 19 (konservativ): ausschliesslich Admin darf andere Benutzer administrieren
+ * (Rolle aendern, Teamleader ernennen/entfernen, deaktivieren) - siehe api/users.js, dort bereits
+ * per requireAdmin durchgesetzt. */
+export function canManageUser(actor: StaffUser | null): boolean {
+  return isAdmin(actor);
+}
+
+/** Briefing Punkt 12: Teams erstellen/umbenennen/Standorte aendern/deaktivieren bleibt admin-only
+ * (bereits so in api/housekeeping-teams.js durchgesetzt) - ein Teamleader disponiert nur
+ * INNERHALB seines Teams (siehe canAssignTask), verwaltet das Team selbst aber nicht. */
+export function canManageTeam(actor: StaffUser | null): boolean {
+  return isAdmin(actor);
+}
+
+/** Darf `actor` eine Reinigung/Aufgabe fuer `propertyCode` bzw. `teamId` zuweisen/umverteilen/
+ * freigeben? Admin ueberall; sonst Standortverantwortlicher dieses Property ODER Teamleader
+ * dieses Teams. */
+export function canAssignTask(actor: StaffUser | null, propertyCode: string | null, teamId: string | null): boolean {
+  if (!actor) return false;
+  if (isAdmin(actor)) return true;
+  if (propertyCode && isPropertyManager(actor, propertyCode)) return true;
+  if (teamId && canManageTeamAssignments(actor, teamId)) return true;
+  return false;
+}
+
+/** Wer darf ueberhaupt eine Einladung versenden? Admin (jede Rolle), Standortverantwortlicher
+ * (nur housekeeper fuer eigene Standorte) oder Teamleader (nur housekeeper ins eigene Team) -
+ * die genaue Scoping-Einschraenkung (welche Rolle/Standorte/Team konkret zulaessig sind) erzwingt
+ * ausschliesslich der Server (api/invitations.js), diese Funktion entscheidet nur "ueberhaupt
+ * ja/nein" fuer die UI (z. B. den "+ Mitarbeiter einladen"-Button anzeigen). */
+export function canInviteUser(actor: StaffUser | null): boolean {
+  if (!actor) return false;
+  if (isAdmin(actor)) return true;
+  if (isLocationManager(actor)) return true;
+  return isTeamLead(actor);
+}
+
+export function canManageProperty(actor: StaffUser | null, propertyCode: string): boolean {
+  return isPropertyManager(actor, propertyCode);
+}
+
+export function canViewStatistics(actor: StaffUser | null): boolean {
+  return isAdmin(actor);
+}
+
+export function canOpenApaleo(actor: StaffUser | null): boolean {
+  return isAdmin(actor);
 }
 
 /** managedProperties MUSS immer eine Teilmenge von properties sein (Punkt 13/17) - wird Zugriff

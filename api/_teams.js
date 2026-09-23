@@ -37,7 +37,14 @@ async function upsertTeam(redis, input) {
   const existing = existingRaw ? parseJSON(existingRaw, {}) : {};
   const name = String(input.name || existing.name || '').trim();
   if (!name) throw new Error('Name ist erforderlich.');
-  const record = { id, name, active: input.active !== undefined ? !!input.active : (existing.active !== false) };
+  const record = {
+    id, name, active: input.active !== undefined ? !!input.active : (existing.active !== false),
+    // Briefing "Team-/Benutzerverwaltung ueberarbeiten": rein informatives Scoping (z. B. welche
+    // Standorte ein Teamleader bei einer Einladung auswaehlen darf, siehe api/invitations.js) -
+    // NICHT dasselbe wie housekeeping:team_property_defaults (bestimmt automatische
+    // Task-Zuordnung, bleibt unveraendert).
+    propertyIds: Array.isArray(input.propertyIds) ? Array.from(new Set(input.propertyIds.filter(Boolean))) : (existing.propertyIds || []),
+  };
   await redis.hSet(TEAMS_HASH_KEY, id, JSON.stringify(record));
   return record;
 }

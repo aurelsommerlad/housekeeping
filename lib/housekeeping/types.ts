@@ -4,7 +4,25 @@
  * hier spiegeln 1:1, was app.js bisher berechnet/verwendet hat (siehe buildRooms()).
  */
 
-export type Role = 'admin' | 'housekeeping';
+/**
+ * Briefing "Team-/Benutzerverwaltung ueberarbeiten": DREI Rollen statt zwei.
+ * `location_manager` (Standortverantwortlicher) ist jetzt ein EIGENER Rollenwert (vorher eine
+ * reine Ableitung aus `managedProperties` auf einem `housekeeping`-User) - Teamleader bleibt
+ * bewusst KEINE eigene Rolle, sondern eine Eigenschaft einer einzelnen Teammitgliedschaft (siehe
+ * StaffUser.teamMemberships unten). Legacy-Datensaetze mit dem frueheren Wert `'housekeeping'`
+ * (und dem noch aelteren, nie mehr geschriebenen `'housekeeper'`) bleiben gueltig - siehe
+ * api/_users.js#normalizeRole, das jeden Nicht-Admin/Nicht-location_manager-Wert kompatibel auf
+ * `'housekeeper'` abbildet.
+ */
+export type Role = 'admin' | 'location_manager' | 'housekeeper';
+
+/** Eine einzelne Teammitgliedschaft mit optionalem Teamleader-Status (Briefing "Teamleader ist
+ * eine Eigenschaft einer Teammitgliedschaft, keine eigene Rolle") - ein User kann Mitglied
+ * mehrerer Teams gleichzeitig sein, in jedem davon unabhaengig Teamleader oder nicht. */
+export interface TeamMembership {
+  teamId: string;
+  isLeader: boolean;
+}
 
 export interface StaffUser {
   id: string;
@@ -12,50 +30,96 @@ export interface StaffUser {
   name: string;
   email?: string;
   role: Role;
-  /** 'alle' | 'all' = Zugriff auf alle Haeuser, sonst Liste von Property-Codes. */
+  /** 'alle' | 'all' = Zugriff auf alle Haeuser, sonst Liste von Property-Codes. Fuer
+   * `location_manager` identisch mit `managedProperties` (ein Standortverantwortlicher sieht nur
+   * seine eigenen Standorte, siehe UserFormSheet.tsx) - fuer `housekeeper` weiterhin die generelle
+   * Sichtbarkeit (typischerweise 'alle' oder die Standorte seines Arbeitgebers). */
   properties: 'alle' | 'all' | string[];
   /**
    * Standortverantwortlich fuer diese Property-Codes - IMMER eine Teilmenge von `properties`
-   * (server- und clientseitig durchgesetzt, siehe lib/housekeeping/permissions.ts). Keine eigene
-   * Rolle: ein housekeeping-User mit managedProperties bleibt gleichzeitig normale
-   * Reinigungskraft und ist nur fuer genau diese Standorte zusaetzlich Standortverantwortlicher
-   * (kann dort Aufgaben anderer einsehen/zuweisen). Admin hat implizit alle Rechte ueberall,
-   * unabhaengig von diesem Feld.
+   * (server- und clientseitig durchgesetzt, siehe lib/housekeeping/permissions.ts). Bei
+   * `role: 'location_manager'` ist dies die eigentliche Standort-Zustaendigkeit (dem Zielmodell-
+   * Feld `propertyIds` entsprechend); bei `role: 'housekeeper'`/`'admin'` bleibt das Feld leer.
+   * Admin hat implizit alle Rechte ueberall, unabhaengig von diesem Feld.
    */
   managedProperties?: string[];
   /**
-   * Reinigungsfirmen-Zugehoerigkeit (Housekeeping Teams) - bewusst KEINE Erweiterung von `role`
-   * (bleibt exakt 'admin' | 'housekeeping') und bewusst getrennt von `managedProperties`
-   * (Standortverantwortung = operative UNIQUE-PLACES-Zustaendigkeit fuer ein Property; teamRole
-   * 'lead' = interne Disposition INNERHALB der eigenen Reinigungsfirma - beide Rechte duerfen
-   * sich nie vermischen, ein User kann beides, eins von beiden oder keins haben). Ein User ist zu
-   * jedem Zeitpunkt Mitglied HOECHSTENS EINES Teams. `teamRole` ist nur gueltig, wenn
-   * `housekeepingTeamId` gesetzt ist (serverseitig durchgesetzt, siehe api/_users.js).
+   * Reinigungsteam-Mitgliedschaften (Briefing "Team-/Benutzerverwaltung ueberarbeiten") - ein User
+   * kann Mitglied MEHRERER Teams gleichzeitig sein (Ersatz fuer die fruehere, auf ein einzelnes
+   * Team begrenzte `housekeepingTeamId`/`teamRole`-Kombination). `isLeader` ist ausschliesslich
+   * eine Eigenschaft DIESER Mitgliedschaft, niemals eine globale Eigenschaft des Users oder eine
+   * eigene Rolle. Bewusst getrennt von `managedProperties`/`role==='location_manager'`
+   * (Standortverantwortung = operative UNIQUE-PLACES-Zustaendigkeit fuer ein Property; Teamleader =
+   * interne Disposition INNERHALB der eigenen Reinigungsfirma) - beide Zustaendigkeiten duerfen
+   * sich nie vermischen. Fehlt dieses Feld auf einem aelteren Datensatz, wird es aus den
+   * Legacy-Feldern `housekeepingTeamId`/`teamRole` synthetisiert (siehe
+   * lib/housekeeping/permissions.ts#getTeamMemberships) - kein destruktiver Migrationsschritt
+   * noetig.
    */
+  teamMemberships?: TeamMembership[];
+  /** @deprecated Vor der Mehrfach-Team-Unterstuetzung einzige Teamzugehoerigkeit eines Users -
+   * wird nicht mehr neu geschrieben, aeltere Datensaetze werden weiterhin ueber
+   * getTeamMemberships() gelesen (siehe teamMemberships-Kommentar oben). */
   housekeepingTeamId?: string;
-  /** 'member' = normales Teammitglied, 'lead' = Team-Verantwortlicher (bleibt global weiterhin
-   * `role: 'housekeeping'`, siehe housekeepingTeamId-Kommentar). */
+  /** @deprecated siehe housekeepingTeamId. */
   teamRole?: 'member' | 'lead';
   /** Bevorzugte Sprache (Punkt 17, Team-Verwaltung) - wird bei erfolgreichem Login angewendet
    * (siehe useHousekeepingApp.ts#afterLogin), unabhaengig von der zuvor auf diesem Geraet per
    * Sprachauswahl-Pille gesetzten hk_lang. */
   lang?: 'de' | 'en' | 'pl' | 'ro';
   /** Fuer Team-Verwaltung (Punkt 17) - deaktivierte Benutzer koennen sich nicht mehr anmelden
-   * (siehe lib/server/auth.ts#loginUser/verifyLogin). */
+   * (siehe lib/server/auth.ts#loginUser/verifyLogin), bestehende Sessions werden serverseitig
+   * zusaetzlich sofort invalidiert (siehe api/_auth.js#invalidateUserSessions). */
   active?: boolean;
+  /** Briefing "Einladungssystem": Lebenszyklus-Status unabhaengig von `active` - `invited` heisst
+   * "Account existiert noch nicht, Einladung steht aus" (kein Login moeglich, kein passwordHash
+   * gesetzt), `active`/`inactive` entsprechen `active: true|false`. Rein informativ fuer die
+   * Anzeige (siehe status()-Ableitung in TeamScreen.tsx) - die tatsaechliche Login-Sperre bleibt
+   * weiterhin `active === false` bzw. das Fehlen eines passwordHash. */
+  status?: 'invited' | 'active' | 'inactive';
+  firstName?: string;
+  lastName?: string;
 }
 
 /**
  * Reinigungsfirma/Team (Housekeeping Teams) - reine Stammdaten, lebt ausschliesslich in dieser
  * App (Redis housekeeping:teams), NIE in Apaleo. Mitgliedschaft/Rolle liegt auf StaffUser
- * (housekeepingTeamId/teamRole), NICHT hier - so bleibt die bestehende Mitarbeiterverwaltung
+ * (teamMemberships), NICHT hier - so bleibt die bestehende Mitarbeiterverwaltung
  * (api/users.js/TeamScreen.tsx/UserFormSheet.tsx) die einzige Quelle der Wahrheit fuer Personen.
  */
 export interface HousekeepingTeam {
   id: string;
   name: string;
   active: boolean;
+  /** Briefing "Team-/Benutzerverwaltung ueberarbeiten": Standorte, denen dieses Team zugeordnet
+   * ist - rein informativ/scoping (z. B. welche Standorte ein Teamleader bei einer Einladung
+   * auswaehlen darf, siehe api/invitations.js), NICHT dasselbe wie
+   * housekeeping:team_property_defaults (das bestimmt automatische Task-Zuordnung und bleibt
+   * unveraendert). Fehlt bei aelteren Teams (`undefined`/`[]`) - wird von Admin nachgetragen. */
+  propertyIds?: string[];
 }
+
+/** Briefing "Einladungssystem": sicherer, einmal verwendbarer Einladungs-Datensatz (Redis
+ * housekeeping:invitations, Key = Invitation-Id) - der eigentliche Token wird NIE im Klartext
+ * gespeichert, nur sein SHA-256-Hash (siehe api/_invitations.js). */
+export interface Invitation {
+  id: string;
+  email: string;
+  role: Role;
+  propertyIds: string[];
+  teamId: string | null;
+  isLeader: boolean;
+  lang: 'de' | 'en' | 'pl' | 'ro';
+  invitedBy: string;
+  invitedByName: string;
+  createdAt: number;
+  expiresAt: number;
+  status: 'pending' | 'accepted' | 'revoked';
+  acceptedAt?: number;
+  userId?: string;
+}
+
+export type InvitationsState = Record<string, Invitation>;
 
 /**
  * Manuelle Ausnahme von der Standard-Team-Zuweisung EINES konkreten Tasks (Redis

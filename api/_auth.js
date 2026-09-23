@@ -12,6 +12,11 @@ const { getRedis } = require('./_redis');
 // bestehende Anmeldungen bleiben dadurch gueltig, statt alle Nutzer auszuloggen.
 const SESSION_PREFIX = 'housekeeping:session:';
 const LEGACY_SESSION_PREFIX = 'hk:session:';
+// Briefing "Deaktivieren statt loeschen": Redis-SET pro User mit allen von ihm ausgestellten,
+// noch nicht abgelaufenen Session-Tokens - vorher gab es KEINEN Weg, eine bereits ausgestellte
+// Session vorzeitig (vor Ablauf der 30 Tage) zu invalidieren (siehe invalidateUserSessions unten).
+// Nur AB Einfuehrung dieser Funktion ausgestellte Sessions sind darin enthalten.
+const USER_SESSIONS_PREFIX = 'housekeeping:user_sessions:';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 Tage, gleitend verlaengert bei Aktivitaet
 const COOKIE_NAME = 'hk_session';
 const BCRYPT_ROUNDS = 12;
@@ -63,6 +68,11 @@ async function createSession(req, res, user) {
   const token = crypto.randomBytes(32).toString('hex');
   const record = { userId: user.id, role: user.role, createdAt: Date.now() };
   await redis.set(SESSION_PREFIX + token, JSON.stringify(record), { EX: SESSION_TTL_SECONDS });
+  // Best-effort: ein fehlschlagendes sAdd darf einen erfolgreichen Login niemals verhindern - es
+  // wuerde im schlimmsten Fall nur bedeuten, dass invalidateUserSessions() dieses eine Token bei
+  // einer spaeteren Deaktivierung nicht mit-erfasst (dasselbe Restrisiko wie bei sehr alten,
+  // bereits vor Einfuehrung dieser Funktion ausgestellten Sessions).
+  await redis.sAdd(USER_SESSIONS_PREFIX + user.id, token).catch(() => {});
   setSessionCookie(req, res, token, SESSION_TTL_SECONDS);
   return token;
 }
@@ -72,10 +82,30 @@ async function destroySession(req, res) {
   const token = cookies[COOKIE_NAME];
   if (token) {
     const redis = await getRedis();
+    const raw = await redis.get(SESSION_PREFIX + token).catch(() => null);
+    await redis.del(SESSION_PREFIX + token);
+    await redis.del(LEGACY_SESSION_PREFIX + token);
+    const record = raw ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : null;
+    if (record && record.userId) await redis.sRem(USER_SESSIONS_PREFIX + record.userId, token).catch(() => {});
+  }
+  clearSessionCookie(req, res);
+}
+
+// Briefing "Deaktivieren statt loeschen" (Punkt 25): "aktive Sessions invalidieren, soweit
+// bestehende Infrastruktur dies unterstuetzt" - invalidiert ALLE ueber USER_SESSIONS_PREFIX
+// bekannten, noch aktiven Session-Tokens eines Users sofort (z. B. beim Deaktivieren durch einen
+// Admin, siehe api/users.js). Loescht dabei ausschliesslich Session-Keys, NIE den User-Datensatz
+// selbst (siehe Kopfkommentar "keine Housekeeping-Daten pauschal loeschen").
+async function invalidateUserSessions(userId) {
+  if (!userId) return;
+  const redis = await getRedis();
+  const key = USER_SESSIONS_PREFIX + userId;
+  const tokens = await redis.sMembers(key).catch(() => []);
+  for (const token of tokens) {
     await redis.del(SESSION_PREFIX + token);
     await redis.del(LEGACY_SESSION_PREFIX + token);
   }
-  clearSessionCookie(req, res);
+  await redis.del(key);
 }
 
 // Liefert {userId, role} aus einer gueltigen Session oder null. Verlaengert die Session
@@ -138,6 +168,7 @@ module.exports = {
   verifyPassword,
   createSession,
   destroySession,
+  invalidateUserSessions,
   getSession,
   requireSession,
   requireAdmin,
@@ -149,6 +180,7 @@ module.exports = {
   COOKIE_NAME,
   SESSION_PREFIX,
   LEGACY_SESSION_PREFIX,
+  USER_SESSIONS_PREFIX,
   SETUP_LOCK_KEY,
   LEGACY_SETUP_LOCK_KEY,
 };
