@@ -2,7 +2,7 @@ import type { Lang } from '@/lib/housekeeping/i18n';
 import { translate } from '@/lib/housekeeping/i18n';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
 import {
-  DoubleupIcon, IconAlertCircle, IconCalendarClock, IconCheck, IconClock, IconEdit, IconEnter, IconExit, IconPause, IconPlay,
+  DoubleupIcon, IconAlertCircle, IconCalendarClock, IconCheck, IconClock, IconEdit, IconEnter, IconExit, IconEye, IconPause, IconPlay,
   IconRotateCcw, IconTask, IconUser,
 } from '@/components/ui/icons';
 import { TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
@@ -19,11 +19,13 @@ export interface TaskCardProps {
   /** Punkt 9: 'unread' zeigt ein dezentes Outline-Warnsymbol (wichtiger, vom zugewiesenen
    * Mitarbeiter noch nicht bestaetigter Hinweis), 'read' ein dezentes Haekchen, 'none' nichts. */
   noticeState?: 'none' | 'unread' | 'read';
-  /** Briefing "Reinigungskarten ueberarbeiten" Punkt 5/6/7: EIN gemeinsamer Aufmerksamkeits-Punkt
-   * oben rechts, bewusst technisch/visuell GETRENNT vom "Wichtiger Hinweis"-Icon oben (noticeState)
-   * - 'changed' (orange) hat Vorrang vor 'new' (gruen), niemals beide gleichzeitig (Punkt 7:
-   * "Buchungsänderung > ungesehen"). Farbe wird nie allein als Bedeutungstraeger verwendet - siehe
-   * aria-label/title am Punkt selbst. */
+  /** Briefing "neue Statuslogik auf den Karten": weiterhin EIN gemeinsamer Zustand (dieselbe
+   * Herleitung/Prioritaet wie zuvor - Buchungsaenderung ungesehen > allgemein ungesehen, siehe
+   * TasksScreen.tsx#cardAttentionState), aber ab jetzt technisch/visuell ALS EYE-ICON dargestellt
+   * statt eines farbigen Punkts - 'new' und 'changed' bedeuten auf der Karte beide schlicht "vom
+   * aktuellen Benutzer noch nicht angesehen" (siehe IconEye unten); nur der Detailansicht-Chip
+   * (TaskDetailSheet.tsx) unterscheidet die beiden Faelle weiterhin farblich/textlich. Bewusst
+   * technisch GETRENNT vom "Wichtiger Hinweis"-Icon oben (noticeState). */
   attentionState?: 'none' | 'new' | 'changed';
   /** Punkt "Reinigungskräfte standardmäßig nur mit Vornamen anzeigen" - reine Darstellungsfunktion
    * (siehe lib/housekeeping/names.ts/useHousekeepingApp.ts#shortStaffName), der gespeicherte
@@ -391,6 +393,13 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
     ? DOUBLEUP_TYPES.filter((dt) => task.doubleupTypes.includes(dt.id) && !(dt.id === 'dog' && apaleoHasDog) && !(dt.id === 'crib' && apaleoHasCrib))
     : [];
   const isCompleted = task.status === 'completed';
+  // Briefing "neue Statuslogik auf den Karten" Punkt A: roter/terracotta Punkt = noch keiner
+  // Reinigungskraft persoenlich zugewiesen (Team-Zuweisung allein zaehlt NICHT als "zugewiesen",
+  // siehe WorkStatus oben - "IF-Reinigung · Noch nicht verteilt"). Bewusst dieselbe Farbe wie
+  // Abreise/Buchungsaenderung (status-attention) statt eines aggressiven Signalrots. Technisch
+  // GETRENNT vom Eye-Status unten - "nicht zugewiesen" und "nicht angesehen" duerfen gleichzeitig
+  // auftreten (Punkt 11) und verschwinden unabhaengig voneinander (Zuweisung vs. Oeffnen der Karte).
+  const isUnassigned = !isCompleted && !task.assignedUserId;
 
   return (
     <button
@@ -432,17 +441,24 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
           )}
         </span>
         <span className="mt-1 flex shrink-0 items-center gap-1.5">
-          {/* Briefing "Reinigungskarten ueberarbeiten" Punkt 5/6/7: EIN farbiger Punkt statt
-           * zweier konkurrierender Signale - orange (Buchungsaenderung) hat Vorrang vor gruen
-           * (ungesehen), niemals beide gleichzeitig. Eigene, minimal hellere Farbtoene
-           * (dot-new/dot-changed statt status-clean/status-progress, siehe globals.css) - Farbe
-           * ist nie der einzige Bedeutungstraeger, siehe aria-label/title. */}
-          {attentionState !== 'none' ? (
+          {/* Briefing "neue Statuslogik auf den Karten" Punkt A/B/11: zwei technisch/visuell
+           * unabhaengige Indikatoren statt eines einzelnen Punkts - "nicht zugewiesen" (rot) und
+           * "noch nicht angesehen" (Eye) koennen gleichzeitig erscheinen und verschwinden jeweils
+           * fuer sich (Zuweisung vs. Oeffnen der Karte). Farbe/Icon sind nie der einzige
+           * Bedeutungstraeger, siehe aria-label/title. */}
+          {isUnassigned ? (
             <span
-              className={cn('h-2.5 w-2.5 rounded-full', attentionState === 'changed' ? 'bg-dot-changed' : 'bg-dot-new')}
+              className="h-2.5 w-2.5 rounded-full bg-status-attention"
               role="img"
-              aria-label={translate(lang, attentionState === 'changed' ? 'booking_changed_dot_label' : 'task_new_dot_label')}
-              title={translate(lang, attentionState === 'changed' ? 'booking_changed_dot_label' : 'task_new_dot_label')}
+              aria-label={translate(lang, 'task_unassigned_dot_label')}
+              title={translate(lang, 'task_unassigned_dot_label')}
+            />
+          ) : null}
+          {attentionState !== 'none' ? (
+            <IconEye
+              width={16} height={16} className="shrink-0 text-ink"
+              role="img"
+              aria-label={translate(lang, 'task_unseen_icon_label')}
             />
           ) : null}
           {noticeState === 'unread' ? (

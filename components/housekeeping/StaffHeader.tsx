@@ -29,7 +29,7 @@ function CleaningPauseButton({ app }: { app: HousekeepingApp }) {
       <button
         type="button"
         onClick={() => startTaskTimer(task.id)}
-        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-warm-white px-3 text-[12px] font-medium text-muted transition-colors"
+        className="inline-flex h-7 items-center gap-1.5 rounded-full border border-line bg-warm-white px-3 text-[12px] font-medium text-muted transition-colors"
       >
         <IconPlay width={13} height={13} aria-hidden="true" />
         {t('header_cleaning_resume')}
@@ -41,7 +41,7 @@ function CleaningPauseButton({ app }: { app: HousekeepingApp }) {
     <button
       type="button"
       onClick={() => pauseTaskTimer(task.id)}
-      className="inline-flex h-8 items-center gap-1.5 rounded-full border border-status-progress/30 bg-status-progress-bg px-3 text-[12px] font-medium text-status-progress transition-colors"
+      className="inline-flex h-7 items-center gap-1.5 rounded-full border border-status-progress/30 bg-status-progress-bg px-3 text-[12px] font-medium text-status-progress transition-colors"
     >
       <IconPause width={13} height={13} aria-hidden="true" />
       {t('header_cleaning_pause')}
@@ -90,14 +90,16 @@ export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderPr
     // Hauptinhalt auf derselben Zeile/Achse. Reine Platzierung, an Inhalt/Klassen des Headers
     // selbst aendert sich nichts.
     <header className="shrink-0 border-b border-line bg-warm-white pt-[max(env(safe-area-inset-top),0.5rem)] pl-[max(env(safe-area-inset-left),1rem)] pr-[max(env(safe-area-inset-right),1rem)] xl:[grid-column:2/4] xl:[grid-row:1]">
-      <div className="flex items-center justify-between gap-2 py-2">
+      <div className="flex items-center justify-between gap-2 pt-1.5 pb-1">
         <div className="min-w-0 leading-none">
           {/* Dieselbe Marken-Typografie wie auf Login-/Admin-Einrichtungsseite (siehe
            * LoginScreen.tsx/app/admin/page.tsx): "UNIQUE PLACES" kraeftig/dunkel als eigentlicher
            * Markenname, der Bereichsname darunter klein/tracked/grossgeschrieben als Unterzeile -
-           * statt umgekehrt (vorher war "UNIQUE PLACES" die kleine Zeile). */}
-          <p className="brand-wordmark truncate font-sans text-sm font-semibold tracking-[0.05em] text-ink">UNIQUE PLACES</p>
-          <p className="mt-0.5 truncate text-[10px] font-medium uppercase tracking-[0.18em] text-muted">{t('app_name')}</p>
+           * statt umgekehrt (vorher war "UNIQUE PLACES" die kleine Zeile). Briefing "neue mobile
+           * Ansicht" Punkt 2: kompakterer oberer Bereich - kleinere Schrift/engerer Zeilenabstand
+           * statt eigener neuer Struktur (Inhalt/Reihenfolge bleiben identisch). */}
+          <p className="brand-wordmark truncate font-sans text-[13px] font-semibold tracking-[0.05em] text-ink">UNIQUE PLACES</p>
+          <p className="truncate text-[9px] font-medium uppercase tracking-[0.16em] text-muted">{t('app_name')}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <CleaningPauseButton app={app} />
@@ -130,18 +132,18 @@ export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderPr
             type="button"
             aria-label={t('profile_title')}
             onClick={onOpenSettings}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-muted transition-colors hover:text-ink"
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-line text-muted transition-colors hover:text-ink"
           >
-            <IconUser width={17} height={17} />
+            <IconUser width={16} height={16} />
           </button>
         </div>
       </div>
-      <div className="truncate pb-2 leading-tight">
-        <p className="truncate text-[15px] font-semibold text-ink">
+      <div className="truncate pb-1.5 leading-tight">
+        <p className="truncate text-[14px] font-semibold text-ink">
           {t(greetingKey)}
           {firstName ? `, ${firstName}` : ''}
         </p>
-        <p className="truncate text-[12px] text-muted">{dateLabel}</p>
+        <p className="truncate text-[11.5px] text-muted">{dateLabel}</p>
       </div>
     </header>
   );

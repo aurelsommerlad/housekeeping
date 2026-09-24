@@ -199,6 +199,17 @@ export function IconCircle(props: IconProps) {
   );
 }
 
+/** Briefing "neue Statuslogik auf den Karten": ersetzt den fruehreren gruenen/orangen Punkt fuer
+ * "noch nicht angesehen" - dezentes, monochromes Augen-Symbol statt einer Signalfarbe. */
+export function IconEye(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="2.75" />
+    </svg>
+  );
+}
+
 /** Fuer den "Wichtiger Hinweis"-Block (Punkt 3) und die dezente Warnkennzeichnung auf
  * Planungskarten (Punkt 9) - bewusst kein farbiges/gefuelltes Ausrufezeichen-Icon. */
 export function IconAlertCircle(props: IconProps) {

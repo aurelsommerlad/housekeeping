@@ -286,6 +286,7 @@ export const I18N = {
     // auf der Karte) + Punkt 8 (Bestaetigungs-Aktion/Apartment-Label in der Detailansicht) +
     // Punkt 9 (prominentes Babybett-Vorbereitungs-Icon).
     task_new_dot_label: 'Neu', booking_changed_dot_label: 'Buchung geändert',
+    task_unassigned_dot_label: 'Nicht zugewiesen', task_unseen_icon_label: 'Noch nicht angesehen',
     booking_changed_unit_label: 'Apartment', booking_changed_guests_label: 'Gäste',
     crib_prep_label: 'Babybett vorbereiten',
     extra_equipment_category_label: 'Zusatzausstattung',
@@ -595,6 +596,7 @@ export const I18N = {
     filter_group_view: 'View', filter_group_property: 'Property', scope_all_tasks: 'All tasks',
     booking_changed_badge: 'Booking changed', booking_changed_title: 'Booking changed',
     task_new_dot_label: 'New', booking_changed_dot_label: 'Booking changed',
+    task_unassigned_dot_label: 'Not assigned', task_unseen_icon_label: 'Not yet viewed',
     booking_changed_unit_label: 'Apartment', booking_changed_guests_label: 'Guests',
     crib_prep_label: 'Prepare crib',
     extra_equipment_category_label: 'Additional equipment',
@@ -894,6 +896,7 @@ export const I18N = {
     filter_group_view: 'Widok', filter_group_property: 'Lokalizacja', scope_all_tasks: 'Wszystkie zadania',
     booking_changed_badge: 'Rezerwacja zmieniona', booking_changed_title: 'Rezerwacja zmieniona',
     task_new_dot_label: 'Nowe', booking_changed_dot_label: 'Rezerwacja zmieniona',
+    task_unassigned_dot_label: 'Nieprzydzielone', task_unseen_icon_label: 'Jeszcze nie obejrzane',
     booking_changed_unit_label: 'Apartament', booking_changed_guests_label: 'Goście',
     crib_prep_label: 'Przygotuj lozeczko',
     extra_equipment_category_label: 'Dodatkowe wyposazenie',
@@ -1193,6 +1196,7 @@ export const I18N = {
     filter_group_view: 'Vizualizare', filter_group_property: 'Locatie', scope_all_tasks: 'Toate sarcinile',
     booking_changed_badge: 'Rezervare modificata', booking_changed_title: 'Rezervare modificata',
     task_new_dot_label: 'Nou', booking_changed_dot_label: 'Rezervare modificata',
+    task_unassigned_dot_label: 'Nerepartizat', task_unseen_icon_label: 'Nevizualizat inca',
     booking_changed_unit_label: 'Apartament', booking_changed_guests_label: 'Oaspeți',
     crib_prep_label: 'Pregateste patutul',
     extra_equipment_category_label: 'Echipament suplimentar',

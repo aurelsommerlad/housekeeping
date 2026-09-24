@@ -107,7 +107,7 @@ const ADMIN_DESKTOP_CARD_GRID_CLASS = 'grid grid-cols-1 gap-3 px-4 pt-1 sm:grid-
  * bleibt exakt das bisherige, einzelne Grid bestehen (keine redundante Standortueberschrift). Auf
  * Mobile identisch zu Desktop, nur dasselbe bereits bestehende responsive Grid je Gruppe. */
 function TaskGroup({
-  text, count, categoryLabel, icon: Icon, toneClass, tasks, locationGroups, renderCard, cardGridClassName,
+  text, count, categoryLabel, icon: Icon, toneClass, tasks, locationGroups, renderCard, cardGridClassName, headerRight,
 }: {
   text: string; count: number; categoryLabel: string; icon?: typeof IconCheck; toneClass?: string;
   tasks: ResolvedTask[];
@@ -118,6 +118,10 @@ function TaskGroup({
   // Angabe unveraendertes Standardverhalten fuer alle anderen Aufrufer (Mobile, Teamleader,
   // Standortverantwortlicher, "Fertig"/"Bereits zugewiesen").
   cardGridClassName?: string;
+  // Briefing "neue mobile Ansicht" Punkt 6: optionaler Slot rechts neben der Ueberschrift -
+  // AUSSCHLIESSLICH vom Teamleader-Standortfilter neben "Noch zu verteilen" genutzt (siehe unten),
+  // ohne Angabe unveraendertes Verhalten (keine Layout-/Abstandsaenderung) fuer alle anderen Aufrufer.
+  headerRight?: ReactNode;
 }) {
   const gridClass = cardGridClassName || 'grid grid-cols-1 gap-3 px-4 pt-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]';
   return (
@@ -130,15 +134,18 @@ function TaskGroup({
        * zur Toolbar darueber (Punkt 8: kein doppelter Kennzahlen-Bereich mehr, also auch kein
        * grosser Leerraum mehr noetig). Mobile bleibt unveraendert (keine der `xl:`-Klassen wirkt
        * unterhalb 1280px). */}
-      <p className="flex items-center gap-1.5 px-4 pt-4 pb-1 text-[13px] font-medium text-ink xl:hidden">
-        {Icon ? <Icon width={14} height={14} className={cn('shrink-0', toneClass)} aria-hidden="true" /> : null}
-        {text}
-      </p>
-      <p className="hidden items-center gap-1.5 px-4 pt-2 pb-1 text-[11px] font-normal uppercase tracking-wide text-muted xl:flex">
-        {Icon ? <Icon width={13} height={13} className={cn('shrink-0', toneClass)} aria-hidden="true" /> : null}
-        {categoryLabel}
-        <span className="font-medium normal-case text-ink">{count}</span>
-      </p>
+      <div className="flex items-center justify-between gap-2 pr-4">
+        <p className="flex items-center gap-1.5 pl-4 pt-4 pb-1 text-[13px] font-medium text-ink xl:hidden">
+          {Icon ? <Icon width={14} height={14} className={cn('shrink-0', toneClass)} aria-hidden="true" /> : null}
+          {text}
+        </p>
+        <p className="hidden items-center gap-1.5 pl-4 pt-2 pb-1 text-[11px] font-normal uppercase tracking-wide text-muted xl:flex">
+          {Icon ? <Icon width={13} height={13} className={cn('shrink-0', toneClass)} aria-hidden="true" /> : null}
+          {categoryLabel}
+          <span className="font-medium normal-case text-ink">{count}</span>
+        </p>
+        {headerRight ? <span className="shrink-0">{headerRight}</span> : null}
+      </div>
       {/* Punkt 8 (Desktop): ab xl eine minmax()-basierte Grid-Regel statt fester 3-Spalten, damit
        * Cards auf sehr breiten Monitoren nicht unnoetig auseinandergezogen werden (Karte selbst
        * unveraendert) - unterhalb xl bleiben sm:/lg:grid-cols-* exakt wie bisher wirksam. */}
@@ -648,6 +655,31 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   // "Ansicht"-Picker (Team/Standort/Uebersicht heute · Meine Aufgaben · Offen), siehe unten.
   const showScopeRow = elevatedHere || !isManagerHere || showPropertyChips;
 
+  // Briefing "neue mobile Ansicht" Punkt 6: derselbe kompakte Standortfilter wie zuvor (nur jetzt
+  // nicht mehr zwischen Tabs/Tagesnav, sondern neben "Noch zu verteilen", siehe TaskGroup#headerRight
+  // im Teamleader-Renderpfad unten) - eigene Funktion statt Inline-JSX, weil er an ZWEI Stellen
+  // gebraucht wird (neben der Ueberschrift, wenn die Gruppe Eintraege hat; sonst als eigene, sehr
+  // kompakte Zeile - "Noch zu verteilen" faellt sonst laut bestehender Konvention komplett weg,
+  // wenn leer, was den Filter sonst unerreichbar machen wuerde).
+  function renderTeamPropertyScopeSelect() {
+    return (
+      <div className="relative w-[132px] shrink-0">
+        <select
+          value={state.propertyScope}
+          onChange={(e) => selectScope(e.target.value)}
+          className="h-7 w-full appearance-none rounded-full border border-line bg-warm-white pl-3 pr-7 text-[12px] font-medium text-ink"
+          data-focus-none
+        >
+          <option value="all">{t('scope_all_properties')}</option>
+          {allowedProps.map((p) => (
+            <option key={p.code} value={p.code}>{getPropertyDisplayName(p)}</option>
+          ))}
+        </select>
+        <IconChevronDown width={11} height={11} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
+      </div>
+    );
+  }
+
   // Wichtiger-Hinweis-Badge auf der Task Card (Punkt 3, unveraendert aus der bisherigen
   // Detailsheet-Logik hierher gezogen): "unread" bezieht sich auf den AKTUELL EINGELOGGTEN
   // Nutzer (state.user), nicht auf task.assignedUserId - dieselbe Semantik wie in
@@ -1022,53 +1054,37 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       ) : teamLeadRedesignHere ? (
         // Teamleader-Mobile-Redesign: identische Tab-Optik wie beim Reinigungskraft-Redesign oben
         // (gleiche Klassen, gleiche TabCountBadge) - nur Beschriftung/Reihenfolge/Zaehlung sind
-        // rollenspezifisch ("Team Aufgaben" zuerst/Default statt "Meine Aufgaben"). Darunter ein
-        // sehr kompakter Standortfilter (eigene, kleinere Select-Variante statt `selectClass`) -
-        // bewusst KEINE eigene grosse Filterleiste, nur so hoch wie noetig, Default "Alle Standorte".
-        <>
-          <div className="flex gap-2 px-4 pt-3 pb-2 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
-            <button
-              type="button"
-              onClick={selectAllTasks}
-              aria-pressed={!state.myTasksOnly}
-              className={cn(
-                'flex flex-1 items-center justify-center gap-2 rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors',
-                !state.myTasksOnly ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-ink',
-              )}
-            >
-              {t('team_tasks_tab')}
-              <TabCountBadge count={teamOpenTasksTodayScoped.length} />
-            </button>
-            <button
-              type="button"
-              onClick={selectMine}
-              aria-pressed={state.myTasksOnly}
-              className={cn(
-                'flex flex-1 items-center justify-center gap-2 rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors',
-                state.myTasksOnly ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-ink',
-              )}
-            >
-              {t('my_tasks_only')}
-              <TabCountBadge count={myOwnCleaningTodayScoped.length + myOwnManualTodayScoped.length} />
-            </button>
-          </div>
-          {showPropertyChips ? (
-            <div className="relative mx-4 mb-2 w-[168px] xl:order-2 xl:mx-0 xl:mb-0 xl:ml-2 xl:w-[180px]">
-              <select
-                value={state.propertyScope}
-                onChange={(e) => selectScope(e.target.value)}
-                className="h-7 w-full appearance-none rounded-full border border-line bg-warm-white pl-3 pr-7 text-[12px] font-medium text-ink"
-                data-focus-none
-              >
-                <option value="all">{t('scope_all_properties')}</option>
-                {allowedProps.map((p) => (
-                  <option key={p.code} value={p.code}>{getPropertyDisplayName(p)}</option>
-                ))}
-              </select>
-              <IconChevronDown width={11} height={11} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
-            </div>
-          ) : null}
-        </>
+        // rollenspezifisch ("Team Aufgaben" zuerst/Default statt "Meine Aufgaben"). Briefing
+        // "neue mobile Ansicht" Punkt 6: der Standortfilter sitzt NICHT mehr hier zwischen Tabs und
+        // Tagesnavigation, sondern weiter unten direkt neben der "Noch zu verteilen"-Ueberschrift
+        // (siehe TaskGroup#headerRight in der Team-Aufgaben-Listenansicht) - dieselbe
+        // `state.propertyScope`/`selectScope`-Logik, nur an anderer Stelle im JSX.
+        <div className="flex gap-2 px-4 pt-3 pb-2 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
+          <button
+            type="button"
+            onClick={selectAllTasks}
+            aria-pressed={!state.myTasksOnly}
+            className={cn(
+              'flex flex-1 items-center justify-center gap-2 rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors',
+              !state.myTasksOnly ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-ink',
+            )}
+          >
+            {t('team_tasks_tab')}
+            <TabCountBadge count={teamOpenTasksTodayScoped.length} />
+          </button>
+          <button
+            type="button"
+            onClick={selectMine}
+            aria-pressed={state.myTasksOnly}
+            className={cn(
+              'flex flex-1 items-center justify-center gap-2 rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors',
+              state.myTasksOnly ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-ink',
+            )}
+          >
+            {t('my_tasks_only')}
+            <TabCountBadge count={myOwnCleaningTodayScoped.length + myOwnManualTodayScoped.length} />
+          </button>
+        </div>
       ) : showScopeRow ? (
         <div className="flex gap-2 px-4 py-2.5 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
           {viewOptions ? (
@@ -1416,7 +1432,19 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                   tasks={teamUnassignedTasksScoped}
                   locationGroups={toMixedLocationGroups(teamUnassignedTasksScoped)}
                   renderCard={(task) => renderRoleTaskCard(task)}
+                  headerRight={showPropertyChips ? renderTeamPropertyScopeSelect() : null}
                 />
+              ) : showPropertyChips ? (
+                // Briefing "neue mobile Ansicht" Punkt 6: der Filter darf nicht unerreichbar
+                // werden, nur weil "Noch zu verteilen" laut bestehender Konvention bei 0 Eintraegen
+                // komplett entfaellt (siehe TaskGroup oben) - eigene, ebenso kompakte Zeile statt.
+                <div className="flex items-center justify-between gap-2 pr-4">
+                  <p className="flex items-center gap-1.5 pl-4 pt-4 pb-1 text-[13px] font-medium text-ink">
+                    <IconTask width={14} height={14} className="shrink-0 text-status-attention" aria-hidden="true" />
+                    {t('dashboard_not_yet_assigned')} · 0
+                  </p>
+                  {renderTeamPropertyScopeSelect()}
+                </div>
               ) : null}
               {teamAssignedTasksScoped.length > 0 ? (
                 <TaskGroup
