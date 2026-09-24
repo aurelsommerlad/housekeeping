@@ -108,6 +108,7 @@ const ADMIN_DESKTOP_CARD_GRID_CLASS = 'grid grid-cols-1 gap-3 px-4 pt-1 sm:grid-
  * Mobile identisch zu Desktop, nur dasselbe bereits bestehende responsive Grid je Gruppe. */
 function TaskGroup({
   text, count, categoryLabel, icon: Icon, toneClass, tasks, locationGroups, renderCard, cardGridClassName, headerRight,
+  hideMobileHeading,
 }: {
   text: string; count: number; categoryLabel: string; icon?: typeof IconCheck; toneClass?: string;
   tasks: ResolvedTask[];
@@ -122,6 +123,13 @@ function TaskGroup({
   // AUSSCHLIESSLICH vom Teamleader-Standortfilter neben "Noch zu verteilen" genutzt (siehe unten),
   // ohne Angabe unveraendertes Verhalten (keine Layout-/Abstandsaenderung) fuer alle anderen Aufrufer.
   headerRight?: ReactNode;
+  // Mobile-Admin-Aufraeumen Punkt 11: blendet auf Mobile ausschliesslich die Mobile-Kurzueberschrift
+  // ("text", z. B. "8 Reinigungen") aus, WENN sie keinen funktionalen Zweck mehr erfuellt (bereits
+  // ueber die KPI-Zeile daruebersichtbar) - die Standort-Unterueberschriften (`locationGroups`)
+  // und die Desktop-Kategoriezeile (`categoryLabel`, `xl:flex`) bleiben davon unberuehrt. Nur vom
+  // Admin-Default-Renderpfad genutzt (siehe renderCleaningAndManualTaskGroups), ohne Angabe
+  // unveraendertes Verhalten fuer alle anderen Aufrufer.
+  hideMobileHeading?: boolean;
 }) {
   const gridClass = cardGridClassName || 'grid grid-cols-1 gap-3 px-4 pt-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]';
   return (
@@ -139,11 +147,13 @@ function TaskGroup({
        * dadurch oben ausgerichtet statt mittig auf Hoehe des Textes (`items-center` zentriert ein
        * Flex-Kind nur innerhalb der Zeilenhoehe, die hier vom hohen `<p>`-Padding selbst bestimmt
        * wurde). Mit dem Padding auf der Zeile bestimmen Text UND Filter gemeinsam deren Hoehe. */}
-      <div className="flex items-center justify-between gap-2 pr-4 pt-4 pb-1 xl:pt-2">
-        <p className="flex items-center gap-1.5 pl-4 text-[13px] font-medium text-ink xl:hidden">
-          {Icon ? <Icon width={14} height={14} className={cn('shrink-0', toneClass)} aria-hidden="true" /> : null}
-          {text}
-        </p>
+      <div className={cn('flex items-center justify-between gap-2 pr-4 pb-1 xl:pt-2', hideMobileHeading ? 'pt-1' : 'pt-4')}>
+        {hideMobileHeading ? null : (
+          <p className="flex items-center gap-1.5 pl-4 text-[13px] font-medium text-ink xl:hidden">
+            {Icon ? <Icon width={14} height={14} className={cn('shrink-0', toneClass)} aria-hidden="true" /> : null}
+            {text}
+          </p>
+        )}
         <p className="hidden items-center gap-1.5 pl-4 text-[11px] font-normal uppercase tracking-wide text-muted xl:flex">
           {Icon ? <Icon width={13} height={13} className={cn('shrink-0', toneClass)} aria-hidden="true" /> : null}
           {categoryLabel}
@@ -486,9 +496,11 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   // trotzdem direkt unter dem Header, weil TasksScreen unmittelbar darunter beginnt.
   let compactInfoLine: ReactNode = null;
   if (isAdmin) {
-    compactInfoLine = t('dashboard_overview_summary_line', {
-      n: cleaningTasks.length, m: openManualTasks.length, k: actionNeededTasks.length,
-    });
+    // Punkt 3 (Mobile-Admin-Aufraeumen): die bisherige reine Textzeile entfaellt fuer Admin
+    // vollstaendig - eine freundliche Statuskarte (siehe unten, direkt neben den anderen
+    // `newMobileUIHere`-Kartenvarianten) uebernimmt dieselben Zahlen (cleaningTasks/
+    // openManualTasks/actionNeededTasks, alles bereits vorhandene Ableitungen).
+    compactInfoLine = null;
   } else if (locationManagerHere) {
     compactInfoLine = t('dashboard_location_summary_line', {
       location: locationLabel, n: cleaningTasks.length, m: locationUnassignedTasks.length,
@@ -785,7 +797,16 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
     );
   }
 
-  function renderCleaningAndManualTaskGroups(cleaningList: ResolvedTask[], manualList: ResolvedTask[], cardGridClassName?: string) {
+  function renderCleaningAndManualTaskGroups(
+    cleaningList: ResolvedTask[],
+    manualList: ResolvedTask[],
+    cardGridClassName?: string,
+    // Mobile-Admin-Aufraeumen Punkt 11: nur vom isAdmin-Aufrufer auf `true` gesetzt (siehe unten) -
+    // die redundante Mobile-Ueberschrift ("8 Reinigungen") entfaellt dort, weil dieselbe Zahl
+    // bereits in der KPI-Zeile daruebersteht. locationManagerHere/Teamleader (andere Aufrufer
+    // derselben Funktion) bleiben unveraendert.
+    hideMobileHeading?: boolean,
+  ) {
     return (
       <>
         {cleaningList.length > 0 ? (
@@ -799,6 +820,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             locationGroups={toLocationGroups(cleaningList, 'noun_cleaning_one', 'noun_cleaning_many')}
             renderCard={(task) => renderRoleTaskCard(task)}
             cardGridClassName={cardGridClassName}
+            hideMobileHeading={hideMobileHeading}
           />
         ) : null}
         {manualList.length > 0 ? (
@@ -812,6 +834,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             locationGroups={toLocationGroups(manualList, 'noun_task_one', 'noun_task_many')}
             renderCard={(task) => renderRoleTaskCard(task, true)}
             cardGridClassName={cardGridClassName}
+            hideMobileHeading={hideMobileHeading}
           />
         ) : null}
       </>
@@ -891,6 +914,50 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       locationGroups,
       cardGridClassName,
     });
+  }
+
+  // Mobile-Admin-Aufraeumen Punkt 8/9: dieselbe bestehende Team-Auslastung (capacity/teamOpen/
+  // topCapacityEntry/unassignedCapacityEntry, siehe oben) - fuer Admin nicht mehr als eigene grosse
+  // Zeile zwischen KPIs und Handlungsbedarf (siehe dortiges `!isAdmin`), sondern als kompakter
+  // Trigger direkt neben der "Handlungsbedarf"-Ueberschrift. Rein informativ - Klick oeffnet
+  // weiterhin dieselbe Aufschluesselung, es handelt sich NICHT um eine neue "nach Team filtern"-
+  // Funktion (die es bisher nicht gab und die hier auch nicht eingefuehrt wird).
+  function renderAdminTeamTrigger() {
+    if (capacity.length === 0) return null;
+    return (
+      // `xl:hidden`: auf Desktop erscheint dieselbe Team-Auslastung bereits separat in der rechten
+      // Admin-Sidebar (DesktopAdminSidebar.tsx) - keine doppelte Teamdarstellung (siehe bestehender
+      // Kommentar bei der jetzt admin-ausgenommenen `!isAdmin`-Box oben).
+      <div className="relative shrink-0 xl:hidden">
+        <button
+          type="button"
+          onClick={() => setTeamOpen((v) => !v)}
+          className="flex h-7 items-center gap-1 rounded-full border border-line bg-warm-white pl-2.5 pr-2 text-[12px] font-medium text-ink"
+        >
+          <IconUsers width={12} height={12} className="shrink-0 text-muted" aria-hidden="true" />
+          <span className="max-w-[110px] truncate text-muted">
+            {topCapacityEntry ? `${shortStaffName(topCapacityEntry.housekeeperName)} ${topCapacityEntry.count}` : t('capacity_title_short')}
+          </span>
+          <IconChevronDown width={11} height={11} className={cn('shrink-0 text-muted transition-transform', teamOpen && 'rotate-180')} aria-hidden="true" />
+        </button>
+        {teamOpen ? (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setTeamOpen(false)} />
+            <div className="absolute right-0 top-[calc(100%+4px)] z-20 w-56 overflow-hidden rounded-card-lg border border-line bg-warm-white shadow-card-lg">
+              <p className="px-4 pt-3 text-[12px] font-medium text-ink">{t('capacity_title')}</p>
+              <div className="flex flex-col gap-1.5 px-4 pb-3 pt-2">
+                {capacity.map((entry) => (
+                  <div key={entry.housekeeperId || 'unassigned'} className="flex items-center justify-between text-[13px]">
+                    <span className="text-ink">{entry.housekeeperId ? shortStaffName(entry.housekeeperName) : t('unassigned')}</span>
+                    <span className="text-muted">{countLabel(t, entry.count, 'noun_task_one', 'noun_task_many')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : null}
+      </div>
+    );
   }
 
   return (
@@ -995,6 +1062,33 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             )}
           </div>
         )
+      ) : isAdmin ? (
+        // Punkt 3 (Mobile-Admin-Aufraeumen): dieselbe freundliche `bg-highlight`-Statuskarte wie
+        // oben fuer Reinigungskraft/Teamleader - ersetzt die bisherige reine Textzeile
+        // (dashboard_overview_summary_line). Ausschliesslich bereits vorhandene Zahlen
+        // (cleaningTasks/openManualTasks/actionNeededTasks), keine neue Business-Logik. Nicht
+        // tippbar (anders als die Reinigungskraft-Variante oben gibt es hier kein einzelnes
+        // zweites Tab-Ziel, in das die Karte fuehren koennte - Admin wechselt stattdessen ueber
+        // den "Übersicht"-Picker darunter).
+        <div className="mx-4 mt-2 flex w-[calc(100%-2rem)] flex-col items-start gap-0.5 rounded-card bg-highlight px-4 py-2.5 text-left">
+          <span className="text-[14px] font-medium text-ink">
+            {openManualTasks.length > 0
+              ? t('admin_status_card_with_tasks', {
+                  cleanings: countLabel(t, cleaningTasks.length, 'noun_cleaning_one', 'noun_cleaning_many'),
+                  tasks: countLabel(t, openManualTasks.length, 'noun_task_one', 'noun_task_many'),
+                })
+              : t('admin_status_card_cleanings_only', {
+                  cleanings: countLabel(t, cleaningTasks.length, 'noun_cleaning_one', 'noun_cleaning_many'),
+                })}
+          </span>
+          <span className="text-[12.5px] text-muted">
+            {actionNeededTasks.length === 0
+              ? t('dashboard_all_assigned')
+              : t(actionNeededTasks.length === 1 ? 'admin_status_card_unassigned_singular' : 'admin_status_card_unassigned_plural', {
+                  n: actionNeededTasks.length,
+                })}
+          </span>
+        </div>
       ) : null}
       {/* Desktop-Admin-Layout (>= 1280px): der bisherige eigene xl:mx-auto/max-w-Wrapper hier
        * entfaellt - die Breitenbegrenzung/Zentrierung passiert jetzt einmalig auf Ebene der
@@ -1084,7 +1178,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
           </button>
         </div>
       ) : showScopeRow ? (
-        <div className="flex gap-2 px-4 py-2.5 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
+        <div className="flex gap-2 px-4 pt-2.5 pb-1.5 xl:order-1 xl:flex-none xl:px-0 xl:py-0">
           {viewOptions ? (
             <TaskViewSelect value={viewValue} options={viewOptions} onChange={onViewChange} className="flex-1 xl:w-[210px] xl:flex-none" />
           ) : !isManagerHere ? (
@@ -1167,13 +1261,21 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
        * Admin-/Manageraktionen kompakt hinter "Auswaehlen" + "Weitere Aktionen" statt dauerhaft
        * sichtbarer Einzelbuttons - fuer normale Housekeeper vollstaendig ausgeblendet.
        * "+ Aufgabe erstellen" ist bewusst NUR fuer Admin sichtbar (serverseitig ebenso
-       * durchgesetzt, siehe api/manual-tasks.js). */}
+       * durchgesetzt, siehe api/manual-tasks.js).
+       * Mobile-Admin-Aufraeumen Punkt 6: fuer Admin wandert "Auswaehlen" zusaetzlich in die
+       * "•••"-Liste (siehe BottomSheet weiter unten) - Standortverantwortliche (locationManagerHere)
+       * behalten den Button unveraendert direkt sichtbar (nicht Teil dieser Admin-Ansicht-Aufgabe).
+       * Keine Funktion geht dabei verloren: das eigentliche Verlassen der Mehrfachauswahl lief schon
+       * bisher ausschliesslich ueber die eigene "Abbrechen"-Aktion der MultiSelectBar unten
+       * (onCancel={toggleTaskMultiSelect}), der Toolbar-Button diente nur zum EINSTIEG. */}
       {isManagerHere ? (
-        <div className="flex flex-wrap items-center gap-2 px-4 pt-3 xl:order-3 xl:ml-auto xl:flex-none xl:px-0 xl:pt-0">
-          <Button variant={state.taskMultiSelect ? 'primary' : 'secondary'} size="sm" onClick={toggleTaskMultiSelect}>
-            <IconCheckSquare width={14} height={14} aria-hidden="true" />
-            {state.taskMultiSelect ? t('multiselect_on') : t('select_tasks_action')}
-          </Button>
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-2.5 xl:order-3 xl:ml-auto xl:flex-none xl:px-0 xl:pt-0">
+          {!isAdmin ? (
+            <Button variant={state.taskMultiSelect ? 'primary' : 'secondary'} size="sm" onClick={toggleTaskMultiSelect}>
+              <IconCheckSquare width={14} height={14} aria-hidden="true" />
+              {state.taskMultiSelect ? t('multiselect_on') : t('select_tasks_action')}
+            </Button>
+          ) : null}
           {isAdmin ? (
             <Button variant="secondary" size="sm" onClick={openManualTaskForm}>
               <IconPlus width={14} height={14} aria-hidden="true" />
@@ -1229,8 +1331,13 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
        * dieser Block existiert ab xl NICHT mehr zusaetzlich im Hauptbereich (`xl:hidden`) - dieselben
        * Team-Daten (capacity/shortStaffName) erscheinen dort stattdessen kompakt in der neuen
        * rechten Admin-Sidebar (DesktopAdminSidebar.tsx, ueber dayOverviewFor() gespeist), keine
-       * doppelte Teamdarstellung. */}
-      {isManagerHere && capacity.length > 0 ? (
+       * doppelte Teamdarstellung.
+       * Mobile-Admin-Aufraeumen Punkt 8: fuer Admin (`!isAdmin` unten) entfaellt diese eigene grosse
+       * Zeile zwischen KPIs und Handlungsbedarf - dieselben Daten (capacity/teamOpen) erscheinen
+       * stattdessen als kompakter Trigger direkt neben "Handlungsbedarf" (siehe
+       * renderAdminTeamTrigger() weiter unten). Standortverantwortliche (locationManagerHere)
+       * behalten diesen Block unveraendert. */}
+      {!isAdmin && isManagerHere && capacity.length > 0 ? (
         <div className="mx-4 mt-3 rounded-card-lg border border-line bg-warm-white xl:hidden">
           <button
             type="button"
@@ -1313,24 +1420,54 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
            * NEBEN der Ueberschrift, statt darunter gestapelt), `xl:flex-wrap` erlaubt einen Umbruch
            * bei schmaleren Desktop-Breiten statt eines erzwungenen Ueberlaufs. Nur `xl:`-Klassen -
            * am Mobile-Markup/-Verhalten aendert sich nichts. */}
-          {isAdmin && taskViewMode === 'home' && actionNeededTasks.length > 0 ? (
-            <div className="mx-4 mt-4 rounded-card-lg border border-line bg-warm-white px-4 py-3 xl:flex xl:flex-wrap xl:items-center xl:gap-x-4 xl:gap-y-1 xl:py-2.5">
-              <p className="flex items-center gap-1.5 text-[13px] font-medium text-ink xl:shrink-0">
-                {t('dashboard_action_needed')}
-                <span className="text-status-attention">· {actionNeededTasks.length}</span>
-              </p>
-              <div className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-muted xl:mt-0 xl:contents">
-                {adminUnassignedTasks.length > 0 ? (
-                  <p className="xl:whitespace-nowrap">{t('dashboard_action_needed_unassigned_line', { n: adminUnassignedTasks.length })}</p>
-                ) : null}
-                {adminEarlyCheckinTasks.length > 0 ? (
-                  <p className="xl:whitespace-nowrap">
-                    {adminEarlyCheckinTasks.length === 1 && singleEarlyCheckinTime
-                      ? t('dashboard_action_needed_early_checkin_line_time', { n: 1, time: singleEarlyCheckinTime })
-                      : t('dashboard_action_needed_early_checkin_line', { n: adminEarlyCheckinTasks.length })}
+          {/* Mobile-Admin-Aufraeumen Punkt 9/10: auf Mobile keine grosse umrandete Karte mehr,
+           * sondern eine kompakte Kopfzeile ("Handlungsbedarf · N" + Team-Trigger daneben, siehe
+           * renderAdminTeamTrigger()) mit optionaler Detailzeile darunter - Desktop behaelt ueber
+           * die `xl:`-Overrides exakt dasselbe Kartenlayout wie zuvor (nur ohne den fuer Desktop
+           * ohnehin ausgeblendeten Team-Trigger). Punkt 10: gibt es nichts zu tun, erscheint statt
+           * der Karte (auf Mobile) nichts Grosses mehr, sondern eine dezente "Alles verteilt"-Zeile. */}
+          {isAdmin && taskViewMode === 'home' ? (
+            <div
+              className={cn(
+                'mx-4 mt-4 xl:rounded-card-lg xl:border xl:border-line xl:bg-warm-white xl:px-4 xl:py-2.5',
+                // Desktop zeigte bei 0 Handlungsbedarf bisher GAR NICHTS an (siehe vorherige
+                // `actionNeededTasks.length > 0`-Bedingung) - das bleibt fuer Desktop unveraendert,
+                // die neue dezente "Alles verteilt"-Zeile (Punkt 10) ist ausschliesslich eine
+                // Mobile-Ergaenzung.
+                actionNeededTasks.length === 0 && 'xl:hidden',
+              )}
+            >
+              {actionNeededTasks.length > 0 ? (
+                <>
+                  <div className="flex items-center justify-between gap-2 xl:flex-wrap xl:gap-x-4 xl:gap-y-1">
+                    <p className="flex items-center gap-1.5 text-[13px] font-medium text-ink xl:shrink-0">
+                      {t('dashboard_action_needed')}
+                      <span className="text-status-attention">· {actionNeededTasks.length}</span>
+                    </p>
+                    {renderAdminTeamTrigger()}
+                  </div>
+                  <div className="mt-1 flex flex-col gap-0.5 text-[13px] text-muted xl:mt-0 xl:contents">
+                    {adminUnassignedTasks.length > 0 ? (
+                      <p className="xl:whitespace-nowrap">{t('dashboard_action_needed_unassigned_line', { n: adminUnassignedTasks.length })}</p>
+                    ) : null}
+                    {adminEarlyCheckinTasks.length > 0 ? (
+                      <p className="xl:whitespace-nowrap">
+                        {adminEarlyCheckinTasks.length === 1 && singleEarlyCheckinTime
+                          ? t('dashboard_action_needed_early_checkin_line_time', { n: 1, time: singleEarlyCheckinTime })
+                          : t('dashboard_action_needed_early_checkin_line', { n: adminEarlyCheckinTasks.length })}
+                      </p>
+                    ) : null}
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-1.5 text-[13px] font-medium text-status-clean">
+                    <IconCheck width={14} height={14} className="shrink-0" aria-hidden="true" />
+                    {t('dashboard_all_assigned')}
                   </p>
-                ) : null}
-              </div>
+                  {renderAdminTeamTrigger()}
+                </div>
+              )}
             </div>
           ) : null}
 
@@ -1346,6 +1483,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                 locationGroups={toLocationGroups(actionNeededTasks, 'noun_task_one', 'noun_task_many')}
                 renderCard={(task) => renderRoleTaskCard(task)}
                 cardGridClassName={ADMIN_DESKTOP_CARD_GRID_CLASS}
+                headerRight={renderAdminTeamTrigger()}
               />
             ) : (
               <div className="px-4 py-10 text-center text-sm text-muted">{t('no_tasks')}</div>
@@ -1387,6 +1525,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                 locationManagerHere ? cleaningTasks.filter((task) => !locationUnassignedIds.has(task.id)) : cleaningTasks,
                 locationManagerHere ? openManualTasks.filter((task) => !locationUnassignedIds.has(task.id)) : openManualTasks,
                 isAdmin ? ADMIN_DESKTOP_CARD_GRID_CLASS : undefined,
+                isAdmin,
               )}
               {renderDoneSection(doneTasks, null, isAdmin ? ADMIN_DESKTOP_CARD_GRID_CLASS : undefined)}
             </>
@@ -1537,7 +1676,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         // Admin im 'mine'-Modus (identisch zu vorher) - eine normale Reinigungskraft (mit/ohne
         // Team) nutzt jetzt den eigenen housekeeperRedesignHere-Zweig oben.
         <>
-          {renderCleaningAndManualTaskGroups(cleaningTasks, openManualTasks, isAdmin ? ADMIN_DESKTOP_CARD_GRID_CLASS : undefined)}
+          {renderCleaningAndManualTaskGroups(cleaningTasks, openManualTasks, isAdmin ? ADMIN_DESKTOP_CARD_GRID_CLASS : undefined, isAdmin)}
           {renderDoneSection(doneTasks, null, isAdmin ? ADMIN_DESKTOP_CARD_GRID_CLASS : undefined)}
         </>
       )}
@@ -1567,6 +1706,16 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       <BottomSheet open={moreActionsOpen} onClose={() => setMoreActionsOpen(false)}>
         <h3 className="italic text-lg text-[#17160f]">{t('more_actions')}</h3>
         <div className="mt-3 flex flex-col divide-y divide-line border-y border-line">
+          {isAdmin ? (
+            <button
+              type="button"
+              onClick={() => { setMoreActionsOpen(false); toggleTaskMultiSelect(); }}
+              className="flex items-center gap-2 py-2.5 text-left text-[15px] text-ink transition-colors hover:text-sage"
+            >
+              <IconCheckSquare width={15} height={15} className="shrink-0" aria-hidden="true" />
+              {state.taskMultiSelect ? t('multiselect_on') : t('select_tasks_action')}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => { setMoreActionsOpen(false); handleClearDay(); }}
