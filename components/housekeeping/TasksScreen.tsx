@@ -247,7 +247,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const {
     state, t, selectDay, selectPropertyScope, toggleMyTasksOnly,
     toggleTaskMultiSelect, toggleTaskSelection, openTask, bulkAssignTasks, clearDayAssignments, retryTasksLoad,
-    noticeForTask, isNoticeAcknowledgedBy, openManualTaskForm, shortStaffName, tasksForDayAll,
+    noticeForTask, openManualTaskForm, shortStaffName, tasksForDayAll,
     isTaskSeenByMe, isBookingChangeAckedByMe, claimTask, showToast,
   } = app;
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -605,15 +605,24 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
     : taskViewMode === 'mine' ? 'empty_my_tasks' : taskViewMode === 'open' ? 'empty_open_team_tasks' : 'empty_team_tasks';
   const teamLeadEmptyText = date ? t(teamLeadEmptyKey, { day: dayPhraseFor(date) }) : t('no_tasks');
 
-  // Briefing "Reinigungskarten ueberarbeiten" Punkt 5/6/7: EIN gemeinsamer Aufmerksamkeits-Zustand
-  // pro Karte - Buchungsaenderung (orange) hat immer Vorrang vor "ungesehen" (gruen), niemals
-  // beide gleichzeitig. Bewusst UNABHAENGIG von cardNoticeState() unten (siehe dort) - "gesehen"/
-  // "Buchungsaenderung bestaetigt" und der "Wichtiger Hinweis"-Bestaetigungsstatus sind zwei
-  // technisch komplett getrennte Datenquellen (siehe types.ts).
-  function cardAttentionState(task: ResolvedTask): 'none' | 'new' | 'changed' {
-    if (task.bookingChange && !isBookingChangeAckedByMe(task)) return 'changed';
-    if (!isTaskSeenByMe(task.id)) return 'new';
-    return 'none';
+  // Briefing "Status-/Informationsdarstellung ueberarbeiten" Punkt 8: DREI vollstaendig
+  // unabhaengige Statusherleitungen statt eines einzelnen, priorisierten Zustands - keine der drei
+  // Auspraegungen wird aus einer anderen abgeleitet, alle koennen gleichzeitig zutreffen (siehe
+  // CardStatusIndicators in TaskCard.tsx). Der Zuweisungsstatus selbst braucht keine eigene
+  // Herleitung hier, da er eine reine Funktion von `task` ist und direkt in TaskCard berechnet wird.
+  function isTaskUnreadByMe(task: ResolvedTask): boolean {
+    return !isTaskSeenByMe(task.id);
+  }
+  function hasUnacknowledgedBookingChange(task: ResolvedTask): boolean {
+    return !!task.bookingChange && !isBookingChangeAckedByMe(task);
+  }
+  // Punkt 6: die Karte zeigt "wichtiger Hinweis vorhanden" ausschliesslich anhand der reinen
+  // Existenz eines Hinweises (noticeForTask) - bewusst UNABHAENGIG vom Bestaetigungsstatus
+  // (isNoticeAcknowledgedBy), der weiterhin ausschliesslich die Detailansicht/den Start-Block
+  // steuert (siehe TaskDetailSheet.tsx). Der Hinweis bleibt auf der Karte sichtbar, solange er
+  // fuer die Aufgabe relevant ist - unabhaengig davon, ob er schon gelesen/bestaetigt wurde.
+  function hasImportantNotice(task: ResolvedTask): boolean {
+    return !!noticeForTask(task.id);
   }
 
   const scopedHousekeepers: StaffUser[] = state.users.filter((u) => {
@@ -678,16 +687,6 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
     );
   }
 
-  // Wichtiger-Hinweis-Badge auf der Task Card (Punkt 3, unveraendert aus der bisherigen
-  // Detailsheet-Logik hierher gezogen): "unread" bezieht sich auf den AKTUELL EINGELOGGTEN
-  // Nutzer (state.user), nicht auf task.assignedUserId - dieselbe Semantik wie in
-  // TaskDetailSheet.tsx#PrimaryAction (currentUserId/currentUserAckCurrent).
-  function cardNoticeState(task: ResolvedTask): 'none' | 'unread' | 'read' {
-    const notice = noticeForTask(task.id);
-    if (!notice) return 'none';
-    return isNoticeAcknowledgedBy(task.id, state.user?.id) ? 'read' : 'unread';
-  }
-
   // Punkt 4 (UX-Feinschliff): Ansicht/Standort nicht mehr als zwei grosse Chip-Gruppen, sondern
   // zwei kompakte Picker (native <select>, mit ueberlagertem Chevron-Icon) in EINER Zeile - die
   // fachliche Trennung der beiden Filterdimensionen (siehe selectMine/selectAllTasks/selectScope
@@ -728,7 +727,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   // wie im unveraenderten Standardpfad, nur mit eigenen, bereits oben gefilterten Listen gefuettert.
   // "Fertig" ist bewusst ebenfalls eine gemeinsame Funktion (statt einer dritten Kopie), damit
   // Standard- und neue Rollenpfade exakt dieselbe Klapp-/Karten-Darstellung verwenden.
-  function renderRoleTaskCard(task: ResolvedTask, noticeOverride?: 'none') {
+  function renderRoleTaskCard(task: ResolvedTask, forceNoNotice?: boolean) {
     return (
       <TaskCard
         key={task.id}
@@ -737,8 +736,9 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         selected={false}
         selectable={false}
         shortName={shortStaffName}
-        noticeState={noticeOverride ?? cardNoticeState(task)}
-        attentionState={cardAttentionState(task)}
+        unread={isTaskUnreadByMe(task)}
+        changePending={hasUnacknowledgedBookingChange(task)}
+        noticePresent={forceNoNotice ? false : hasImportantNotice(task)}
         onOpen={() => openTask(task.id)}
       />
     );
@@ -810,7 +810,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
             icon={IconTask}
             tasks={manualList}
             locationGroups={toLocationGroups(manualList, 'noun_task_one', 'noun_task_many')}
-            renderCard={(task) => renderRoleTaskCard(task, 'none')}
+            renderCard={(task) => renderRoleTaskCard(task, true)}
             cardGridClassName={cardGridClassName}
           />
         ) : null}
@@ -837,7 +837,7 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
     const gridClass = cardGridClassName || 'grid grid-cols-1 gap-3 px-4 pt-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[repeat(auto-fill,minmax(340px,1fr))]';
     const cardGrid = (tasks: ResolvedTask[]) => (
       <div className={gridClass}>
-        {tasks.map((task) => renderRoleTaskCard(task, 'none'))}
+        {tasks.map((task) => renderRoleTaskCard(task, true))}
       </div>
     );
     return (
@@ -1291,8 +1291,9 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
               selected={state.selectedTasks.has(task.id)}
               selectable
               shortName={shortStaffName}
-              noticeState={cardNoticeState(task)}
-              attentionState={cardAttentionState(task)}
+              unread={isTaskUnreadByMe(task)}
+              changePending={hasUnacknowledgedBookingChange(task)}
+              noticePresent={hasImportantNotice(task)}
               onOpen={() => openTask(task.id)}
             />
           ))}

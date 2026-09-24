@@ -1154,7 +1154,7 @@ import type { ExtraEquipmentNeed } from './tasks';
 // (u. a. Reinigungskraft->Admin, Standortverantwortlicher->fremder Standort/Admin-Rolle,
 // Teamleader->fremdes Team/neuer Teamleader - alle serverseitig abgelehnt bzw. auf das erlaubte
 // Minimum zurechtgestutzt, unabhaengig vom Client-Request).
-export const APP_VERSION = '2.44.1';
+export const APP_VERSION = '2.45.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals

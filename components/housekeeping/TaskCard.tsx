@@ -3,7 +3,7 @@ import { translate } from '@/lib/housekeeping/i18n';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
 import {
   DoubleupIcon, IconAlertCircle, IconCalendarClock, IconCheck, IconClock, IconEdit, IconEnter, IconExit, IconEye, IconPause, IconPlay,
-  IconRotateCcw, IconTask, IconUser,
+  IconRefresh, IconRotateCcw, IconTask, IconUser,
 } from '@/components/ui/icons';
 import { TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
 import type { ResolvedTask } from '@/lib/housekeeping/useHousekeepingApp';
@@ -16,22 +16,94 @@ export interface TaskCardProps {
   lang: Lang;
   selected: boolean;
   selectable: boolean;
-  /** Punkt 9: 'unread' zeigt ein dezentes Outline-Warnsymbol (wichtiger, vom zugewiesenen
-   * Mitarbeiter noch nicht bestaetigter Hinweis), 'read' ein dezentes Haekchen, 'none' nichts. */
-  noticeState?: 'none' | 'unread' | 'read';
-  /** Briefing "neue Statuslogik auf den Karten": weiterhin EIN gemeinsamer Zustand (dieselbe
-   * Herleitung/Prioritaet wie zuvor - Buchungsaenderung ungesehen > allgemein ungesehen, siehe
-   * TasksScreen.tsx#cardAttentionState), aber ab jetzt technisch/visuell ALS EYE-ICON dargestellt
-   * statt eines farbigen Punkts - 'new' und 'changed' bedeuten auf der Karte beide schlicht "vom
-   * aktuellen Benutzer noch nicht angesehen" (siehe IconEye unten); nur der Detailansicht-Chip
-   * (TaskDetailSheet.tsx) unterscheidet die beiden Faelle weiterhin farblich/textlich. Bewusst
-   * technisch GETRENNT vom "Wichtiger Hinweis"-Icon oben (noticeState). */
-  attentionState?: 'none' | 'new' | 'changed';
+  /** Briefing "Status-/Informationsdarstellung ueberarbeiten": VIER technisch vollstaendig
+   * unabhaengige Statusinformationen oben rechts (siehe CardStatusIndicators unten) - keine darf
+   * aus einer anderen abgeleitet werden. `unread` kommt aus isTaskSeenByMe(), `changePending` aus
+   * task.bookingChange + isBookingChangeAckedByMe(), `noticePresent` aus noticeForTask() (reine
+   * Existenz, UNABHAENGIG vom Bestaetigungsstatus - der wichtige Hinweis bleibt auf der Karte
+   * sichtbar, solange er fuer die Aufgabe relevant ist, siehe Briefing Punkt 6). Der
+   * Zuweisungsstatus selbst braucht keinen Prop - er ist eine reine Funktion von `task` (siehe
+   * unten) und wird direkt in der Karte berechnet. */
+  unread?: boolean;
+  changePending?: boolean;
+  noticePresent?: boolean;
   /** Punkt "Reinigungskräfte standardmäßig nur mit Vornamen anzeigen" - reine Darstellungsfunktion
    * (siehe lib/housekeeping/names.ts/useHousekeepingApp.ts#shortStaffName), der gespeicherte
    * volle Name bleibt unveraendert. */
   shortName: (name: string | null | undefined) => string;
   onOpen: () => void;
+}
+
+/**
+ * Briefing "Status-/Informationsdarstellung ueberarbeiten" Punkt 2/3/4/5/6/7/8/17/18/20: EIN
+ * wiederverwendbarer Statusblock oben rechts auf jeder Karte, mit fester Reihenfolge
+ * [Zuweisung] [Eye] [Change] [wichtiger Hinweis] und rechtsbuendig - die vier Zustaende sind
+ * technisch komplett unabhaengig voneinander (keiner wird aus einem anderen abgeleitet) und jeder
+ * wird nur gerendert, wenn er tatsaechlich zutrifft (Punkt 18 "kein Information Overload"). Farben/
+ * Icons sind nie der einzige Bedeutungstraeger, siehe aria-label an jedem Element. Bewusst OHNE
+ * Badges/Hintergrundflaechen um die einzelnen Symbole (Punkt 7).
+ */
+export function CardStatusIndicators({
+  assignmentStatus, unread, changePending, noticePresent, lang,
+}: {
+  assignmentStatus: 'assigned' | 'unassigned' | 'none';
+  unread: boolean;
+  changePending: boolean;
+  noticePresent: boolean;
+  lang: Lang;
+}) {
+  if (assignmentStatus === 'none' && !unread && !changePending && !noticePresent) return null;
+  return (
+    <span className="flex shrink-0 items-center gap-1.5">
+      {assignmentStatus !== 'none' ? (
+        <span
+          className={cn('h-2.5 w-2.5 rounded-full', assignmentStatus === 'assigned' ? 'bg-status-clean' : 'bg-status-attention')}
+          role="img"
+          aria-label={translate(lang, assignmentStatus === 'assigned' ? 'task_assigned_dot_label' : 'task_unassigned_dot_label')}
+          title={translate(lang, assignmentStatus === 'assigned' ? 'task_assigned_dot_label' : 'task_unassigned_dot_label')}
+        />
+      ) : null}
+      {unread ? (
+        <IconEye width={16} height={16} className="shrink-0 text-ink" role="img" aria-label={translate(lang, 'task_unseen_icon_label')} />
+      ) : null}
+      {changePending ? (
+        <IconRefresh width={16} height={16} className="shrink-0 text-ink" role="img" aria-label={translate(lang, 'booking_changed_dot_label')} />
+      ) : null}
+      {noticePresent ? (
+        <IconAlertCircle width={16} height={16} className="shrink-0 text-ink" role="img" aria-label={translate(lang, 'important_notice_title')} />
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * Briefing "Status-/Informationsdarstellung ueberarbeiten" Punkt 9/10/11/13/16/17: EINE gemeinsame,
+ * dezente Darstellung fuer Vorbereitung/Extras unten rechts - bewusst eigenstaendig und optisch
+ * unterscheidbar vom Statusblock oben rechts (andere Position, keine Punkte/Eye/Refresh-Symbolik).
+ * Reine Anzeige, KEINE eigene Ableitungslogik: WELCHE Extras vorbereitet werden muessen, entscheidet
+ * weiterhin ausschliesslich der Aufrufer (OccupancyBlock fuer die BABY-/Turnover-Anreiselogik,
+ * OccupancyLine fuer die manuellen doubleupTypes-Toggles) - "Hund" gehoert laut Vorgabe NIE hierher
+ * und wird von beiden Aufrufern bereits vorgefiltert uebergeben.
+ */
+export function CardPreparationIndicators({
+  items, size = 'normal',
+}: {
+  items: { id: string; label: string }[];
+  size?: 'normal' | 'prominent';
+}) {
+  if (!items.length) return null;
+  const dim = size === 'prominent' ? 17 : 15;
+  return (
+    <span className="flex shrink-0 items-center gap-1.5 text-muted">
+      {items.map((item) => (
+        <DoubleupIcon
+          key={item.id} id={item.id} width={dim} height={dim}
+          className={size === 'prominent' ? 'text-ink' : undefined}
+          role="img" aria-label={item.label}
+        />
+      ))}
+    </span>
+  );
 }
 
 function formatDayMonth(iso: string | null): string {
@@ -297,7 +369,7 @@ function OccupancyBlock({
       ) : null}
       {prominent ? (
         <span className="mt-1 flex items-center justify-end" title={prominent.label}>
-          <DoubleupIcon id={prominent.id} width={17} height={17} className="text-ink" role="img" aria-label={prominent.label} />
+          <CardPreparationIndicators items={[prominent]} size="prominent" />
         </span>
       ) : null}
     </div>
@@ -362,14 +434,7 @@ export function OccupancyLine({ task, lang, doubleTypes }: { task: ResolvedTask;
   return (
     <div className="flex items-end justify-between gap-2">
       {occupancy || <span />}
-      {doubleTypes.length ? (
-        <span className="flex shrink-0 items-center gap-1.5 text-muted">
-          {doubleTypes.map((dt) => {
-            const label = translate(lang, dt.label);
-            return <DoubleupIcon key={dt.id} id={dt.id} width={15} height={15} role="img" aria-label={label} />;
-          })}
-        </span>
-      ) : null}
+      <CardPreparationIndicators items={doubleTypes.map((dt) => ({ id: dt.id, label: translate(lang, dt.label) }))} />
     </div>
   );
 }
@@ -381,25 +446,30 @@ export function OccupancyLine({ task, lang, doubleTypes }: { task: ResolvedTask;
  * Playwright-Hoehenvergleich vor/nach der Aenderung) - reine Darstellung, keine Aenderung an
  * Task-Ableitung/Zuweisung/Timer/Pausen/NFC/Notices/Zeiten-Overrides.
  */
-export function TaskCard({ task, lang, selected, selectable, noticeState = 'none', attentionState = 'none', shortName, onOpen }: TaskCardProps) {
+export function TaskCard({
+  task, lang, selected, selectable, unread = false, changePending = false, noticePresent = false, shortName, onOpen,
+}: TaskCardProps) {
   const typeConfig = TASK_TYPE_CONFIG[task.type];
-  // Punkt "gebucht vs. manuell": ein Hund/Babybett, das bereits als gebuchtes Apaleo-Extra bei
-  // Abreise oder Anreise angezeigt wird (siehe OccupancyLine/bookedExtraIcons), erscheint hier in
-  // der manuellen Vorbereitungs-Icon-Gruppe NICHT ein zweites Mal - beide Datenquellen bleiben
-  // getrennt, aber dasselbe Symbol wird nie doppelt auf derselben Karte gezeigt.
-  const apaleoHasDog = !!(task.reservationInfo?.hasDog || task.nextReservationInfo?.hasDog);
+  // Briefing "Status-/Informationsdarstellung ueberarbeiten" Punkt 9: "Hund" ist KEINE Vorbereitung
+  // und gehoert nie in diese Liste (bleibt ausschliesslich als kleine Gast-Info bei An-/Abreise
+  // ueber bookedExtraIcons erhalten) - deshalb hier unbedingt ausgeschlossen, unabhaengig davon, ob
+  // er ueber Apaleo gebucht oder manuell als Doubleup-Flag gesetzt wurde. Ein per Apaleo bereits
+  // gebuchtes Babybett erscheint ebenfalls nicht zusaetzlich hier (das wuerde das Symbol auf
+  // derselben Karte verdoppeln, siehe OccupancyLine/bookedExtraIcons fuer die gebuchte Variante).
   const apaleoHasCrib = !!(task.reservationInfo?.hasCrib || task.nextReservationInfo?.hasCrib);
   const doubleTypes = task.doubleupTypes.length
-    ? DOUBLEUP_TYPES.filter((dt) => task.doubleupTypes.includes(dt.id) && !(dt.id === 'dog' && apaleoHasDog) && !(dt.id === 'crib' && apaleoHasCrib))
+    ? DOUBLEUP_TYPES.filter((dt) => dt.id !== 'dog' && task.doubleupTypes.includes(dt.id) && !(dt.id === 'crib' && apaleoHasCrib))
     : [];
   const isCompleted = task.status === 'completed';
-  // Briefing "neue Statuslogik auf den Karten" Punkt A: roter/terracotta Punkt = noch keiner
+  // Briefing "Status-/Informationsdarstellung ueberarbeiten" Punkt 3/8/14/18: Zuweisungsstatus ist
+  // eine reine Funktion von `task` (kein App-Zustand noetig) - rot/terracotta = noch keiner
   // Reinigungskraft persoenlich zugewiesen (Team-Zuweisung allein zaehlt NICHT als "zugewiesen",
-  // siehe WorkStatus oben - "IF-Reinigung · Noch nicht verteilt"). Bewusst dieselbe Farbe wie
-  // Abreise/Buchungsaenderung (status-attention) statt eines aggressiven Signalrots. Technisch
-  // GETRENNT vom Eye-Status unten - "nicht zugewiesen" und "nicht angesehen" duerfen gleichzeitig
-  // auftreten (Punkt 11) und verschwinden unabhaengig voneinander (Zuweisung vs. Oeffnen der Karte).
-  const isUnassigned = !isCompleted && !task.assignedUserId;
+  // siehe WorkStatus oben - "IF-Reinigung · Noch nicht verteilt"), gruen = zugewiesen. Beide nutzen
+  // denselben Slot/dieselbe Groesse, sind aber technisch/visuell VOLLSTAENDIG unabhaengig von
+  // unread/changePending/noticePresent - jede Kombination ist moeglich (Punkt 8). Fuer bereits
+  // abgeschlossene Aufgaben zeigen wir keinen Zuweisungspunkt mehr (WorkStatus traegt "Fertig"
+  // bereits eindeutig, ein zusaetzlicher Punkt waere hier reine Redundanz, Punkt 18).
+  const assignmentStatus: 'assigned' | 'unassigned' | 'none' = isCompleted ? 'none' : (task.assignedUserId ? 'assigned' : 'unassigned');
 
   return (
     <button
@@ -430,7 +500,13 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
         </span>
       ) : null}
 
-      <div className="flex items-start justify-between gap-2 pr-6">
+      {/* Briefing "Status-/Informationsdarstellung ueberarbeiten" Punkt 2: der Statusblock soll
+       * genauso weit vom rechten Kartenrand entfernt sein wie der Apartmentname vom linken - das
+       * eigene Kartenpadding (`p-4`/`xl:p-[18px]`) leistet das bereits von selbst, ein zusaetzliches
+       * `pr-6` hier hat den Block bisher unnoetig weiter nach links gedrueckt. Nur im
+       * Mehrfachauswahl-Modus (`selectable`) bleibt ein kleiner Zusatzabstand noetig, damit der
+       * Statusblock nicht mit dem absolut positionierten Auswahlkreis oben rechts kollidiert. */}
+      <div className={cn('flex items-start justify-between gap-2', selectable && 'pr-7')}>
         <span className="italic text-[17px] font-medium leading-none text-ink">
           {/* Standortweite manuelle Aufgabe (Punkt 2 "Apartment optional") hat kein unitName -
            * dann traegt der Standortname allein die Ueberschrift statt eines leeren "· Standort". */}
@@ -440,32 +516,14 @@ export function TaskCard({ task, lang, selected, selectable, noticeState = 'none
             task.propertyName
           )}
         </span>
-        <span className="mt-1 flex shrink-0 items-center gap-1.5">
-          {/* Briefing "neue Statuslogik auf den Karten" Punkt A/B/11: zwei technisch/visuell
-           * unabhaengige Indikatoren statt eines einzelnen Punkts - "nicht zugewiesen" (rot) und
-           * "noch nicht angesehen" (Eye) koennen gleichzeitig erscheinen und verschwinden jeweils
-           * fuer sich (Zuweisung vs. Oeffnen der Karte). Farbe/Icon sind nie der einzige
-           * Bedeutungstraeger, siehe aria-label/title. */}
-          {isUnassigned ? (
-            <span
-              className="h-2.5 w-2.5 rounded-full bg-status-attention"
-              role="img"
-              aria-label={translate(lang, 'task_unassigned_dot_label')}
-              title={translate(lang, 'task_unassigned_dot_label')}
-            />
-          ) : null}
-          {attentionState !== 'none' ? (
-            <IconEye
-              width={16} height={16} className="shrink-0 text-ink"
-              role="img"
-              aria-label={translate(lang, 'task_unseen_icon_label')}
-            />
-          ) : null}
-          {noticeState === 'unread' ? (
-            <IconAlertCircle width={16} height={16} className="shrink-0 text-muted" aria-hidden="true" />
-          ) : noticeState === 'read' ? (
-            <IconCheck width={14} height={14} className="shrink-0 text-sage" aria-hidden="true" />
-          ) : null}
+        <span className="mt-1">
+          <CardStatusIndicators
+            assignmentStatus={assignmentStatus}
+            unread={unread}
+            changePending={changePending}
+            noticePresent={noticePresent}
+            lang={lang}
+          />
         </span>
       </div>
 
