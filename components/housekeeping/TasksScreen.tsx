@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { sortTasksForDay, type ResolvedTask } from '@/lib/housekeeping/tasks';
@@ -134,12 +134,17 @@ function TaskGroup({
        * zur Toolbar darueber (Punkt 8: kein doppelter Kennzahlen-Bereich mehr, also auch kein
        * grosser Leerraum mehr noetig). Mobile bleibt unveraendert (keine der `xl:`-Klassen wirkt
        * unterhalb 1280px). */}
-      <div className="flex items-center justify-between gap-2 pr-4">
-        <p className="flex items-center gap-1.5 pl-4 pt-4 pb-1 text-[13px] font-medium text-ink xl:hidden">
+      {/* Korrektur "neue mobile Ansicht": Padding sitzt jetzt auf der Zeile selbst statt auf jedem
+       * `<p>` einzeln - vorher lag `pt-4` NUR auf dem Text, `headerRight` (Standortfilter) blieb
+       * dadurch oben ausgerichtet statt mittig auf Hoehe des Textes (`items-center` zentriert ein
+       * Flex-Kind nur innerhalb der Zeilenhoehe, die hier vom hohen `<p>`-Padding selbst bestimmt
+       * wurde). Mit dem Padding auf der Zeile bestimmen Text UND Filter gemeinsam deren Hoehe. */}
+      <div className="flex items-center justify-between gap-2 pr-4 pt-4 pb-1 xl:pt-2">
+        <p className="flex items-center gap-1.5 pl-4 text-[13px] font-medium text-ink xl:hidden">
           {Icon ? <Icon width={14} height={14} className={cn('shrink-0', toneClass)} aria-hidden="true" /> : null}
           {text}
         </p>
-        <p className="hidden items-center gap-1.5 pl-4 pt-2 pb-1 text-[11px] font-normal uppercase tracking-wide text-muted xl:flex">
+        <p className="hidden items-center gap-1.5 pl-4 text-[11px] font-normal uppercase tracking-wide text-muted xl:flex">
           {Icon ? <Icon width={13} height={13} className={cn('shrink-0', toneClass)} aria-hidden="true" /> : null}
           {categoryLabel}
           <span className="font-medium normal-case text-ink">{count}</span>
@@ -304,19 +309,12 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   const teamLeadRedesignHere = teamLeadHere && !isAdmin && !locationManagerHere;
   const newMobileUIHere = housekeeperRedesignHere || teamLeadRedesignHere;
 
-  // Housekeeping-Mobile-Redesign (Teamleader-Erweiterung), Default-Tab-Korrektur: afterLogin()
-  // (useHousekeepingApp.ts) setzt `myTasksOnly` fuer JEDEN Nutzer ohne managedProperties beim Login
-  // auf `true` (Definition dort: `isManagerUser = isAdmin || managedPropertyCodes(...).length>0`) -
-  // ein reiner Teamleader OHNE eigene Standortverantwortung ist kein "Manager" in diesem Sinne und
-  // startet deshalb faelschlich mit `myTasksOnly=true` ("Meine Aufgaben" aktiv), obwohl per Vorgabe
-  // "Team Aufgaben" (myTasksOnly=false) der Default sein soll. Einmalige Korrektur genau in dem
-  // Moment, in dem `teamLeadRedesignHere` erstmals wahr wird (Properties/Rolle sind dann geladen) -
-  // bewusst NICHT von `state.myTasksOnly` selbst abhaengig, sonst wuerde jedes spaetere, absichtliche
-  // Antippen von "Meine Aufgaben" durch den Nutzer sofort wieder zurueckgesetzt.
-  useEffect(() => {
-    if (teamLeadRedesignHere && state.myTasksOnly) toggleMyTasksOnly();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teamLeadRedesignHere]);
+  // Housekeeping-Mobile-Redesign (Teamleader-Erweiterung), Default-Tab: `myTasksOnly` fuer einen
+  // reinen Teamleader wird bereits beim Login korrekt auf `false` ("Team Aufgaben") gesetzt (siehe
+  // afterLogin() in useHousekeepingApp.ts) - ein fruehrer, hier lokaler Korrektur-useEffect wurde
+  // entfernt, da er mit afterLogin()s asynchronem Login-Patch um die Ausgangsansicht wettlaufen
+  // konnte (die Korrektur wurde durch den spaeter abschliessenden Login-Patch teils wieder
+  // ueberschrieben - genau das vom Nutzer gemeldete Problem).
 
   // Ursachenanalyse "Team heute an Datumsauswahl gekoppelt" (Briefing "Dashboard fuer Teamleader
   // optimieren" Punkt 12): der fruehere Fix hielt `taskViewMode` (lokal, hier) und das GLOBALE
@@ -1438,8 +1436,8 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                 // Briefing "neue mobile Ansicht" Punkt 6: der Filter darf nicht unerreichbar
                 // werden, nur weil "Noch zu verteilen" laut bestehender Konvention bei 0 Eintraegen
                 // komplett entfaellt (siehe TaskGroup oben) - eigene, ebenso kompakte Zeile statt.
-                <div className="flex items-center justify-between gap-2 pr-4">
-                  <p className="flex items-center gap-1.5 pl-4 pt-4 pb-1 text-[13px] font-medium text-ink">
+                <div className="flex items-center justify-between gap-2 pr-4 pt-4 pb-1">
+                  <p className="flex items-center gap-1.5 pl-4 text-[13px] font-medium text-ink">
                     <IconTask width={14} height={14} className="shrink-0 text-status-attention" aria-hidden="true" />
                     {t('dashboard_not_yet_assigned')} · 0
                   </p>

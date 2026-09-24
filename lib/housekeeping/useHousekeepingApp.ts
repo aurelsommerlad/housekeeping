@@ -503,12 +503,22 @@ export function useHousekeepingApp() {
       if (!activeProperty || !allowed.includes(activeProperty)) activeProperty = allowed[0] || null;
       if (activeProperty) window.localStorage.setItem('hk_active_property', activeProperty);
       // Punkt 3/6: Admin UND Standortverantwortliche (managedProperties nicht leer) starten auf
-      // "Alle" (Ueberblick ueber ihr Team/ihre Haeuser), eine normale Reinigungskraft ohne eigene
-      // Standortverantwortung auf "Meine Aufgaben".
+      // "Alle" (Ueberblick ueber ihr Team/ihre Haeuser). Housekeeping-Mobile-Redesign
+      // (Teamleader-Erweiterung): ein reiner Teamleader (Team-Mitgliedschaft mit isLeader, aber
+      // selbst weder Admin noch Standortverantwortlicher) startet ebenfalls auf "Team Aufgaben"
+      // (myTasksOnly=false) statt "Meine Aufgaben" - er ist kein "Manager" im obigen Sinne, soll
+      // aber trotzdem zuerst die Team- statt die Eigenlast sehen (siehe teamLeadRedesignHere in
+      // TasksScreen.tsx). Nur eine normale Reinigungskraft ohne jede dieser Rollen startet auf
+      // "Meine Aufgaben". Dies ist die EINZIGE Stelle, die `myTasksOnly` beim Login setzt - ein
+      // frueherer Korrektur-useEffect in TasksScreen.tsx wurde entfernt, weil er mit diesem
+      // asynchronen `patch()` hier um die Ausgangsansicht wettlief (die Korrektur konnte durch
+      // diesen spaeter abschliessenden Login-Patch wieder ueberschrieben werden).
       const isAdminUser = stateRef.current.user?.role === 'admin';
       const isManagerUser = isAdminUser || managedPropertyCodes(stateRef.current.user, allowed).length > 0;
-      patch({ properties, activeProperty, myTasksOnly: !isManagerUser, propertyScope: 'all' });
-      stateRef.current = { ...stateRef.current, properties, activeProperty, myTasksOnly: !isManagerUser, propertyScope: 'all' };
+      const isTeamLeadUser = isTeamLead(stateRef.current.user);
+      const myTasksOnlyDefault = !(isManagerUser || isTeamLeadUser);
+      patch({ properties, activeProperty, myTasksOnly: myTasksOnlyDefault, propertyScope: 'all' });
+      stateRef.current = { ...stateRef.current, properties, activeProperty, myTasksOnly: myTasksOnlyDefault, propertyScope: 'all' };
       await loadTasksData();
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err));
