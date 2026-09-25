@@ -109,10 +109,15 @@ export function LinenCompletionSheet({ app }: LinenCompletionSheetProps) {
                 <div className="min-w-0">
                   <p className="truncate text-[14px] font-medium text-ink">{resolveFreeText(item.nameTranslation, item.name, state.lang)}</p>
                   {/* Punkt 3: sehr dezent, hell greige hinterlegt, keine Warnfarbe - dient
-                   * ausschliesslich als Orientierung und wird NIE automatisch uebernommen. */}
-                  <span className="mt-0.5 inline-block rounded-control bg-surface px-1.5 py-0.5 text-[11px] text-muted">
-                    {t('linen_estimated_label')}: {estimate ?? '–'}
-                  </span>
+                   * ausschliesslich als Orientierung und wird NIE automatisch uebernommen. Nutzerfeedback:
+                   * ohne konfigurierte/anwendbare Schaetzregel (estimate === null) wird die Zeile ganz
+                   * weggelassen statt "Geschätzt: –" zu zeigen - eine fehlende Schaetzung ist keine
+                   * Information, die eine Reinigungskraft braucht. */}
+                  {estimate !== null ? (
+                    <span className="mt-0.5 inline-block rounded-control bg-surface px-1.5 py-0.5 text-[11px] text-muted">
+                      {t('linen_estimated_label')}: {estimate}
+                    </span>
+                  ) : null}
                 </div>
                 <QuantityStepper
                   value={values[item.id] ?? null}
