@@ -19,7 +19,8 @@ import { BulkAssignSheet } from './BulkAssignSheet';
 import { BottomSheet } from './BottomSheet';
 import { Button } from '@/components/ui/Button';
 import {
-  IconCheck, IconCheckSquare, IconChevronDown, IconChevronRight, IconClock, IconPlus, IconSparkles, IconTask, IconUsers,
+  IconAlertCircle, IconCheck, IconCheckSquare, IconChevronDown, IconChevronRight, IconClock, IconEye, IconPlus, IconRefresh,
+  IconSparkles, IconTask, IconUsers,
 } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 
@@ -280,6 +281,13 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
   // (api/task-assignments.js), hier geht es nur um UI-Feedback.
   const [openTasksSort, setOpenTasksSort] = useState<'arrival' | 'location' | 'apartment'>('arrival');
   const [claimingTaskId, setClaimingTaskId] = useState<string | null>(null);
+  // Admin-Desktop-Layout (neue Vorlage) Punkt 6: zusaetzlicher, tatsaechlich filternder Status-
+  // Filter ("Alle/Nicht zugewiesen/Ungelesen/Aenderungen/Wichtige Hinweise") - ausschliesslich fuer
+  // Admin auf Desktop sichtbar/wirksam (siehe Verwendung unten), Default 'all' laesst jede andere
+  // Rolle/jeden Breakpoint unveraendert. Nutzt AUSSCHLIESSLICH bereits vorhandene Zustaende
+  // (assignedUserId/isTaskUnreadByMe/hasUnacknowledgedBookingChange/hasImportantNotice) - keine neue
+  // Statuslogik, nur eine neue, echte Filterdimension obendrauf.
+  const [adminStatusFilter, setAdminStatusFilter] = useState<'all' | 'unassigned' | 'unread' | 'changed' | 'notice'>('all');
 
   // Punkt 17 (Desktop-Admin-Layout): dieselbe Ableitung wie zuvor hier inline, jetzt in
   // lib/housekeeping/dayOverview.ts ausgelagert - die neue DesktopAdminSidebar.tsx nutzt exakt
@@ -637,6 +645,48 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
     return !!noticeForTask(task.id);
   }
 
+  // Admin-Desktop-Layout (neue Vorlage) Punkt 6: EINE Praedikatsfunktion fuer den neuen Status-
+  // Filter, ausschliesslich auf bereits vorhandenen, unabhaengigen Zustaenden (siehe oben) - keine
+  // der vier Bedeutungen wird vermischt, "zugewiesen" (gruener Punkt) ist bewusst kein eigener
+  // Filter (nur "Alle" und "Nicht zugewiesen" stehen laut Vorlage zur Auswahl).
+  function matchesAdminStatusFilter(task: ResolvedTask): boolean {
+    switch (adminStatusFilter) {
+      case 'unassigned': return !task.assignedUserId;
+      case 'unread': return isTaskUnreadByMe(task);
+      case 'changed': return hasUnacknowledgedBookingChange(task);
+      case 'notice': return hasImportantNotice(task);
+      default: return true;
+    }
+  }
+  // Basiszahlen fuer die Filter-Chips (Punkt 6) - IMMER ueber die vollstaendige, ungefilterte Menge
+  // berechnet (nicht ueber die bereits durch `adminStatusFilter` reduzierte Liste), damit "Alle 4"
+  // & Co. beim Umschalten zwischen Chips stabil bleiben. Nur fuer Admin in der Standardansicht
+  // ("Übersicht"/'home') relevant - siehe Verwendung weiter unten.
+  const adminFilterBaseTasks = [...cleaningTasks, ...openManualTasks];
+  const adminFilterAllCount = adminFilterBaseTasks.length;
+  const adminFilterUnassignedCount = adminFilterBaseTasks.filter((task) => !task.assignedUserId).length;
+  const adminFilterUnreadCount = adminFilterBaseTasks.filter(isTaskUnreadByMe).length;
+  const adminFilterChangedCount = adminFilterBaseTasks.filter(hasUnacknowledgedBookingChange).length;
+  const adminFilterNoticeCount = adminFilterBaseTasks.filter(hasImportantNotice).length;
+
+  // Admin-Desktop-Layout (neue Vorlage) Punkt 3: dieselben zwei Textbausteine der Statuskarte
+  // (siehe unten im JSX) einmal berechnet, damit die mobile, zweizeilige Karte UND die neue
+  // einzeilige Desktop-Leiste exakt denselben Text/dieselben Zahlen verwenden - keine zweite
+  // Textableitung.
+  const adminSummaryLine1 = openManualTasks.length > 0
+    ? t('admin_status_card_with_tasks', {
+        cleanings: countLabel(t, cleaningTasks.length, 'noun_cleaning_one', 'noun_cleaning_many'),
+        tasks: countLabel(t, openManualTasks.length, 'noun_task_one', 'noun_task_many'),
+      })
+    : t('admin_status_card_cleanings_only', {
+        cleanings: countLabel(t, cleaningTasks.length, 'noun_cleaning_one', 'noun_cleaning_many'),
+      });
+  const adminSummaryLine2 = actionNeededTasks.length === 0
+    ? t('dashboard_all_assigned')
+    : t(actionNeededTasks.length === 1 ? 'admin_status_card_unassigned_singular' : 'admin_status_card_unassigned_plural', {
+        n: actionNeededTasks.length,
+      });
+
   const scopedHousekeepers: StaffUser[] = state.users.filter((u) => {
     if (u.role === 'admin') return false;
     if (state.propertyScope === 'all') return true;
@@ -960,6 +1010,107 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
     );
   }
 
+  // Admin-Desktop-Layout (neue Vorlage) Punkt 4: derselbe Team-Auslastungs-Trigger wie oben
+  // (renderAdminTeamTrigger), nur als vollwertige Toolbar-Pille im "Übersicht ▾"/"Alle Standorte ▾"-
+  // Stil (h-9, volle Breite ihrer Spalte) fuer die neue Admin-Desktop-Werkzeugleiste - teilt sich
+  // denselben `teamOpen`/`capacity`-Zustand, weiterhin rein informativ (Klick zeigt die bestehende
+  // Aufschluesselung je Mitarbeiter), KEINE neue "nach Team filtern"-Funktion (es gibt serverseitig
+  // keine Zuordnung "Aufgabe -> genau ein Team" jenseits der bereits vorhandenen Kapazitaetszahlen).
+  function renderAdminTeamToolbarTrigger() {
+    return (
+      <div className="relative min-w-0 flex-1 xl:w-[210px] xl:flex-none">
+        <button
+          type="button"
+          onClick={() => setTeamOpen((v) => !v)}
+          className="flex h-9 w-full items-center justify-between gap-2 rounded-full border border-line bg-warm-white pl-3.5 pr-3 text-[13px] font-medium text-ink"
+          data-focus-none
+        >
+          <span className="truncate">{t('admin_toolbar_all_teams')}</span>
+          <IconChevronDown width={13} height={13} className={cn('shrink-0 text-muted transition-transform', teamOpen && 'rotate-180')} aria-hidden="true" />
+        </button>
+        {teamOpen ? (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setTeamOpen(false)} />
+            <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-card-lg border border-line bg-warm-white shadow-card-lg">
+              {capacity.length === 0 ? (
+                <p className="px-3.5 py-2.5 text-[13px] text-muted">{t('team_no_members')}</p>
+              ) : (
+                <div className="flex flex-col gap-1.5 px-3.5 py-2.5">
+                  {capacity.map((entry) => (
+                    <div key={entry.housekeeperId || 'unassigned'} className="flex items-center justify-between text-[13px]">
+                      <span className="text-ink">{entry.housekeeperId ? shortStaffName(entry.housekeeperName) : t('unassigned')}</span>
+                      <span className="text-muted">{countLabel(t, entry.count, 'noun_task_one', 'noun_task_many')}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        ) : null}
+      </div>
+    );
+  }
+
+  // Admin-Desktop-Layout (neue Vorlage) Punkt 6: die kompakten Status-Filter-Chips
+  // ("Alle"/"Nicht zugewiesen"/"Ungelesen"/"Aenderungen"/"Wichtige Hinweise") - dieselben Icons/
+  // Farben wie auf der Karte selbst (siehe TaskCard.tsx#CardStatusIndicators: roter Punkt,
+  // IconEye, IconRefresh, IconAlertCircle), damit die Bedeutung fuer Admin ueberall identisch
+  // bleibt. Nur sichtbar/wirksam fuer Admin in der Standardansicht (taskViewMode 'home') - siehe
+  // Aufrufstelle weiter unten.
+  function renderAdminStatusFilterChips() {
+    const chips: { key: typeof adminStatusFilter; label: string; count: number; icon?: ReactNode }[] = [
+      { key: 'all', label: t('admin_filter_all'), count: adminFilterAllCount },
+      {
+        key: 'unassigned',
+        label: t('task_unassigned_dot_label'),
+        count: adminFilterUnassignedCount,
+        icon: <span className="h-2 w-2 shrink-0 rounded-full bg-status-attention" aria-hidden="true" />,
+      },
+      {
+        key: 'unread',
+        label: t('admin_filter_unread'),
+        count: adminFilterUnreadCount,
+        icon: <IconEye width={13} height={13} className="shrink-0" aria-hidden="true" />,
+      },
+      {
+        key: 'changed',
+        label: t('admin_filter_changed'),
+        count: adminFilterChangedCount,
+        icon: <IconRefresh width={13} height={13} className="shrink-0" aria-hidden="true" />,
+      },
+      {
+        key: 'notice',
+        label: t('admin_filter_notice'),
+        count: adminFilterNoticeCount,
+        icon: <IconAlertCircle width={13} height={13} className="shrink-0" aria-hidden="true" />,
+      },
+    ];
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        {chips.map((chip) => {
+          if (chip.key !== 'all' && chip.count === 0) return null;
+          const active = adminStatusFilter === chip.key;
+          return (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={() => setAdminStatusFilter(chip.key)}
+              aria-pressed={active}
+              className={cn(
+                'flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-medium transition-colors',
+                active ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-ink hover:border-ink',
+              )}
+            >
+              {chip.icon}
+              {chip.label}
+              <span className={active ? 'text-warm-white/80' : 'text-muted'}>{chip.count}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div className="pb-6">
       {compactInfoLine ? <p className="truncate px-4 pt-2 text-[12.5px] text-muted">{compactInfoLine}</p> : null}
@@ -1070,25 +1221,26 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
         // tippbar (anders als die Reinigungskraft-Variante oben gibt es hier kein einzelnes
         // zweites Tab-Ziel, in das die Karte fuehren koennte - Admin wechselt stattdessen ueber
         // den "Übersicht"-Picker darunter).
-        <div className="mx-4 mt-2 flex w-[calc(100%-2rem)] flex-col items-start gap-0.5 rounded-card bg-highlight px-4 py-2.5 text-left">
-          <span className="text-[14px] font-medium text-ink">
-            {openManualTasks.length > 0
-              ? t('admin_status_card_with_tasks', {
-                  cleanings: countLabel(t, cleaningTasks.length, 'noun_cleaning_one', 'noun_cleaning_many'),
-                  tasks: countLabel(t, openManualTasks.length, 'noun_task_one', 'noun_task_many'),
-                })
-              : t('admin_status_card_cleanings_only', {
-                  cleanings: countLabel(t, cleaningTasks.length, 'noun_cleaning_one', 'noun_cleaning_many'),
-                })}
-          </span>
-          <span className="text-[12.5px] text-muted">
-            {actionNeededTasks.length === 0
-              ? t('dashboard_all_assigned')
-              : t(actionNeededTasks.length === 1 ? 'admin_status_card_unassigned_singular' : 'admin_status_card_unassigned_plural', {
-                  n: actionNeededTasks.length,
-                })}
-          </span>
-        </div>
+        // Admin-Desktop-Layout (neue Vorlage) Punkt 3: diese zweizeilige Kartenvariante bleibt
+        // AUSSCHLIESSLICH fuer Mobile (`xl:hidden`) - Desktop bekommt direkt darunter eine flache,
+        // einzeilige Leiste ueber die Contentbreite (siehe neue Vorlage), mit identischem Text
+        // (adminSummaryLine1/2).
+        <>
+          <div className="mx-4 mt-2 flex w-[calc(100%-2rem)] flex-col items-start gap-0.5 rounded-card bg-highlight px-4 py-2.5 text-left xl:hidden">
+            <span className="text-[14px] font-medium text-ink">{adminSummaryLine1}</span>
+            <span className="text-[12.5px] text-muted">{adminSummaryLine2}</span>
+          </div>
+          <button
+            type="button"
+            onClick={selectViewOpen}
+            className="mx-4 mt-2 hidden w-[calc(100%-2rem)] items-center justify-between gap-3 rounded-card bg-highlight px-4 py-2.5 text-left xl:flex"
+          >
+            <span className="truncate text-[13.5px] font-medium text-ink">
+              {adminSummaryLine1} <span className="font-normal text-muted">· {adminSummaryLine2}</span>
+            </span>
+            <IconChevronRight width={16} height={16} className="shrink-0 text-muted" aria-hidden="true" />
+          </button>
+        </>
       ) : null}
       {/* Desktop-Admin-Layout (>= 1280px): der bisherige eigene xl:mx-auto/max-w-Wrapper hier
        * entfaellt - die Breitenbegrenzung/Zentrierung passiert jetzt einmalig auf Ebene der
@@ -1108,7 +1260,13 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
        * ein `xl:px-0`/`xl:py-0` bekommt - dieselbe Technik wie bei SummaryStat (xl:-Overrides
        * derselben Property gewinnen ab diesem Breakpoint, ohne die mobilen Klassen zu
        * entfernen). */}
-      <div className="xl:flex xl:flex-wrap xl:items-center xl:gap-x-3 xl:gap-y-2 xl:px-4 xl:pb-1 xl:pt-3">
+      {/* Admin-Desktop-Layout (neue Vorlage): dieser gesamte, mit allen anderen Rollen geteilte
+       * Werkzeugleisten-Block bleibt fuer Admin auf MOBILE unveraendert bestehen (kein `xl:`-Praefix
+       * wirkt unterhalb 1280px) - ab `xl` bekommt Admin stattdessen die neue, eigene zweizeilige
+       * Desktop-Werkzeugleiste weiter unten (`hidden xl:flex`, ausschliesslich `isAdmin`). Fuer
+       * Standortverantwortliche/Teamleader auf Desktop bleibt exakt dieser Block unveraendert
+       * sichtbar - die neue Vorlage betrifft ausdruecklich NUR die Admin-Desktopansicht. */}
+      <div className={cn('xl:flex xl:flex-wrap xl:items-center xl:gap-x-3 xl:gap-y-2 xl:px-4 xl:pb-1 xl:pt-3', isAdmin && 'xl:hidden')}>
       {housekeeperRedesignHere ? (
         // Housekeeping-Mobile-Redesign (Feinschliff nach Zielbild) Punkt 6: BEIDE Tabs bleiben
         // IMMER sichtbar, unabhaengig davon, welcher gerade aktiv ist - kein Zurueck-Pfeil, keine
@@ -1326,6 +1484,98 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
       ) : null}
       </div>
 
+      {/* Admin-Desktop-Layout (neue Vorlage): eigene, zweizeilige Desktop-Werkzeugleiste
+       * AUSSCHLIESSLICH fuer Admin ab `xl` (`hidden xl:flex`) - unterhalb `xl` bleibt der obige,
+       * geteilte Block (siehe dessen `isAdmin && 'xl:hidden'` oben) unveraendert die einzige
+       * sichtbare Werkzeugleiste. Zeile 1: Uebersicht/Standort/Team links, "+ Aufgabe erstellen"/
+       * "•••" rechts. Zeile 2: Tagesnavigation links, Kennzahlen rechts. Darunter (nur in der
+       * Standardansicht 'home', Punkt 6) die neuen, tatsaechlich filternden Status-Chips - ersetzt
+       * dort die vorherige grosse "Handlungsbedarf"-Karte (siehe deren neues `xl:hidden` weiter
+       * unten). Alle Bausteine (TaskViewSelect/natives Standort-<select>/Team-Trigger/Tagesnav-
+       * Buttons/SummaryStat) sind exakt dieselben Komponenten/Aktionen wie im geteilten Block oben -
+       * nur neu zusammengesetzt, keine neue Filter-/Zuweisungslogik ausser den Status-Chips selbst
+       * (Punkt 6, siehe renderAdminStatusFilterChips). */}
+      {isAdmin ? (
+        <div className="hidden xl:flex xl:flex-col xl:gap-3 xl:px-4 xl:pb-2 xl:pt-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              {viewOptions ? (
+                <TaskViewSelect value={viewValue} options={viewOptions} onChange={onViewChange} className="w-[210px]" />
+              ) : null}
+              {showPropertyChips ? (
+                <div className="relative w-[210px]">
+                  <select
+                    value={state.propertyScope}
+                    onChange={(e) => selectScope(e.target.value)}
+                    className={selectClass}
+                    data-focus-none
+                  >
+                    <option value="all">{t('scope_all_properties')}</option>
+                    {allowedProps.map((p) => (
+                      <option key={p.code} value={p.code}>{getPropertyDisplayName(p)}</option>
+                    ))}
+                  </select>
+                  <IconChevronDown width={13} height={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true" />
+                </div>
+              ) : null}
+              {renderAdminTeamToolbarTrigger()}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={openManualTaskForm}>
+                <IconPlus width={14} height={14} aria-hidden="true" />
+                {t('create_manual_task_action')}
+              </Button>
+              <button
+                type="button"
+                onClick={() => setMoreActionsOpen(true)}
+                aria-label={t('more_actions')}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line text-muted transition-colors hover:text-ink"
+              >
+                <span aria-hidden="true" className="text-[15px] leading-none tracking-[0.05em]">&bull;&bull;&bull;</span>
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              {state.planningDays.map((d, i) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => selectDay(d)}
+                  aria-pressed={date === d}
+                  className={cn(
+                    'flex h-9 items-center justify-center rounded-full border px-3 text-center transition-colors',
+                    date === d ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted hover:text-ink',
+                  )}
+                >
+                  <span className="truncate text-[12.5px] font-medium">
+                    {i < DAY_LABEL_KEYS.length ? t(DAY_LABEL_KEYS[i]) : shortDayLabel(d, DAY_LOCALES[state.lang] || 'de-DE')}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {gateVisibleCount > 0 ? (
+              <div className="flex items-center gap-5">
+                <SummaryStat
+                  value={summaryCleaningCount}
+                  label={t(summaryCleaningCount === 1 ? 'noun_cleaning_one' : 'noun_cleaning_many')}
+                  icon={IconSparkles}
+                  toneClass="text-type-turnover"
+                />
+                <SummaryStat
+                  value={summaryManualCount}
+                  label={t(summaryManualCount === 1 ? 'noun_task_one' : 'noun_task_many')}
+                  icon={IconTask}
+                  toneClass="text-type-manual"
+                />
+                <SummaryStat value={summaryDoneCount} label={t('wf_done')} icon={IconCheck} toneClass="text-status-clean" />
+              </div>
+            ) : null}
+          </div>
+          {taskViewMode === 'home' ? renderAdminStatusFilterChips() : null}
+        </div>
+      ) : null}
+
       {/* Punkt 11: eingeklappt per Default (kompakte Ein-Zeilen-Zusammenfassung), fuer normale
        * Housekeeper (isManagerHere=false) komplett ausgeblendet. Desktop-Admin-Layout Punkt 14:
        * dieser Block existiert ab xl NICHT mehr zusaetzlich im Hauptbereich (`xl:hidden`) - dieselben
@@ -1422,36 +1672,29 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
            * am Mobile-Markup/-Verhalten aendert sich nichts. */}
           {/* Mobile-Admin-Aufraeumen Punkt 9/10: auf Mobile keine grosse umrandete Karte mehr,
            * sondern eine kompakte Kopfzeile ("Handlungsbedarf · N" + Team-Trigger daneben, siehe
-           * renderAdminTeamTrigger()) mit optionaler Detailzeile darunter - Desktop behaelt ueber
-           * die `xl:`-Overrides exakt dasselbe Kartenlayout wie zuvor (nur ohne den fuer Desktop
-           * ohnehin ausgeblendeten Team-Trigger). Punkt 10: gibt es nichts zu tun, erscheint statt
-           * der Karte (auf Mobile) nichts Grosses mehr, sondern eine dezente "Alles verteilt"-Zeile. */}
+           * renderAdminTeamTrigger()) mit optionaler Detailzeile darunter.
+           * Admin-Desktop-Layout (neue Vorlage) Punkt 6: ab `xl` entfaellt dieser Block fuer Admin
+           * VOLLSTAENDIG (`xl:hidden`) - die neuen, tatsaechlich filternden Status-Chips
+           * (renderAdminStatusFilterChips(), Teil der neuen Admin-Desktop-Werkzeugleiste oben)
+           * ersetzen ihn dort. Mobile bleibt unveraendert (kein `xl:`-Praefix wirkt unterhalb
+           * 1280px). */}
           {isAdmin && taskViewMode === 'home' ? (
-            <div
-              className={cn(
-                'mx-4 mt-4 xl:rounded-card-lg xl:border xl:border-line xl:bg-warm-white xl:px-4 xl:py-2.5',
-                // Desktop zeigte bei 0 Handlungsbedarf bisher GAR NICHTS an (siehe vorherige
-                // `actionNeededTasks.length > 0`-Bedingung) - das bleibt fuer Desktop unveraendert,
-                // die neue dezente "Alles verteilt"-Zeile (Punkt 10) ist ausschliesslich eine
-                // Mobile-Ergaenzung.
-                actionNeededTasks.length === 0 && 'xl:hidden',
-              )}
-            >
+            <div className="mx-4 mt-4 xl:hidden">
               {actionNeededTasks.length > 0 ? (
                 <>
-                  <div className="flex items-center justify-between gap-2 xl:flex-wrap xl:gap-x-4 xl:gap-y-1">
-                    <p className="flex items-center gap-1.5 text-[13px] font-medium text-ink xl:shrink-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
                       {t('dashboard_action_needed')}
                       <span className="text-status-attention">· {actionNeededTasks.length}</span>
                     </p>
                     {renderAdminTeamTrigger()}
                   </div>
-                  <div className="mt-1 flex flex-col gap-0.5 text-[13px] text-muted xl:mt-0 xl:contents">
+                  <div className="mt-1 flex flex-col gap-0.5 text-[13px] text-muted">
                     {adminUnassignedTasks.length > 0 ? (
-                      <p className="xl:whitespace-nowrap">{t('dashboard_action_needed_unassigned_line', { n: adminUnassignedTasks.length })}</p>
+                      <p>{t('dashboard_action_needed_unassigned_line', { n: adminUnassignedTasks.length })}</p>
                     ) : null}
                     {adminEarlyCheckinTasks.length > 0 ? (
-                      <p className="xl:whitespace-nowrap">
+                      <p>
                         {adminEarlyCheckinTasks.length === 1 && singleEarlyCheckinTime
                           ? t('dashboard_action_needed_early_checkin_line_time', { n: 1, time: singleEarlyCheckinTime })
                           : t('dashboard_action_needed_early_checkin_line', { n: adminEarlyCheckinTasks.length })}
@@ -1522,8 +1765,16 @@ export function TasksScreen({ app }: { app: HousekeepingApp }) {
                 />
               ) : null}
               {renderCleaningAndManualTaskGroups(
-                locationManagerHere ? cleaningTasks.filter((task) => !locationUnassignedIds.has(task.id)) : cleaningTasks,
-                locationManagerHere ? openManualTasks.filter((task) => !locationUnassignedIds.has(task.id)) : openManualTasks,
+                locationManagerHere
+                  ? cleaningTasks.filter((task) => !locationUnassignedIds.has(task.id))
+                  : isAdmin
+                    ? cleaningTasks.filter(matchesAdminStatusFilter)
+                    : cleaningTasks,
+                locationManagerHere
+                  ? openManualTasks.filter((task) => !locationUnassignedIds.has(task.id))
+                  : isAdmin
+                    ? openManualTasks.filter(matchesAdminStatusFilter)
+                    : openManualTasks,
                 isAdmin ? ADMIN_DESKTOP_CARD_GRID_CLASS : undefined,
                 isAdmin,
               )}

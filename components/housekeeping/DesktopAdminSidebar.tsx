@@ -32,6 +32,13 @@ export function DesktopAdminSidebar({ app }: { app: HousekeepingApp }) {
   if (state.activeNav !== 'tasks') return null;
 
   const { isManagerHere, isAdmin, capacity } = dayOverviewFor(app);
+  // Admin-Desktop-Layout (neue Vorlage) Punkt 1: die rechte TEAM-Seitenleiste entfaellt fuer Admin
+  // vollstaendig - dieselben Team-/Kapazitaetsdaten sind jetzt ueber den neuen "Alle Teams"-Trigger
+  // in der Admin-Desktop-Werkzeugleiste erreichbar (siehe TasksScreen.tsx#renderAdminTeamToolbarTrigger),
+  // der frei werdende Platz kommt automatisch dem Hauptbereich zugute (app/page.tsx#grid-cols kollabiert
+  // eine leere dritte Spalte auf 0). Standortverantwortliche (locationManagerHere) behalten diese
+  // Sidebar unveraendert - die neue Vorlage betrifft ausdruecklich NUR die Admin-Desktopansicht.
+  if (isAdmin) return null;
   if (!isManagerHere) return null;
 
   return (
