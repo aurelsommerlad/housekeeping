@@ -43,9 +43,15 @@ export function roomKey(propertyCode: string, roomNumber: string): string {
 
 /** 1:1 aus buildRooms() extrahiert (reiner Refactor, keine Verhaltensaenderung) - jetzt auch von
  * lib/housekeeping/tasks.ts wiederverwendet, damit beide denselben Apaleo-Unit-Condition-Zugriff
- * teilen statt ihn zweimal separat nachzubilden. */
+ * teilen statt ihn zweimal separat nachzubilden.
+ *
+ * Bugfix (Nutzerfeedback "alle Apartments stehen auf Fertig"): las bisher das nie existierende
+ * Top-Level-Feld `u.condition` - live gegen den echten Account verifiziert liegt der Zustand
+ * tatsaechlich unter `u.status.condition` (siehe types.ts#ApaleoUnit). Der Lesefehler fiel nie
+ * als Absturz auf, sondern liess JEDE Einheit auf den 'Clean'-Default zurueckfallen - unabhaengig
+ * vom echten PMS-Zustand. */
 export function unitCondition(u: ApaleoUnit): string {
-  return (typeof u.condition === 'object' ? u.condition?.cleaningStatus : u.condition) || 'Clean';
+  return u.status?.condition || 'Clean';
 }
 
 export function allowedProperties(user: StaffUser | null, propertyCodes: string[]): string[] {

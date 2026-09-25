@@ -599,7 +599,19 @@ export function useHousekeepingApp() {
 
   const setActiveNav = useCallback((id: NavId) => {
     patch({ activeNav: id, multiSelect: false, selectedRooms: new Set(), taskMultiSelect: false, selectedTasks: new Set() });
-  }, [patch]);
+    // Bugfix (Nutzerfeedback "Apartments laedt sehr langsam"): vorher fuellte ausschliesslich der
+    // 30-Sekunden-Poll (siehe startPolling oben, nur aktiv wenn activeNav bereits 'rooms' ist)
+    // state.units - ein Wechsel AUF diesen Tab selbst loeste nie einen Ladevorgang aus. Direkt
+    // nach dem Login (afterLogin() laedt nur die Aufgabenplanung, nicht state.units) blieb die
+    // Apartments-Ansicht dadurch bis zu 30 Sekunden leer, obwohl state.loading laengst wieder
+    // false war - RoomsScreen zeigte in der Zwischenzeit faelschlich "Keine Zimmer" statt eines
+    // Ladehinweises (state.loading && visible.length === 0 vs. der "no_rooms"-Zweig direkt danach,
+    // siehe RoomsScreen.tsx).
+    if (id === 'rooms' && stateRef.current.units.length === 0 && stateRef.current.activeProperty) {
+      patch({ loading: true });
+      loadRoomsData().finally(() => patch({ loading: false }));
+    }
+  }, [patch, loadRoomsData]);
 
   const setFilter = useCallback((filter: RoomFilter) => patch({ filter }), [patch]);
   const toggleMyRooms = useCallback(() => patch((s) => ({ myRoomsOnly: !s.myRoomsOnly })), [patch]);

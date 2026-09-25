@@ -165,7 +165,13 @@ export interface Property {
 export interface ApaleoUnit {
   id: string;
   name?: string;
-  condition?: string | { cleaningStatus?: string };
+  /** Bugfix (Nutzerfeedback "alle Apartments stehen auf Fertig"): live gegen den echten Account
+   * verifiziert liefert Apaleo den PMS-Reinigungszustand ('Clean' | 'CleanToBeInspected' |
+   * 'Dirty') unter `status.condition`, NICHT als Top-Level-Feld `condition` (die vorherige
+   * Annahme war schlicht falsch, siehe Git-Historie und tasks.ts/rooms.ts#unitCondition) - dadurch
+   * las unitCondition() immer `undefined` und fiel auf den 'Clean'-Default zurueck, unabhaengig
+   * vom tatsaechlichen Zustand. */
+  status?: { isOccupied?: boolean; condition?: string };
   unitGroup?: { name?: string };
   /** Wird von loadUnits()/loadUnitsForProperties() (beide ueber dieselbe paginierte Abfrage mit
    * `expand=property`) gesetzt - optional, weil aeltere Aufrufstellen/Tests das Feld nicht
