@@ -744,7 +744,7 @@ export function TaskDetailSheet({ app, task }: TaskDetailSheetProps) {
   useEffect(() => {
     if (!task || !task.bookingChange) return;
     if (isBookingChangeAckedByMe(task)) return;
-    acknowledgeBookingChange(task.id);
+    acknowledgeBookingChange(task);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task?.id, task?.bookingChange?.changedAt]);
 

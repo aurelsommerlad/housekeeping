@@ -80,6 +80,20 @@ function dateOnly(dt?: string): string | null {
   return dt ? String(dt).slice(0, 10) : null;
 }
 
+/** Turnover-Task: waehlt zwischen einer Aenderung der abreisenden und einer der ankommenden
+ * Reservierung (siehe Kommentar an der Aufrufstelle) diejenige mit dem spaeteren `changedAt` -
+ * eine feste `departing || arriving`-Praeferenz wuerde eine spaetere Aenderung der ankommenden
+ * Reservierung dauerhaft verdecken, sobald irgendwann zuvor auch die abreisende geaendert wurde.
+ * Bei exaktem Gleichstand (gleicher Sync-Lauf) gewinnt weiterhin die abreisende Seite. */
+function moreRecentChange(
+  departing: BookingChangeRecord | null | undefined,
+  arriving: BookingChangeRecord | null | undefined,
+): BookingChangeRecord | null {
+  if (!departing) return arriving || null;
+  if (!arriving) return departing;
+  return arriving.changedAt > departing.changedAt ? arriving : departing;
+}
+
 function guestName(r: ApaleoReservation): string {
   return [r.primaryGuest?.firstName, r.primaryGuest?.lastName].filter(Boolean).join(' ');
 }
@@ -244,9 +258,10 @@ export function buildTasks({ propertyNames, units, reservations, doubleups, days
           // Zusatzausstattung (z. B. BABY) ist eine Aenderung der ANKOMMENDEN Reservierung, nicht
           // der abreisenden - ohne arrivingRes.id hier wuerde ein reiner Crib-Wechsel auf diesem
           // Turnover-Task nie sichtbar (bookingChanges ist ein Redis-Datensatz je reservationId,
-          // siehe api/booking-changes.js). Abreise-Aenderungen (Datum/Personen/Einheit) haben
-          // weiterhin Vorrang, falls beide Seiten zufaellig am selben Tag geaendert wurden.
-          bookingChange: bookingChanges[departingRes.id] || bookingChanges[arrivingRes.id] || null,
+          // siehe api/booking-changes.js). moreRecentChange() waehlt die zeitlich juengere der
+          // beiden Aenderungen, damit eine spaetere Aenderung der ankommenden Reservierung nicht
+          // dauerhaft von einer aelteren Aenderung der abreisenden verdeckt wird.
+          bookingChange: moreRecentChange(bookingChanges[departingRes.id], bookingChanges[arrivingRes.id]),
         });
         continue;
       }

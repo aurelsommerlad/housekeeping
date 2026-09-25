@@ -7,7 +7,7 @@
 const { getRedis, parseJSON } = require('./_redis');
 const { requireSession } = require('./_auth');
 const { getUserRawById } = require('./_users');
-const { hasPropertyAccess, propertyCodeFromTaskId, reservationIdFromTaskId } = require('./_permissions');
+const { hasPropertyAccess, propertyCodeFromTaskId, reservationIdFromTaskId, taskTypeFromTaskId } = require('./_permissions');
 const { SEEN_HASH_KEY, CHANGE_ACKS_HASH_KEY, viewKey } = require('./_task-views');
 
 // Dieselben Hash-Keys wie in api/booking-changes.js/api/_manual-tasks.js-Aequivalenten - bewusst
@@ -57,7 +57,7 @@ module.exports = async (req, res) => {
 
     if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
-    const { action, taskId } = req.body || {};
+    const { action, taskId, reservationId: bodyReservationId } = req.body || {};
     if (!taskId) { res.status(400).json({ error: 'taskId ist erforderlich.' }); return; }
     const propertyCode = await propertyCodeForTask(redis, taskId);
     if (!propertyCode || !hasPropertyAccess(user, propertyCode)) {
@@ -76,11 +76,26 @@ module.exports = async (req, res) => {
       // Der zu bestaetigende Zeitstempel kommt IMMER serverseitig aus dem aktuellen
       // BookingChangeRecord (housekeeping:booking_changes, siehe api/booking-changes.js) - nie
       // vom Client uebernommen, damit eine Bestaetigung nicht auf eine erfundene/veraltete
-      // Aenderung ausgestellt werden kann.
-      const reservationId = reservationIdFromTaskId(taskId);
+      // Aenderung ausgestellt werden kann. Die zu ladende reservationId kommt hingegen bewusst vom
+      // Client (task.bookingChange.reservationId, siehe tasks.ts#moreRecentChange), da sich bei
+      // einem Turnover-Task (zwei Reservierungen, aber nur EINE reservationId in der taskId, siehe
+      // taskId() in tasks.ts) aus der taskId allein nicht mehr faelschungssicher ermitteln laesst,
+      // WELCHE der beiden Seiten aktuell die anzuzeigende/zu bestaetigende Aenderung traegt - eine
+      // reine reservationIdFromTaskId(taskId)-Herleitung liefert dort immer nur die abreisende
+      // Seite und macht eine reine Aenderung der ankommenden Reservierung dauerhaft nicht
+      // bestaetigbar. Fuer alle anderen Tasktypen (genau eine Reservierung, keine Mehrdeutigkeit)
+      // bleibt die strikte, aus der taskId geparste reservationId weiterhin verbindlich.
+      const derivedReservationId = reservationIdFromTaskId(taskId);
+      const isTurnover = taskTypeFromTaskId(taskId) === 'turnover';
+      const reservationId = isTurnover && bodyReservationId ? String(bodyReservationId) : derivedReservationId;
       const raw = reservationId ? await redis.hGet(BOOKING_CHANGES_HASH_KEY, reservationId) : null;
       const change = raw ? parseJSON(raw, null) : null;
       if (!change) { res.status(404).json({ error: 'Keine Buchungsänderung vorhanden.' }); return; }
+      // Property-Grenze bleibt auch bei der vom Client gewaehlten reservationId verbindlich - der
+      // eingangs bereits gepruefte propertyCode dieses Tasks muss zum propertyCode des gefundenen
+      // BookingChangeRecords passen, sonst koennte ein Turnover-Task theoretisch zum Bestaetigen
+      // einer Aenderung eines fremden Properties missbraucht werden.
+      if (change.propertyCode !== propertyCode) { res.status(404).json({ error: 'Keine Buchungsänderung vorhanden.' }); return; }
       const ack = {
         taskId, userId: user.id, changedAt: change.changedAt, ackedAt: Date.now(),
       };

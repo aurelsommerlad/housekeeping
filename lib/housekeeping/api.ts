@@ -1154,7 +1154,7 @@ import type { ExtraEquipmentNeed } from './tasks';
 // (u. a. Reinigungskraft->Admin, Standortverantwortlicher->fremder Standort/Admin-Rolle,
 // Teamleader->fremdes Team/neuer Teamleader - alle serverseitig abgelehnt bzw. auf das erlaubte
 // Minimum zurechtgestutzt, unabhaengig vom Client-Request).
-export const APP_VERSION = '2.49.1';
+export const APP_VERSION = '2.50.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -1575,7 +1575,12 @@ export async function loadTaskViews(): Promise<TaskViewsData> {
  * Ableitung des zu bestaetigenden Zeitstempels aus dem aktuellen BookingChangeRecord). */
 export const taskViewsApi = {
   markSeen: (taskId: string) => backendPost<{ seen: TaskSeenRecord }>('task-views', { action: 'markSeen', taskId }),
-  acknowledgeChange: (taskId: string) => backendPost<{ ack: BookingChangeAck }>('task-views', { action: 'acknowledgeChange', taskId }),
+  // `reservationId` (task.bookingChange.reservationId) wird bei Turnover-Tasks mitgesendet, da die
+  // taskId dort nur die abreisende Reservierung eindeutig traegt (siehe api/task-views.js) - fuer
+  // alle anderen Tasktypen ignoriert der Server diesen Wert und leitet die reservationId weiterhin
+  // strikt aus der taskId ab.
+  acknowledgeChange: (taskId: string, reservationId?: string) =>
+    backendPost<{ ack: BookingChangeAck }>('task-views', { action: 'acknowledgeChange', taskId, reservationId }),
 };
 
 export async function loadTaskTimeOverrides(): Promise<TaskTimeOverridesState> {

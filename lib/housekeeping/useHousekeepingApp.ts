@@ -1352,9 +1352,10 @@ export function useHousekeepingApp() {
     return !!ack && ack.changedAt === task.bookingChange.changedAt;
   }, [state.bookingChangeAcks]);
 
-  const acknowledgeBookingChange = useCallback(async (taskId: string) => {
+  const acknowledgeBookingChange = useCallback(async (task: ResolvedTask) => {
+    const taskId = task.id;
     await runAction(async () => {
-      const { ack } = await taskViewsApi.acknowledgeChange(taskId);
+      const { ack } = await taskViewsApi.acknowledgeChange(taskId, task.bookingChange?.reservationId);
       patch((s) => ({ bookingChangeAcks: { ...s.bookingChangeAcks, [taskId]: ack } }));
     });
   }, [patch, runAction]);
