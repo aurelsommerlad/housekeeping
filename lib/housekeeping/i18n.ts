@@ -58,6 +58,13 @@ export const I18N = {
     email: 'E-Mail',
     // Neu fuer das Redesign - Workflow-Status (Housekeeper-Perspektive, siehe Briefing).
     wf_open: 'Offen', wf_assigned: 'Zugewiesen', wf_paused: 'Pause', wf_done: 'Fertig',
+    // Apartments-Ansicht (Nutzerfeedback): eigene, praezisere Labels statt der obigen
+    // Aufgaben-Wortwahl - "Fertig"/"Offen" beschreiben dort einen Aufgaben-Fortschritt, hier aber
+    // ausschliesslich den Apaleo-PMS-Zustand einer Einheit ("sauber" bzw. "noch niemandem
+    // zugewiesen") - siehe status-config.ts#WORKFLOW_STATUS_CONFIG. Bewusst eigene Keys statt
+    // wf_done/wf_open umzubenennen, da diese auch von task-status-config.ts (Aufgaben-Ansicht)
+    // verwendet werden und dort weiterhin "Fertig"/"Offen" lauten sollen.
+    room_status_clean: 'Sauber', room_status_unassigned: 'Nicht zugewiesen',
     // Neu fuer das Redesign - Aufenthalts-/Turnover-Zeile.
     stay_info: 'Aufenthalt', turnover_departure: 'Abreise heute', turnover_arrival: 'Anreise heute',
     turnover_same_day: 'Abreise & Anreise heute', turnover_stayover: 'Bleiber', turnover_priority: 'Turnover',
@@ -436,6 +443,7 @@ export const I18N = {
     retry: 'Try again', err_auth_status: 'Could not load the login status. Please check your connection and try again.',
     email: 'Email',
     wf_open: 'Open', wf_assigned: 'Assigned', wf_paused: 'Paused', wf_done: 'Done',
+    room_status_clean: 'Clean', room_status_unassigned: 'Unassigned',
     stay_info: 'Stay', turnover_departure: 'Departure today', turnover_arrival: 'Arrival today',
     turnover_same_day: 'Departure & arrival today', turnover_stayover: 'Staying over', turnover_priority: 'Turnover',
     nights_one: '{{n}} night', nights_many: '{{n}} nights',
@@ -774,6 +782,7 @@ export const I18N = {
     retry: 'Sprobuj ponownie', err_auth_status: 'Nie udalo sie zaladowac statusu logowania. Sprawdz polaczenie i sprobuj ponownie.',
     email: 'E-mail',
     wf_open: 'Wolny', wf_assigned: 'Przypisany', wf_paused: 'Pauza', wf_done: 'Gotowy',
+    room_status_clean: 'Czysty', room_status_unassigned: 'Nieprzypisany',
     stay_info: 'Pobyt', turnover_departure: 'Wyjazd dzisiaj', turnover_arrival: 'Przyjazd dzisiaj',
     turnover_same_day: 'Wyjazd i przyjazd dzisiaj', turnover_stayover: 'Kontynuacja pobytu', turnover_priority: 'Turnover',
     nights_one: '{{n}} noc', nights_many: '{{n}} noce',
@@ -1112,6 +1121,7 @@ export const I18N = {
     retry: 'Incearca din nou', err_auth_status: 'Starea de autentificare nu a putut fi incarcata. Verifica conexiunea si incearca din nou.',
     email: 'E-mail',
     wf_open: 'Liber', wf_assigned: 'Atribuit', wf_paused: 'Pauza', wf_done: 'Gata',
+    room_status_clean: 'Curat', room_status_unassigned: 'Neatribuit',
     stay_info: 'Sejur', turnover_departure: 'Plecare azi', turnover_arrival: 'Sosire azi',
     turnover_same_day: 'Plecare si sosire azi', turnover_stayover: 'Ramane', turnover_priority: 'Turnover',
     nights_one: '{{n}} noapte', nights_many: '{{n}} nopti',

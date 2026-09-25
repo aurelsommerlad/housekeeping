@@ -25,8 +25,16 @@ export const WORKFLOW_STATUS_CONFIG: Record<WorkflowStatus, WorkflowStatusConfig
     toneBorderClass: 'border-status-attention/30',
     dotClass: 'bg-status-attention',
   },
+  // Nutzerfeedback ("Sollte der Status statt 'fertig' nicht 'sauber' und statt 'offen' nicht
+  // 'schmutzig' lauten?"): 'open'/'done' nutzen bewusst eigene Keys (room_status_unassigned/
+  // room_status_clean) statt der gemeinsamen wf_open/wf_done - dieselben Keys werden auch von
+  // task-status-config.ts fuer den Aufgaben-Fortschritt verwendet (dort weiterhin "Offen"/
+  // "Fertig"), waehrend sie hier den Apaleo-PMS-Zustand einer Einheit beschreiben. "Schmutzig"
+  // waere fuer 'open' allein irrefuehrend gewesen, da forced/running/paused/assigned laut
+  // workflowStatus() (siehe rooms.ts) ebenfalls ausschliesslich bei condition==='Dirty' erreicht
+  // werden - "Nicht zugewiesen" bleibt praezise auf genau diesen einen Zustand beschraenkt.
   open: {
-    labelKey: 'wf_open',
+    labelKey: 'room_status_unassigned',
     toneClass: 'text-status-dirty',
     toneBgClass: 'bg-status-dirty-bg',
     toneBorderClass: 'border-status-dirty/30',
@@ -63,7 +71,7 @@ export const WORKFLOW_STATUS_CONFIG: Record<WorkflowStatus, WorkflowStatusConfig
     dotClass: 'bg-status-inspection',
   },
   done: {
-    labelKey: 'wf_done',
+    labelKey: 'room_status_clean',
     toneClass: 'text-status-clean',
     toneBgClass: 'bg-status-clean-bg',
     toneBorderClass: 'border-status-clean/30',
