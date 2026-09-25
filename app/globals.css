@@ -184,14 +184,24 @@ a, button, select, input, textarea, [role="button"], [tabindex] {
 }
 a:focus-visible,
 button:focus-visible,
-select:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
 [role="button"]:focus-visible,
 [tabindex]:focus-visible {
   outline: 2px solid var(--color-sage) !important;
   outline-offset: 2px !important;
   border-radius: inherit;
+}
+
+/* Nutzerfeedback: der salbeifarbene Ring wirkte auf Formularfeldern (Text-Eingaben/Selects) zu
+   dominant - anders als bei Buttons loest der Browser dort `:focus-visible` schon bei einem
+   blossen Mausklick aus (nicht nur bei Tastaturfokus), der Ring erschien also bei praktisch jeder
+   Texteingabe. Statt eines zusaetzlichen Rings bekommt die ohnehin schon vorhandene
+   `border-line`-Kontur der Felder (siehe z. B. ItemFormSheet.tsx) beim Fokus einfach die dunkle
+   Tintenfarbe - dezent, konsistent mit dem bestehenden Rahmen, kein zweiter/dickerer Rahmen. */
+select:focus-visible:not([data-focus-none]),
+input:focus-visible:not([data-focus-none]),
+textarea:focus-visible:not([data-focus-none]) {
+  outline: none !important;
+  border-color: var(--color-ink) !important;
 }
 
 /* Dunkle/gefuellte Flaechen (z. B. eine aktive, dunkel gefuellte Tagesnav-Pille oder ein primaerer
