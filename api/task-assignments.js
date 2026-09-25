@@ -370,7 +370,10 @@ module.exports = async (req, res) => {
       // "completed" ohne vollstaendigen Report, und ein abgebrochenes Formular darf den Timer nicht
       // schon beendet haben). Properties ohne konfigurierte Artikel verhalten sich unveraendert wie
       // zuvor (migration-light, kein Formular noetig).
-      const { taskId, requiresInspection: needsInspection, linenItems: submittedLinenItems } = req.body;
+      const {
+        taskId, requiresInspection: needsInspection, linenItems: submittedLinenItems,
+        laundryComplaints: submittedLaundryComplaints,
+      } = req.body;
       if (!taskId) { res.status(400).json({ error: 'taskId ist erforderlich.' }); return; }
       if (!(await canTouchOwnAssignment(redis, user, taskId))) {
         res.status(403).json({ error: 'Diese Aufgabe gehört einer anderen Person.' });
@@ -393,6 +396,23 @@ module.exports = async (req, res) => {
           estimatedQuantity: entry && typeof entry.estimatedQuantity === 'number' ? entry.estimatedQuantity : null,
           actualQuantity: actual,
         });
+      }
+
+      // Wäschereklamation (Briefing "Wäschereklamation erfassen"): reklamierbar sind ausschliesslich
+      // dieselben, fuer dieses Property aktiven Artikel wie beim Verbrauch (keine zweite Artikelliste,
+      // kein Client-erfundenes itemId) - LOGISCH UND NUMERISCH GETRENNT von linenReportLines. Nur
+      // Zeilen mit einer tatsaechlichen, positiven Menge werden gespeichert (Punkt "nur Artikel mit
+      // Menge > 0 speichern") - eine fehlende/0-Menge fuer einen Artikel bedeutet schlicht "nicht
+      // reklamiert", kein Validierungsfehler wie beim Verbrauch oben.
+      const requiredLinenItemsById = new Map(requiredLinenItems.map((item) => [item.id, item]));
+      const submittedComplaints = Array.isArray(submittedLaundryComplaints) ? submittedLaundryComplaints : [];
+      const laundryComplaintLines = [];
+      for (const entry of submittedComplaints) {
+        const item = requiredLinenItemsById.get(entry?.itemId);
+        if (!item) continue;
+        const quantity = entry.quantity;
+        if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0) continue;
+        laundryComplaintLines.push({ itemId: item.id, itemName: item.name, unit: item.unit, quantity });
       }
 
       const existingRaw = await redis.hGet(HASH_KEY, taskId);
@@ -426,12 +446,12 @@ module.exports = async (req, res) => {
       appendHistory(existing, 'completed', user);
       await redis.hSet(HASH_KEY, taskId, JSON.stringify(existing));
 
-      if (linenReportLines.length > 0) {
+      if (linenReportLines.length > 0 || laundryComplaintLines.length > 0) {
         const assignedTeamId = await resolveAssignedTeamId(redis, taskId);
         await saveLinenCompletionReport(redis, {
           taskId, propertyCode, unitId: unitIdFromTaskId(taskId), reservationId: reservationIdFromTaskId(taskId),
           completedByUserId: user.id, completedByUserName: user.name || user.username,
-          housekeepingTeamId: assignedTeamId, linenItems: linenReportLines,
+          housekeepingTeamId: assignedTeamId, linenItems: linenReportLines, laundryComplaints: laundryComplaintLines,
         });
       }
     } else if (action === 'completeInspection') {

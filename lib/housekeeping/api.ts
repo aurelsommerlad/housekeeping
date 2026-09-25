@@ -12,7 +12,7 @@
  */
 import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, BookingChangeAck, BookingChangeAcksState, BookingChangeRecordsState,
-  DoubleupsState, Completion, BreakEntry,
+  DoubleupsState, Completion, BreakEntry, CleaningCompletionReport,
   ConsumableItem, ConsumableReport, HousekeepingIncident, HousekeepingTeam, Invitation, InvitationsState, LinenItem,
   ManualTask, ManualTasksState,
   NfcTagStatusesState, Property, ReservationSearchResult, ReservationsState, Role, StaffUser, TaskAssignment,
@@ -1154,7 +1154,7 @@ import type { ExtraEquipmentNeed } from './tasks';
 // (u. a. Reinigungskraft->Admin, Standortverantwortlicher->fremder Standort/Admin-Rolle,
 // Teamleader->fremdes Team/neuer Teamleader - alle serverseitig abgelehnt bzw. auf das erlaubte
 // Minimum zurechtgestutzt, unabhaengig vom Client-Request).
-export const APP_VERSION = '2.47.3';
+export const APP_VERSION = '2.48.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -1516,9 +1516,13 @@ export const taskAssignmentsApi = {
     taskId: string, requiresInspectionFlag: boolean,
     linenItems?: { itemId: string; estimatedQuantity: number | null; actualQuantity: number }[],
     requiredPreparationIds?: string[],
+    /** Wäschereklamation (Briefing "Wäschereklamation erfassen") - optional und leer, wenn beim
+     * Abschluss keine Reklamation erfasst wurde, IMMER logisch getrennt von `linenItems`. */
+    laundryComplaints?: { itemId: string; quantity: number }[],
   ) =>
     backendPost<{ taskAssignments: TaskAssignmentsState }>(
-      'task-assignments', { action: 'complete', taskId, requiresInspection: requiresInspectionFlag, linenItems, requiredPreparationIds },
+      'task-assignments',
+      { action: 'complete', taskId, requiresInspection: requiresInspectionFlag, linenItems, requiredPreparationIds, laundryComplaints },
     ),
   completeInspection: (taskId: string) =>
     backendPost<{ taskAssignments: TaskAssignmentsState }>('task-assignments', { action: 'completeInspection', taskId }),
@@ -1837,6 +1841,13 @@ export const linenItemsApi = {
   saveItem: (item: Partial<LinenItem> & { name: string; unit: string }) =>
     backendPost<{ items: LinenItem[]; item: LinenItem }>('linen-items', { action: 'setItem', item }),
   reorder: (orderedIds: string[]) => backendPost<{ items: LinenItem[] }>('linen-items', { action: 'reorderItems', orderedIds }),
+  /** Admin-Analyse "Wäsche" (Briefing "Wäschereklamation erfassen") - serverseitig auf Admin
+   * (alle Standorte) bzw. Standortverantwortlichen (nur eigene Standorte) gescoped, siehe
+   * api/linen-items.js#listReports. */
+  listReports: async (): Promise<CleaningCompletionReport[]> => {
+    const data = await backendPost<{ reports?: CleaningCompletionReport[] }>('linen-items', { action: 'listReports' });
+    return data.reports || [];
+  },
 };
 
 /** Verbrauchsmaterial (Briefing "Verbrauch melden") - komplett getrennt von Waesche/Bettsachen

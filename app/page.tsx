@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useHousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
-import { isElevatedHousekeepingUser } from '@/lib/housekeeping/permissions';
+import { isAdmin, isElevatedHousekeepingUser, isLocationManager, managedPropertyCodes } from '@/lib/housekeeping/permissions';
 import { StaffHeader } from '@/components/housekeeping/StaffHeader';
 import { PropertyChips } from '@/components/housekeeping/PropertyChips';
 import { StaffNavBar } from '@/components/housekeeping/StaffNavBar';
@@ -20,6 +20,7 @@ import { ReportIncidentSheet } from '@/components/housekeeping/ReportIncidentShe
 import { ReportConsumableSheet } from '@/components/housekeeping/ReportConsumableSheet';
 import { ReportMenuSheet } from '@/components/housekeeping/ReportMenuSheet';
 import { LinenCompletionSheet } from '@/components/housekeeping/LinenCompletionSheet';
+import { LaundryAnalyticsScreen } from '@/components/housekeeping/LaundryAnalyticsScreen';
 import { LoginScreen } from '@/components/housekeeping/LoginScreen';
 import { Toast } from '@/components/housekeeping/Toast';
 
@@ -101,6 +102,13 @@ export default function HousekeepingPage() {
          * sieht, falls activeNav jemals ausserhalb der (bereits auf Admin beschraenkten) NavBar
          * gesetzt wird, analog zum bestehenden Guard fuer 'settings' unten. */}
         {state.activeNav === 'stats' && state.user?.role === 'admin' ? <StatsScreen app={app} /> : null}
+        {/* Briefing "Wäschereklamation erfassen": Admin standortuebergreifend, ein
+         * Standortverantwortlicher nur mit mindestens einem verwalteten Property (Guard
+         * zusaetzlich zur serverseitigen Filterung in api/linen-items.js#listReports, analog zum
+         * bestehenden Guard fuer 'stats' oben). */}
+        {state.activeNav === 'laundry' && (isAdmin(state.user) || (isLocationManager(state.user) && managedPropertyCodes(state.user, state.properties.map((p) => p.code)).length > 0)) ? (
+          <LaundryAnalyticsScreen app={app} />
+        ) : null}
         {state.activeNav === 'team' ? <TeamScreen app={app} /> : null}
         {state.activeNav === 'settings' && isElevatedHousekeepingUser(state.user, state.properties.map((p) => p.code)) ? (
           <SettingsScreen app={app} />

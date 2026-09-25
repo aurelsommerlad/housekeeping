@@ -74,11 +74,24 @@ async function saveCompletionReport(redis, data) {
     housekeepingTeamId: data.housekeepingTeamId || null,
     completedAt: Date.now(),
     linenItems: data.linenItems,
+    // Wäschereklamation (Briefing "Wäschereklamation erfassen") - immer ein Array, auch wenn
+    // leer, NIE in linenItems (Verbrauch) hineingemischt, siehe types.ts#CleaningCompletionReport.
+    laundryComplaints: Array.isArray(data.laundryComplaints) ? data.laundryComplaints : [],
   };
   await redis.hSet(REPORTS_HASH_KEY, id, JSON.stringify(record));
   return record;
 }
 
+// Fuer die neue Admin-Analyse "Wäsche" (Briefing "Wäschereklamation erfassen") - analog zu
+// api/_consumables.js#getAllReports/api/_incidents.js#getAllIncidents, rein lesend. Die eigentliche
+// Datums-/Standort-/Team-Filterung passiert im Aufrufer (api/linen-items.js), da sie je nach
+// Rolle (Standortverantwortlicher vs. Admin) unterschiedlich gescoped werden muss.
+async function getAllReports(redis) {
+  const all = await redis.hGetAll(REPORTS_HASH_KEY);
+  return Object.values(all).map((v) => parseJSON(v, null)).filter(Boolean).sort((a, b) => b.completedAt - a.completedAt);
+}
+
 module.exports = {
-  ITEMS_HASH_KEY, REPORTS_HASH_KEY, getAllItems, getActiveItemsForProperty, upsertItem, reorderItems, saveCompletionReport,
+  ITEMS_HASH_KEY, REPORTS_HASH_KEY, getAllItems, getActiveItemsForProperty, upsertItem, reorderItems,
+  saveCompletionReport, getAllReports,
 };

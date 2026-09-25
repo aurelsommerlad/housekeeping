@@ -46,7 +46,7 @@ import {
 } from './tasks';
 import type {
   ApaleoReservation, ApaleoUnit, AssignmentsState, BookingChangeAcksState, BookingChangeRecordsState, BreakEntry,
-  CapacityEntry, Completion,
+  CapacityEntry, CleaningCompletionReport, Completion,
   ConsumableItem, ConsumableReport, DaySummary, DoubleupsState, HousekeepingIncident, HousekeepingTeam, Invitation,
   InvitationsState, LinenItem,
   ManualTask, ManualTasksState, NfcTagStatusesState, Property, ReservationsState, Room, RoomFilter, StaffUser,
@@ -62,7 +62,7 @@ function nfcUnitKey(propertyCode: string, unitId: string): string {
 export type AuthScreen = 'checking' | 'login' | 'app';
 // 'settings' ist bewusst KEIN Bottom-Nav-Eintrag (siehe StaffNavBar#ITEMS) - nur ueber das
 // Profilmenue (SettingsSheet) erreichbar, analog zu 'team' aber ohne eigenen Tab.
-export type NavId = 'tasks' | 'rooms' | 'stats' | 'team' | 'settings';
+export type NavId = 'tasks' | 'rooms' | 'stats' | 'laundry' | 'team' | 'settings';
 
 interface AppState {
   authScreen: AuthScreen;
@@ -189,6 +189,13 @@ interface AppState {
   incidentsLoading: boolean;
   consumableReports: ConsumableReport[];
   consumableReportsLoading: boolean;
+  /** Admin-Analyse "Wäsche" (Briefing "Wäschereklamation erfassen") - dieselbe Lazy-Load-Idee wie
+   * bei incidents/consumableReports oben: nur beim tatsaechlichen Oeffnen der Analyseansicht
+   * geladen, nicht beim Login. Serverseitig bereits auf Admin/Standortverantwortlichen gescoped
+   * (siehe api/linen-items.js#listReports) - enthaelt sowohl Verbrauch (linenItems) als auch
+   * Reklamationen (laundryComplaints) JEDES Reinigungsabschlusses. */
+  laundryReports: CleaningCompletionReport[];
+  laundryReportsLoading: boolean;
 
   /** Einstellungen > Integrationen - reine "konfiguriert"-Statusflags, siehe
    * api/integrations-status.js. `null` = noch nicht geladen. */
@@ -271,6 +278,8 @@ function initialState(): AppState {
     incidentsLoading: false,
     consumableReports: [],
     consumableReportsLoading: false,
+    laundryReports: [],
+    laundryReportsLoading: false,
     integrationsStatus: null,
     integrationsStatusLoading: false,
   };
@@ -1031,6 +1040,9 @@ export function useHousekeepingApp() {
   const finishTask = useCallback(async (
     task: ResolvedTask,
     linenItems?: { itemId: string; estimatedQuantity: number | null; actualQuantity: number }[],
+    /** Wäschereklamation (Briefing "Wäschereklamation erfassen") - optional, IMMER logisch
+     * getrennt von `linenItems` (regulärer Verbrauch), siehe LinenCompletionSheet.tsx. */
+    laundryComplaints?: { itemId: string; quantity: number }[],
   ) => {
     patch({ loading: true });
     try {
@@ -1047,7 +1059,7 @@ export function useHousekeepingApp() {
         type: 'clean', durationSeconds: task.elapsedSeconds, finishedAt: Date.now(),
       });
       const { taskAssignments } = await taskAssignmentsApi.complete(
-        task.id, requiresInspection(task.propertyCode), linenItems, requiredPreparationItemIds(task),
+        task.id, requiresInspection(task.propertyCode), linenItems, requiredPreparationItemIds(task), laundryComplaints,
       );
       patch({ taskAssignments, detailTaskId: null, linenCompletionTaskId: null });
       showToast(t('saved'));
@@ -1533,6 +1545,17 @@ export function useHousekeepingApp() {
     }
   }, [patch, showToast]);
 
+  const loadLaundryReportsList = useCallback(async () => {
+    patch({ laundryReportsLoading: true });
+    try {
+      const laundryReports = await linenItemsApi.listReports();
+      patch({ laundryReports, laundryReportsLoading: false });
+    } catch (err) {
+      patch({ laundryReportsLoading: false });
+      showToast(err instanceof Error ? err.message : String(err));
+    }
+  }, [patch, showToast]);
+
   const loadIntegrationsStatusInfo = useCallback(async () => {
     patch({ integrationsStatusLoading: true });
     try {
@@ -1592,7 +1615,7 @@ export function useHousekeepingApp() {
     loadInvitations, createInvitation, resendInvitation, revokeInvitation,
 
     // Einstellungen > Meldungen & Betrieb / Integrationen
-    loadIncidentsList, loadConsumableReportsList, loadIntegrationsStatusInfo,
+    loadIncidentsList, loadConsumableReportsList, loadLaundryReportsList, loadIntegrationsStatusInfo,
   };
 }
 

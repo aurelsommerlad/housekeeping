@@ -3,7 +3,9 @@
 // ausschliesslich Administratoren vorbehalten, siehe api/housekeeping-teams.js fuer dasselbe Muster.
 const { getRedis } = require('./_redis');
 const { requireSession, requireAdmin } = require('./_auth');
-const { getAllItems, upsertItem, reorderItems } = require('./_linen');
+const { getUserRawById } = require('./_users');
+const { isAdmin, isLocationManager } = require('./_permissions');
+const { getAllItems, upsertItem, reorderItems, getAllReports } = require('./_linen');
 
 module.exports = async (req, res) => {
   try {
@@ -20,9 +22,34 @@ module.exports = async (req, res) => {
       return;
     }
 
-    if (!(await requireAdmin(req, res))) return;
-
     const { action } = req.body || {};
+
+    // Admin-Analyse "Wäsche" (Briefing "Wäschereklamation erfassen"): Admin sieht alle Berichte
+    // standortuebergreifend, ein Standortverantwortlicher ausschliesslich Berichte seiner eigenen
+    // zugeordneten Standorte (analog zum bestehenden Scoping-Muster in
+    // HousekeepingTeamsScreen.tsx/managedPropertyCodes) - jeder andere Nutzer bekommt 403. Nutzt
+    // bewusst den frisch geladenen User-Datensatz (nie die Session-Cookie-Rolle), siehe
+    // api/_permissions.js-Kommentar.
+    if (action === 'listReports') {
+      const session = await requireSession(req, res);
+      if (!session) return;
+      const user = await getUserRawById(redis, session.userId);
+      if (!user || user.active === false) { res.status(403).json({ error: 'Kein Zugriff.' }); return; }
+      const allReports = await getAllReports(redis);
+      if (isAdmin(user)) {
+        res.status(200).json({ reports: allReports });
+        return;
+      }
+      if (isLocationManager(user)) {
+        const managed = new Set(user.managedProperties || []);
+        res.status(200).json({ reports: allReports.filter((r) => managed.has(r.propertyId)) });
+        return;
+      }
+      res.status(403).json({ error: 'Kein Zugriff.' });
+      return;
+    }
+
+    if (!(await requireAdmin(req, res))) return;
 
     if (action === 'setItem') {
       const { item } = req.body;

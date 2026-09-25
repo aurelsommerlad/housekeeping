@@ -901,6 +901,21 @@ export interface LinenReportLine {
  * Fensters nicht mehr auflösbar - deshalb traegt dieser Datensatz propertyId/unitId/taskType
  * bereits selbst, statt sie spaeter ueber die (dann verschwundene) Task nachzuschlagen.
  */
+/**
+ * Eine Zeile einer Wäschereklamation (Briefing "Wäschereklamation erfassen") - bewusst eine
+ * eigene, schlankere Form als LinenReportLine (keine estimatedQuantity, die hat bei einer
+ * Reklamation keine Bedeutung). Wie bei LinenReportLine wird `itemName`/`unit` als Snapshot
+ * mitgespeichert (Punkt "Traceability"), damit ein Bericht auch nach einer spaeteren
+ * Umbenennung/Deaktivierung des Artikels verstaendlich bleibt. Nur Artikel mit `quantity > 0`
+ * werden je gespeichert (siehe api/task-assignments.js#complete) - kein Eintrag mit Menge 0.
+ */
+export interface LinenComplaintLine {
+  itemId: string;
+  itemName: string;
+  unit: string;
+  quantity: number;
+}
+
 export interface CleaningCompletionReport {
   id: string;
   taskId: string;
@@ -912,6 +927,15 @@ export interface CleaningCompletionReport {
   housekeepingTeamId: string | null;
   completedAt: number;
   linenItems: LinenReportLine[];
+  /**
+   * Wäschereklamation (Briefing "Wäschereklamation erfassen") - LOGISCH UND NUMERISCH GETRENNT
+   * von `linenItems` (regulärer Verbrauch): eine reklamierte Menge fließt NIE in die
+   * Verbrauchssumme ein und umgekehrt, auch wenn derselbe Artikel in beiden Listen vorkommt
+   * (z. B. 3 Handtücher verbraucht, davon 1 zusätzlich reklamiert - nicht "2 verbraucht"). Immer
+   * ein Array (leer, wenn keine Reklamation erfasst wurde) - optional nur fuer aeltere, vor
+   * diesem Feature entstandene Datensaetze ohne dieses Feld.
+   */
+  laundryComplaints?: LinenComplaintLine[];
 }
 
 export interface ConsumableReportLine {
