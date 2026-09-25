@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
 import { dayHeadingLabel } from '@/lib/housekeeping/dayLabel';
-import { isAdmin, isPropertyManager, isTeamLead } from '@/lib/housekeeping/permissions';
+import { isAdmin, isPropertyManager, isTeamLeadOf, isTeamMemberOf } from '@/lib/housekeeping/permissions';
 import { TASK_STATUS_CONFIG, TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
 import { canRescheduleTask, nextArrivalDateForTask, requiredPreparationItemIds, taskId as buildTaskId } from '@/lib/housekeeping/tasks';
 import { canShowOriginal, resolveFreeText, translationFailedFor } from '@/lib/housekeeping/translation';
@@ -340,7 +340,7 @@ function CleaningAssignmentSection({
   // hier zusaetzlich zu Standortverantwortlichen Personen zuweisen/umverteilen/freigeben - aber
   // ausschliesslich innerhalb des eigenen Teams (server-seitig identisch durchgesetzt, siehe
   // api/task-assignments.js#assign/release). isManager bleibt unveraendert das bestehende Recht.
-  const isLeadHere = isTeamLead(state.user) && !!task.assignedTeamId && state.user?.housekeepingTeamId === task.assignedTeamId;
+  const isLeadHere = isTeamLeadOf(state.user, task.assignedTeamId);
   const canManage = isManager || isLeadHere;
   const propHksAll = state.users.filter(
     (u) => u.role !== 'admin' &&
@@ -350,7 +350,7 @@ function CleaningAssignmentSection({
   // Mitgliedern des EIGENEN Teams - ein Standortverantwortlicher behaelt sein bestehendes,
   // teamuebergreifendes Recht unveraendert (Briefing: managedProperties bleibt eine eigene,
   // nicht mit teamRole vermischte Zustaendigkeit).
-  const propHks = isManager ? propHksAll : propHksAll.filter((u) => u.housekeepingTeamId === task.assignedTeamId);
+  const propHks = isManager ? propHksAll : propHksAll.filter((u) => isTeamMemberOf(u, task.assignedTeamId));
   const assigneeWorkload = task.assignedUserId ? workload[task.assignedUserId] || 0 : null;
   // Punkt "Wieder aktivieren": nach einem Reopen+Neustart soll "In Reinigung · seit HH:MM" die
   // Startzeit DIESER (neuen) Sitzung zeigen, nicht die des historischen allerersten Starts vor der

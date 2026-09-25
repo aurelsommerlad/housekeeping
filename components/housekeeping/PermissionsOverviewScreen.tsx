@@ -1,7 +1,7 @@
 'use client';
 
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
-import { isAdmin, isTeamLead } from '@/lib/housekeeping/permissions';
+import { getTeamMemberships, isAdmin, isTeamLead } from '@/lib/housekeeping/permissions';
 import { getPropertyDisplayName } from '@/lib/housekeeping/api';
 import { AdminRow, AdminRowList, AdminSection } from './admin';
 
@@ -63,8 +63,15 @@ export function PermissionsOverviewScreen({ app }: PermissionsOverviewScreenProp
             <AdminRow title={t('permissions_none')} />
           ) : (
             leads.map((u) => {
-              const team = state.teams.find((tm) => tm.id === u.housekeepingTeamId);
-              return <AdminRow key={u.id} title={u.name} description={team?.name} />;
+              // getTeamMemberships() statt der veralteten housekeepingTeamId (siehe permissions.ts)
+              // - ein User kann Lead mehrerer Teams gleichzeitig sein (teamMemberships[]), die
+              // veraltete Skalarform kennt nur ein einzelnes Team und wird bei jedem upsertUser
+              // ohnehin geloescht.
+              const leadTeamNames = getTeamMemberships(u)
+                .filter((m) => m.isLeader)
+                .map((m) => state.teams.find((tm) => tm.id === m.teamId)?.name)
+                .filter((name): name is string => !!name);
+              return <AdminRow key={u.id} title={u.name} description={leadTeamNames.join(' · ')} />;
             })
           )}
         </AdminRowList>

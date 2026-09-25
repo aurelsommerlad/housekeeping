@@ -12,7 +12,7 @@
 const { getRedis } = require('./_redis');
 const { requireSession, requireAdmin } = require('./_auth');
 const { getUserRawById } = require('./_users');
-const { hasPropertyAccess, propertyCodeFromTaskId, dateFromTaskId, unitIdFromTaskId, taskTypeFromTaskId, reservationIdFromTaskId } = require('./_permissions');
+const { hasPropertyAccess, propertyCodeFromTaskId, dateFromTaskId, unitIdFromTaskId, taskTypeFromTaskId, reservationIdFromTaskId, getTeamMemberships } = require('./_permissions');
 const { getTeamById } = require('./_teams');
 const { createIncident, updateIncidentSlackStatus, getAllIncidents } = require('./_incidents');
 const { sendIncidentToSlack } = require('./_slack');
@@ -78,8 +78,14 @@ module.exports = async (req, res) => {
       return;
     }
 
+    // getTeamMemberships() statt der veralteten housekeepingTeamId (siehe api/_permissions.js) -
+    // die wird bei jedem upsertUser geloescht, ein User mit teamMemberships[] wuerde sonst nie
+    // einen Team-Namen im Vorfall gespeichert bekommen. Bei Mitgliedschaft in mehreren Teams wird
+    // die erste verwendet (dieselbe Einschraenkung wie das bisherige Einzel-Team-Feld selbst).
+    const memberships = getTeamMemberships(user);
+    const teamId = memberships.length > 0 ? memberships[0].teamId : null;
     let team = null;
-    if (user.housekeepingTeamId) team = await getTeamById(redis, user.housekeepingTeamId);
+    if (teamId) team = await getTeamById(redis, teamId);
 
     const incident = await createIncident(redis, {
       taskId,
@@ -88,7 +94,7 @@ module.exports = async (req, res) => {
       reservationId: reservationIdFromTaskId(taskId),
       reportedByUserId: user.id,
       reportedByUserName: user.name || user.username,
-      housekeepingTeamId: user.housekeepingTeamId || null,
+      housekeepingTeamId: teamId,
       housekeepingTeamName: team ? team.name : null,
       description: trimmedDescription,
       photoUrls,

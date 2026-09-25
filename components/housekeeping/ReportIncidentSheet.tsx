@@ -5,6 +5,7 @@ import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import type { ResolvedTask } from '@/lib/housekeeping/tasks';
 import { todayISO } from '@/lib/housekeeping/rooms';
 import { compressImageFile } from '@/lib/housekeeping/image';
+import { isTeamMemberOf } from '@/lib/housekeeping/permissions';
 import { BottomSheet } from './BottomSheet';
 import { Button } from '@/components/ui/Button';
 import { IconAlertCircle, IconCheck, IconChevronDown, IconClose, IconPlus } from '@/components/ui/icons';
@@ -57,8 +58,10 @@ export function ReportIncidentSheet({ app }: ReportIncidentSheetProps) {
   const todaysTasks = useMemo(() => {
     const all = tasksForDayAll(today);
     const userId = state.user?.id;
-    const teamId = state.user?.housekeepingTeamId;
-    const rank = (task: ResolvedTask) => (task.assignedUserId === userId ? 0 : task.assignedTeamId && task.assignedTeamId === teamId ? 1 : 2);
+    // getTeamMemberships() statt der veralteten housekeepingTeamId (siehe permissions.ts) - die
+    // wird bei jedem upsertUser geloescht, ein Mitglied mit teamMemberships[] wuerde die eigenen
+    // Team-Reinigungen hier sonst nie priorisiert sehen.
+    const rank = (task: ResolvedTask) => (task.assignedUserId === userId ? 0 : isTeamMemberOf(state.user, task.assignedTeamId) ? 1 : 2);
     return [...all].sort((a, b) => rank(a) - rank(b));
   }, [tasksForDayAll, today, state.user]);
 

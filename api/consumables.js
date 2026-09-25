@@ -5,7 +5,7 @@
 const { getRedis } = require('./_redis');
 const { requireSession, requireAdmin } = require('./_auth');
 const { getUserRawById } = require('./_users');
-const { hasPropertyAccess } = require('./_permissions');
+const { hasPropertyAccess, getTeamMemberships } = require('./_permissions');
 const { getAllItems, getActiveItemsForProperty, upsertItem, reorderItems, saveReport, getAllReports } = require('./_consumables');
 
 const MAX_ITEMS_PER_REPORT = 100;
@@ -83,9 +83,13 @@ module.exports = async (req, res) => {
         return;
       }
 
+      // getTeamMemberships() statt der veralteten housekeepingTeamId (siehe api/_permissions.js) -
+      // die wird bei jedem upsertUser geloescht. Bei Mitgliedschaft in mehreren Teams wird die
+      // erste verwendet (dieselbe Einschraenkung wie das bisherige Einzel-Team-Feld selbst).
+      const memberships = getTeamMemberships(user);
       const report = await saveReport(redis, {
         propertyCode, reportedByUserId: user.id, reportedByUserName: user.name || user.username,
-        housekeepingTeamId: user.housekeepingTeamId || null, items: reportLines,
+        housekeepingTeamId: memberships.length > 0 ? memberships[0].teamId : null, items: reportLines,
       });
       res.status(200).json({ report });
       return;

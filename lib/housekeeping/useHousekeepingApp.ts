@@ -928,7 +928,11 @@ export function useHousekeepingApp() {
     const all = teamCapacityForDay(date, tasksForDayAll(date));
     const user = state.user;
     if (!user || user.role === 'admin') return all;
-    if (user.teamRole === 'lead' && user.housekeepingTeamId) return all.filter((e) => e.teamId === user.housekeepingTeamId);
+    // getTeamMemberships() statt der veralteten housekeepingTeamId/teamRole-Skalarfelder (siehe
+    // permissions.ts) - die werden bei jedem upsertUser geloescht, ein Team-Lead mit
+    // teamMemberships[] wuerde hier sonst immer die leere Liste sehen.
+    const leadTeamIds = new Set(getTeamMemberships(user).filter((m) => m.isLeader).map((m) => m.teamId));
+    if (leadTeamIds.size > 0) return all.filter((e) => !!e.teamId && leadTeamIds.has(e.teamId));
     return [];
   }, [state.user, tasksForDayAll]);
 
