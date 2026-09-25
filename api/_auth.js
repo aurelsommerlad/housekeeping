@@ -149,14 +149,24 @@ async function requireSession(req, res) {
   return session;
 }
 
-// Guard fuer Admin-only API-Routen.
+// Guard fuer Admin-only API-Routen. Prueft IMMER die frisch aus Redis geladene role, NIE die im
+// Session-Cookie/-Record gecachte (siehe api/_permissions.js-Kopfkommentar) - sonst wirkt eine
+// nachtraegliche Rollenaenderung (z. B. Admin -> housekeeper) erst nach einem erneuten Login.
+// require('./_users') erfolgt bewusst hier innen statt am Dateikopf: _users.js seinerseits
+// benoetigt hashPassword/verifyPassword aus dieser Datei, ein Top-Level-require in beide
+// Richtungen wuerde einen zirkulaeren Import erzeugen, bei dem eine der beiden Dateien beim
+// Laden ein noch unvollstaendiges exports-Objekt der jeweils anderen erhaelt.
 async function requireAdmin(req, res) {
   const session = await getSession(req);
   if (!session) {
     res.status(401).json({ error: 'Nicht angemeldet.' });
     return null;
   }
-  if (session.role !== 'admin') {
+  const { getRedis } = require('./_redis');
+  const { getUserRawById } = require('./_users');
+  const redis = await getRedis();
+  const user = await getUserRawById(redis, session.userId);
+  if (!user || user.role !== 'admin') {
     res.status(403).json({ error: 'Nur für Administratoren.' });
     return null;
   }

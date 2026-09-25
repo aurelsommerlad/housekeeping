@@ -3,6 +3,7 @@
 // darf jede angemeldete Person ausloesen.
 const { getRedis, parseJSON, migrateLegacyKey } = require('./_redis');
 const { requireSession } = require('./_auth');
+const { getUserRawById } = require('./_users');
 
 const HASH_KEY = 'housekeeping:doubleups';
 const LEGACY_HASH_KEY = 'hk:doubleups';
@@ -36,7 +37,11 @@ module.exports = async (req, res) => {
     const { action } = req.body || {};
 
     if (action === 'set') {
-      if (session.role !== 'admin') {
+      // Immer frisch laden statt der im Session-Cookie gecachten role (siehe
+      // api/_permissions.js-Kopfkommentar) - sonst wirkt ein nachtraeglicher Rollenentzug erst
+      // nach einem erneuten Login.
+      const user = await getUserRawById(redis, session.userId);
+      if (!user || user.role !== 'admin') {
         res.status(403).json({ error: 'Nur für Administratoren.' });
         return;
       }

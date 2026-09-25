@@ -8,6 +8,7 @@
 // Housekeeping-Konto darf damit aber niemals die Zuweisung einer anderen Person manipulieren.
 const { getRedis, parseJSON, migrateLegacyKey } = require('./_redis');
 const { requireSession } = require('./_auth');
+const { getUserRawById } = require('./_users');
 
 const HASH_KEY = 'housekeeping:assignments';
 const LEGACY_HASH_KEY = 'hk:assignments';
@@ -22,12 +23,15 @@ async function allAssignments(redis) {
 
 // Fuer Selbstbedienungs-Aktionen: erlaubt, wenn Admin, wenn das Zimmer noch niemandem
 // zugewiesen ist (Selbst-Zuweisung beim Start), oder wenn es bereits der eigenen Person gehoert.
-async function canTouchAssignment(redis, session, key) {
-  if (session.role === 'admin') return true;
+// Nimmt den frisch geladenen User (nie die im Session-Cookie gecachte role, siehe
+// api/_permissions.js-Kopfkommentar) - eine nachtraeglich entzogene Admin-Rolle wirkt sonst erst
+// nach einem erneuten Login.
+async function canTouchAssignment(redis, user, key) {
+  if (user.role === 'admin') return true;
   const raw = await redis.hGet(HASH_KEY, key);
   if (!raw) return true;
   const existing = parseJSON(raw, null);
-  return !existing || !existing.housekeeperId || existing.housekeeperId === session.userId;
+  return !existing || !existing.housekeeperId || existing.housekeeperId === user.id;
 }
 
 module.exports = async (req, res) => {
@@ -48,10 +52,15 @@ module.exports = async (req, res) => {
 
     const session = await requireSession(req, res);
     if (!session) return;
+    // Immer frisch laden statt der im Session-Cookie gecachten role (siehe
+    // api/_permissions.js-Kopfkommentar) - sonst wirkt ein nachtraeglicher Rollenentzug erst nach
+    // einem erneuten Login.
+    const user = await getUserRawById(redis, session.userId);
+    if (!user) { res.status(401).json({ error: 'Nicht angemeldet.' }); return; }
 
     const { action } = req.body || {};
 
-    if (ADMIN_ONLY_ACTIONS.has(action) && session.role !== 'admin') {
+    if (ADMIN_ONLY_ACTIONS.has(action) && user.role !== 'admin') {
       res.status(403).json({ error: 'Nur für Administratoren.' });
       return;
     }
@@ -88,7 +97,7 @@ module.exports = async (req, res) => {
         res.status(400).json({ error: 'key ist erforderlich.' });
         return;
       }
-      if (!(await canTouchAssignment(redis, session, key))) {
+      if (!(await canTouchAssignment(redis, user, key))) {
         res.status(403).json({ error: 'Dieses Zimmer ist einer anderen Person zugewiesen.' });
         return;
       }
@@ -108,11 +117,11 @@ module.exports = async (req, res) => {
         res.status(400).json({ error: 'key ist erforderlich.' });
         return;
       }
-      if (!(await canTouchAssignment(redis, session, key))) {
+      if (!(await canTouchAssignment(redis, user, key))) {
         res.status(403).json({ error: 'Dieses Zimmer ist einer anderen Person zugewiesen.' });
         return;
       }
-      const effectiveHkId = session.role === 'admin' ? housekeeperId || session.userId : session.userId;
+      const effectiveHkId = user.role === 'admin' ? housekeeperId || session.userId : session.userId;
       const existingRaw = await redis.hGet(HASH_KEY, key);
       const existing = existingRaw
         ? parseJSON(existingRaw, {})
@@ -125,7 +134,7 @@ module.exports = async (req, res) => {
         res.status(400).json({ error: 'key ist erforderlich.' });
         return;
       }
-      if (!(await canTouchAssignment(redis, session, key))) {
+      if (!(await canTouchAssignment(redis, user, key))) {
         res.status(403).json({ error: 'Dieses Zimmer ist einer anderen Person zugewiesen.' });
         return;
       }
