@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { estimateLinenQuantity } from '@/lib/housekeeping/linen';
+import { resolveFreeText } from '@/lib/housekeeping/translation';
 import type { LinenComplaintLine } from '@/lib/housekeeping/types';
 import { BottomSheet } from './BottomSheet';
 import { QuantityStepper } from './QuantityStepper';
@@ -106,7 +107,7 @@ export function LinenCompletionSheet({ app }: LinenCompletionSheetProps) {
             return (
               <div key={item.id} className="flex items-center justify-between gap-3 py-3">
                 <div className="min-w-0">
-                  <p className="truncate text-[14px] font-medium text-ink">{item.name}</p>
+                  <p className="truncate text-[14px] font-medium text-ink">{resolveFreeText(item.nameTranslation, item.name, state.lang)}</p>
                   {/* Punkt 3: sehr dezent, hell greige hinterlegt, keine Warnfarbe - dient
                    * ausschliesslich als Orientierung und wird NIE automatisch uebernommen. */}
                   <span className="mt-0.5 inline-block rounded-control bg-surface px-1.5 py-0.5 text-[11px] text-muted">
@@ -116,7 +117,7 @@ export function LinenCompletionSheet({ app }: LinenCompletionSheetProps) {
                 <QuantityStepper
                   value={values[item.id] ?? null}
                   onChange={(next) => setValues((prev) => ({ ...prev, [item.id]: next }))}
-                  aria-label={item.name}
+                  aria-label={resolveFreeText(item.nameTranslation, item.name, state.lang)}
                 />
               </div>
             );
@@ -137,7 +138,16 @@ export function LinenCompletionSheet({ app }: LinenCompletionSheetProps) {
                     {t('linen_complaint_status_label')} · {t('linen_complaint_status_summary', { n: complaintCount })}
                   </p>
                   <p className="mt-0.5 truncate text-[12px] text-muted">
-                    {complaints.map((c) => `${c.quantity}× ${c.itemName}`).join(' · ')}
+                    {/* Briefing "KI-Uebersetzung auf manuelle Admin-Inhalte erweitern": nur die
+                     * ANZEIGE hier wird uebersetzt - der gespeicherte `c.itemName`-Snapshot bleibt
+                     * unveraendert der Original-Admin-Text (siehe applyComplaintForm), damit die
+                     * spaetere Auswertung sprachunabhaengig bleibt. Fallback auf `c.itemName`, falls
+                     * der Artikel inzwischen deaktiviert/entfernt wurde. */}
+                    {complaints.map((c) => {
+                      const liveItem = items.find((item) => item.id === c.itemId);
+                      const label = liveItem ? resolveFreeText(liveItem.nameTranslation, liveItem.name, state.lang) : c.itemName;
+                      return `${c.quantity}× ${label}`;
+                    }).join(' · ')}
                   </p>
                 </div>
               </div>
@@ -177,11 +187,11 @@ export function LinenCompletionSheet({ app }: LinenCompletionSheetProps) {
         <div className="mt-4 flex flex-col divide-y divide-line">
           {items.map((item) => (
             <div key={item.id} className="flex items-center justify-between gap-3 py-3">
-              <p className="min-w-0 truncate text-[14px] font-medium text-ink">{item.name}</p>
+              <p className="min-w-0 truncate text-[14px] font-medium text-ink">{resolveFreeText(item.nameTranslation, item.name, state.lang)}</p>
               <QuantityStepper
                 value={complaintDraft[item.id] ?? 0}
                 onChange={(next) => setComplaintDraft((prev) => ({ ...prev, [item.id]: next }))}
-                aria-label={item.name}
+                aria-label={resolveFreeText(item.nameTranslation, item.name, state.lang)}
               />
             </div>
           ))}

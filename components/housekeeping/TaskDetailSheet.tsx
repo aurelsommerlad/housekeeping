@@ -518,7 +518,8 @@ function PrimaryAction({
     reopenTask(task.id);
   }
   function handleReopenManual() {
-    if (typeof window !== 'undefined' && !window.confirm(t('reopen_confirm_manual', { title: task.manualTitle || task.propertyName }))) return;
+    const title = task.manualTitle ? resolveFreeText(task.manualTitleTranslation, task.manualTitle, state.lang) : task.propertyName;
+    if (typeof window !== 'undefined' && !window.confirm(t('reopen_confirm_manual', { title }))) return;
     reopenManualTask(task.id);
   }
   const notice = noticeForTask(task.id);

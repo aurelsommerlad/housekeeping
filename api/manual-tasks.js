@@ -96,13 +96,18 @@ module.exports = async (req, res) => {
         return;
       }
       const id = `manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const trimmedTitle = title.trim();
       const trimmedDescription = typeof description === 'string' ? description.trim() : '';
       // Briefing "automatische Uebersetzung frei eingegebener operativer Texte": gleiches Muster
       // wie bei api/task-notices.js#set - state.lang des Erstellers ist die Quellsprache, Fallback
       // 'de'. Es gibt aktuell keine "Aufgabe bearbeiten"-Aktion, daher entsteht die Uebersetzung
-      // ausschliesslich hier bei der Erstellung.
+      // ausschliesslich hier bei der Erstellung. Briefing "KI-Uebersetzung auf manuelle Admin-
+      // Inhalte erweitern": `title` erhaelt jetzt dieselbe Behandlung wie `description`.
       const lang = VALID_SOURCE_LANGUAGES.includes(sourceLanguage) ? sourceLanguage : 'de';
-      const descriptionTranslation = await buildFreeTextTranslation(trimmedDescription, lang);
+      const [titleTranslation, descriptionTranslation] = await Promise.all([
+        buildFreeTextTranslation(trimmedTitle, lang),
+        buildFreeTextTranslation(trimmedDescription, lang),
+      ]);
       const task = {
         id,
         propertyCode,
@@ -110,7 +115,8 @@ module.exports = async (req, res) => {
         unitId: unitId || null,
         unitName: unitId ? (unitName || unitId) : null,
         date,
-        title: title.trim(),
+        title: trimmedTitle,
+        titleTranslation,
         description: trimmedDescription,
         descriptionTranslation,
         assignedUserId: assignedUserId || null,

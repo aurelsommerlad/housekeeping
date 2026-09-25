@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { allowedProperties } from '@/lib/housekeeping/rooms';
 import { getPropertyDisplayName } from '@/lib/housekeeping/api';
+import { resolveFreeText } from '@/lib/housekeeping/translation';
 import { BottomSheet } from './BottomSheet';
 import { QuantityStepper } from './QuantityStepper';
 import { Button } from '@/components/ui/Button';
@@ -116,11 +117,11 @@ export function ReportConsumableSheet({ app }: ReportConsumableSheetProps) {
           ) : (
             items.map((item) => (
               <div key={item.id} className="flex items-center justify-between gap-3 py-3">
-                <p className="min-w-0 truncate text-[14px] font-medium text-ink">{item.name}</p>
+                <p className="min-w-0 truncate text-[14px] font-medium text-ink">{resolveFreeText(item.nameTranslation, item.name, state.lang)}</p>
                 <QuantityStepper
                   value={quantities[item.id] ?? 0}
                   onChange={(next) => setQuantities((prev) => ({ ...prev, [item.id]: next }))}
-                  aria-label={item.name}
+                  aria-label={resolveFreeText(item.nameTranslation, item.name, state.lang)}
                 />
               </div>
             ))

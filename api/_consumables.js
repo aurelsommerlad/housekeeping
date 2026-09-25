@@ -8,6 +8,7 @@
 // Kein Hard-Delete - nur `active` toggeln (siehe upsertItem).
 const crypto = require('crypto');
 const { parseJSON } = require('./_redis');
+const { buildFreeTextTranslation, ALL_TARGET_LANGUAGES } = require('./_translate');
 
 const ITEMS_HASH_KEY = 'housekeeping:consumable_items';
 const REPORTS_HASH_KEY = 'housekeeping:consumable_reports';
@@ -22,6 +23,9 @@ async function getActiveItemsForProperty(redis, propertyCode) {
   return all.filter((item) => item.active && Array.isArray(item.propertyIds) && item.propertyIds.includes(propertyCode));
 }
 
+// Briefing "KI-Uebersetzung auf manuelle Admin-Inhalte erweitern": identisches Muster wie
+// api/_linen.js#upsertItem - dieselbe Uebersetzungs-Infrastruktur, nur neu erzeugt, wenn sich
+// `name` tatsaechlich aendert.
 async function upsertItem(redis, input) {
   const id = input.id || crypto.randomBytes(6).toString('hex');
   const existingRaw = await redis.hGet(ITEMS_HASH_KEY, id);
@@ -30,9 +34,14 @@ async function upsertItem(redis, input) {
   const unit = String(input.unit || existing.unit || '').trim();
   if (!name) throw new Error('Name ist erforderlich.');
   if (!unit) throw new Error('Einheit ist erforderlich.');
+  const nameChanged = name !== existing.name;
+  const nameTranslation = nameChanged
+    ? await buildFreeTextTranslation(name, ALL_TARGET_LANGUAGES.includes(input.sourceLanguage) ? input.sourceLanguage : 'de')
+    : existing.nameTranslation;
   const record = {
     id,
     name,
+    nameTranslation,
     unit,
     active: input.active !== undefined ? !!input.active : (existing.active !== false),
     sortOrder: Number.isFinite(input.sortOrder) ? input.sortOrder : (Number.isFinite(existing.sortOrder) ? existing.sortOrder : 0),

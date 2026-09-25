@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { translate } from '@/lib/housekeeping/i18n';
+import { resolveFreeText } from '@/lib/housekeeping/translation';
 import type { NfcResolveResult } from '@/lib/housekeeping/api';
 import { formatDuration, todayISO } from '@/lib/housekeeping/rooms';
 import { TASK_STATUS_CONFIG, TASK_TYPE_CONFIG } from '@/lib/housekeeping/task-status-config';
@@ -92,7 +93,10 @@ export function NfcTaskScreen({ app, target }: NfcTaskScreenProps) {
               <IconAlertCircle width={18} height={18} className="mt-0.5 shrink-0 text-muted" aria-hidden="true" />
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-medium text-ink">{t('important_notice_title')}</p>
-                <p className="mt-1 whitespace-pre-wrap text-[13px] text-ink">{notice.text}</p>
+                {/* Briefing "KI-Uebersetzung auf manuelle Admin-Inhalte erweitern" - dieselbe
+                 * bereits vorhandene Uebersetzung wie in TaskDetailSheet.tsx, hier nur bisher
+                 * uebersehen (der Hinweis wurde roh angezeigt). */}
+                <p className="mt-1 whitespace-pre-wrap text-[13px] text-ink">{resolveFreeText(notice.translation, notice.text, state.lang)}</p>
                 <div className="mt-2.5">
                   {currentUserAckCurrent ? (
                     <span className="inline-flex items-center gap-1.5 text-[12.5px] text-muted">

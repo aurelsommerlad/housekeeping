@@ -1154,7 +1154,7 @@ import type { ExtraEquipmentNeed } from './tasks';
 // (u. a. Reinigungskraft->Admin, Standortverantwortlicher->fremder Standort/Admin-Rolle,
 // Teamleader->fremdes Team/neuer Teamleader - alle serverseitig abgelehnt bzw. auf das erlaubte
 // Minimum zurechtgestutzt, unabhaengig vom Client-Request).
-export const APP_VERSION = '2.48.0';
+export const APP_VERSION = '2.49.0';
 
 // Optionale lokale Ueberschreibung des Anzeigenamens pro Apaleo-Property-Code. Properties OHNE
 // Eintrag hier werden trotzdem angezeigt (mit ihrem Namen aus Apaleo) - diese Map darf niemals
@@ -1838,8 +1838,11 @@ export async function loadLinenItems(): Promise<LinenItem[]> {
 }
 
 export const linenItemsApi = {
-  saveItem: (item: Partial<LinenItem> & { name: string; unit: string }) =>
-    backendPost<{ items: LinenItem[]; item: LinenItem }>('linen-items', { action: 'setItem', item }),
+  /** `sourceLanguage` (Briefing "KI-Uebersetzung auf manuelle Admin-Inhalte erweitern"): dieselbe
+   * bestehende Uebersetzungs-Infrastruktur wie bei Hinweisen/Aufgaben (state.lang der/des Admin
+   * beim Speichern, siehe api/_linen.js#upsertItem). */
+  saveItem: (item: Partial<LinenItem> & { name: string; unit: string }, sourceLanguage: Lang) =>
+    backendPost<{ items: LinenItem[]; item: LinenItem }>('linen-items', { action: 'setItem', item, sourceLanguage }),
   reorder: (orderedIds: string[]) => backendPost<{ items: LinenItem[] }>('linen-items', { action: 'reorderItems', orderedIds }),
   /** Admin-Analyse "Wäsche" (Briefing "Wäschereklamation erfassen") - serverseitig auf Admin
    * (alle Standorte) bzw. Standortverantwortlichen (nur eigene Standorte) gescoped, siehe
@@ -1858,8 +1861,9 @@ export async function loadConsumableItems(): Promise<ConsumableItem[]> {
 }
 
 export const consumablesApi = {
-  saveItem: (item: Partial<ConsumableItem> & { name: string; unit: string }) =>
-    backendPost<{ items: ConsumableItem[]; item: ConsumableItem }>('consumables', { action: 'setItem', item }),
+  /** `sourceLanguage` - siehe linenItemsApi.saveItem. */
+  saveItem: (item: Partial<ConsumableItem> & { name: string; unit: string }, sourceLanguage: Lang) =>
+    backendPost<{ items: ConsumableItem[]; item: ConsumableItem }>('consumables', { action: 'setItem', item, sourceLanguage }),
   reorder: (orderedIds: string[]) => backendPost<{ items: ConsumableItem[] }>('consumables', { action: 'reorderItems', orderedIds }),
   report: (propertyCode: string, items: { itemId: string; quantity: number }[]) =>
     backendPost<{ report: ConsumableReport }>('consumables', { action: 'report', propertyCode, items }),

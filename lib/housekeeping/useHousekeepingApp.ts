@@ -1091,11 +1091,13 @@ export function useHousekeepingApp() {
 
   const saveLinenItem = useCallback(async (item: Partial<LinenItem> & { name: string; unit: string }) => {
     await runAction(async () => {
-      const { items } = await linenItemsApi.saveItem(item);
+      // Briefing "KI-Uebersetzung auf manuelle Admin-Inhalte erweitern": state.lang ist dieselbe
+      // zuverlaessige Quellsprache wie bei createManualTask/saveTaskNotice oben.
+      const { items } = await linenItemsApi.saveItem(item, state.lang);
       patch({ linenItems: items });
       showToast(t('saved'));
     });
-  }, [patch, runAction, showToast, t]);
+  }, [patch, runAction, showToast, t, state.lang]);
 
   const reorderLinenItems = useCallback(async (orderedIds: string[]) => {
     await runAction(async () => {
@@ -1125,11 +1127,11 @@ export function useHousekeepingApp() {
 
   const saveConsumableItem = useCallback(async (item: Partial<ConsumableItem> & { name: string; unit: string }) => {
     await runAction(async () => {
-      const { items } = await consumablesApi.saveItem(item);
+      const { items } = await consumablesApi.saveItem(item, state.lang);
       patch({ consumableItems: items });
       showToast(t('saved'));
     });
-  }, [patch, runAction, showToast, t]);
+  }, [patch, runAction, showToast, t, state.lang]);
 
   const reorderConsumableItems = useCallback(async (orderedIds: string[]) => {
     await runAction(async () => {

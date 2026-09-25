@@ -30,9 +30,9 @@ module.exports = async (req, res) => {
     if (action === 'setItem' || action === 'reorderItems' || action === 'listReports') {
       if (!(await requireAdmin(req, res))) return;
       if (action === 'setItem') {
-        const { item } = req.body;
+        const { item, sourceLanguage } = req.body;
         if (!item) { res.status(400).json({ error: 'item ist erforderlich.' }); return; }
-        const saved = await upsertItem(redis, item);
+        const saved = await upsertItem(redis, { ...item, sourceLanguage });
         res.status(200).json({ items: await getAllItems(redis), item: saved });
         return;
       }

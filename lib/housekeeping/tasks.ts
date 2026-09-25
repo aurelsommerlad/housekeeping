@@ -502,6 +502,7 @@ export function manualTaskToResolvedTask(mt: ManualTask, scheduleOverride: TaskS
     reservationInfo: null,
     nextReservationInfo: null,
     manualTitle: mt.title,
+    manualTitleTranslation: mt.titleTranslation,
     manualDescription: mt.description,
     manualDescriptionTranslation: mt.descriptionTranslation,
     extraEquipment: mt.extraEquipment,

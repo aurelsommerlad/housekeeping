@@ -1,6 +1,7 @@
 import type { Lang } from '@/lib/housekeeping/i18n';
 import { translate } from '@/lib/housekeeping/i18n';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
+import { resolveFreeText } from '@/lib/housekeeping/translation';
 import {
   DoubleupIcon, IconAlertCircle, IconCalendarClock, IconCheck, IconClock, IconEdit, IconEnter, IconExit, IconEye, IconPause, IconPlay,
   IconRefresh, IconRotateCcw, IconTask, IconUser,
@@ -290,7 +291,9 @@ function TimeLine({ task, lang }: { task: ResolvedTask; lang: Lang }) {
 
   if (task.type === 'manual' && task.manualTitle) {
     return (
-      <p className="truncate border-t border-line/70 pt-2 text-[13px] text-ink">{task.manualTitle}</p>
+      <p className="truncate border-t border-line/70 pt-2 text-[13px] text-ink">
+        {resolveFreeText(task.manualTitleTranslation, task.manualTitle, lang)}
+      </p>
     );
   }
 

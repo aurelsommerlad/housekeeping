@@ -419,6 +419,9 @@ export interface Task {
   /** Automatische Uebersetzung von `manualDescription` (Briefing "automatische Uebersetzung frei
    * eingegebener operativer Texte") - 1:1 aus ManualTask.descriptionTranslation uebernommen. */
   manualDescriptionTranslation?: FreeTextTranslation;
+  /** 1:1 aus ManualTask.titleTranslation uebernommen (Briefing "KI-Uebersetzung auf manuelle
+   * Admin-Inhalte erweitern"). */
+  manualTitleTranslation?: FreeTextTranslation;
   /** 1:1 aus ManualTask.extraEquipment uebernommen (Briefing "BABY-Business-Logik") - siehe dort. */
   extraEquipment?: ManualTask['extraEquipment'];
   /** Housekeeping-relevante Aenderung der zugrundeliegenden Apaleo-Reservierung seit dem letzten
@@ -468,6 +471,9 @@ export interface ManualTask {
    * eingegebener operativer Texte") - additiv, `description` bleibt unveraendert die Quelle der
    * Wahrheit. Fehlt bei aelteren, vor diesem Feature erstellten Aufgaben. */
   descriptionTranslation?: FreeTextTranslation;
+  /** Wie `descriptionTranslation`, nur fuer `title` (Briefing "KI-Uebersetzung auf manuelle
+   * Admin-Inhalte erweitern") - `title` bleibt unveraendert die Quelle der Wahrheit. */
+  titleTranslation?: FreeTextTranslation;
   /** Briefing "BABY-Business-Logik" Punkt 3C/4/6: NUR bei einer automatisch aus einem gebuchten
    * Apaleo-Service erzeugten Aufgabe gesetzt (aktuell ausschliesslich `serviceCode: 'BABY'`, siehe
    * tasks.ts#computeExtraEquipmentNeeds) - fehlt bei jeder admin-erstellten Aufgabe. Traegt die
@@ -867,6 +873,14 @@ export interface LinenItem {
   sortOrder: number;
   propertyIds: string[];
   estimationRule?: LinenEstimationRule;
+  /** Briefing "KI-Uebersetzung auf manuelle Admin-Inhalte erweitern": exakt dieselbe
+   * Uebersetzungs-Infrastruktur wie bei TaskNotice.translation/ManualTask.descriptionTranslation
+   * (siehe api/_translate.js#buildFreeTextTranslation) - hier fuer `name`. `name` selbst bleibt
+   * unveraendert die massgebliche, admin-gepflegte Bezeichnung (nie ueberschrieben); Wäscheverbrauch/
+   * -Reklamation werden weiterhin ausschliesslich ueber `id` referenziert, NIE ueber diese
+   * Uebersetzung, damit die Zuordnung sprachunabhaengig bleibt (siehe api/_linen.js/
+   * api/task-assignments.js). Fehlt bei aelteren, vor diesem Feature angelegten Artikeln. */
+  nameTranslation?: FreeTextTranslation;
 }
 
 /** Verbrauchsmaterial (Briefing "Verbrauch melden") - KEIN estimationRule (dafuer gibt es beim
@@ -879,6 +893,9 @@ export interface ConsumableItem {
   active: boolean;
   sortOrder: number;
   propertyIds: string[];
+  /** Siehe LinenItem.nameTranslation - identisches Muster, identische Garantie (id-basierte
+   * Zuordnung bleibt sprachunabhaengig). */
+  nameTranslation?: FreeTextTranslation;
 }
 
 /** Eine Zeile im Completion Report - `itemName`/`unit` werden bewusst als Snapshot mitgespeichert
