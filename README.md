@@ -195,3 +195,16 @@ npm run dev
 ```
 
 (setzt die Vercel CLI voraus: `npm i -g vercel`)
+
+## Tests
+
+Automatisierte Tests (Vitest) fuer die reine Business-Logik ohne Redis-/Apaleo-Anbindung:
+
+```bash
+npm test
+```
+
+Abgedeckt sind aktuell die Task-Ableitung (`lib/housekeeping/tasks.ts#buildTasks`, inkl.
+Regressionstests fuer die Buchungsaenderungs-Aufloesung bei Turnover-Aufgaben), die
+Waescheverbrauchs-Schaetzung (`lib/housekeeping/linen.ts`) und die Buchungsaenderungs-
+Vergleichslogik (`api/_booking-change-compare.js`).

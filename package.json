@@ -8,7 +8,8 @@
     "dev:functions": "vercel dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@vercel/blob": "^2.8.0",
@@ -27,6 +28,7 @@
     "eslint-config-next": "^16.3.5",
     "postcss": "^8",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.2"
   }
 }
