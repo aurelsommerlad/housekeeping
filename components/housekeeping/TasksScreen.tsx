@@ -31,13 +31,11 @@ import { cn } from '@/lib/cn';
  * entlehnten Akzent (nie eine farbige Flaeche hinter der ganzen Kennzahl). */
 function SummaryStat({ value, label, icon: Icon, toneClass }: { value: number; label: string; icon: typeof IconCheck; toneClass: string }) {
   return (
-    <div className="flex flex-col items-center gap-0.5 xl:flex-row xl:items-baseline xl:gap-1.5">
-      <span className="flex items-center gap-1.5">
-        <Icon width={16} height={16} className={cn('shrink-0', toneClass)} aria-hidden="true" />
-        <span className="text-[19px] font-semibold tabular-nums text-ink xl:text-[15px]">{value}</span>
-      </span>
-      <span className="text-[11px] text-muted xl:text-[13px]">{label}</span>
-    </div>
+    <span className="flex items-center justify-center gap-1.5 whitespace-nowrap">
+      <Icon width={16} height={16} className={cn('shrink-0', toneClass)} aria-hidden="true" />
+      <span className="text-[15px] font-semibold tabular-nums text-ink">{value}</span>
+      <span className="text-[13px] text-muted">{label}</span>
+    </span>
   );
 }
 
