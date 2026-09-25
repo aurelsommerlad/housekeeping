@@ -111,21 +111,30 @@ export function HousekeepingTeamsScreen({ app, propertyFilter }: HousekeepingTea
               <div className="mb-3">
                 <p className="text-[11px] uppercase tracking-[0.08em] text-muted">{t('team_locations_label')}</p>
                 {admin ? (
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {state.properties.map((p) => (
-                      <button
-                        key={p.code}
-                        type="button"
-                        onClick={() => toggleTeamProperty(team.id, team.name, team.active, propertyIds, p.code)}
-                        className={cn(
-                          'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                          propertyIds.includes(p.code) ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted',
-                        )}
-                      >
-                        {getPropertyDisplayName(p)}
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {state.properties.map((p) => (
+                        <button
+                          key={p.code}
+                          type="button"
+                          onClick={() => toggleTeamProperty(team.id, team.name, team.active, propertyIds, p.code)}
+                          className={cn(
+                            'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                            propertyIds.includes(p.code) ? 'border-ink bg-ink text-warm-white' : 'border-line bg-warm-white text-muted',
+                          )}
+                        >
+                          {getPropertyDisplayName(p)}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Nutzerfeedback: neu angelegte Teams bekamen trotz hier zugeordneter
+                     * Standorte keine offenen Reinigungen angezeigt - diese Pillen aendern
+                     * ausschliesslich `HousekeepingTeam.propertyIds` (reines Scoping), waehrend die
+                     * tatsaechliche automatische Zuweisung ueber das separate "Standard-Team je
+                     * Property"-Feld weiter unten laeuft (siehe resolveTasks() in tasks.ts). Reiner
+                     * Hinweistext, keine Verhaltensaenderung. */}
+                    <p className="mt-1.5 text-xs text-muted">{t('team_locations_hint')}</p>
+                  </>
                 ) : (
                   <p className="mt-1 text-sm text-ink">
                     {propertyIds.map((code) => {
@@ -184,7 +193,7 @@ export function HousekeepingTeamsScreen({ app, propertyFilter }: HousekeepingTea
             </div>
           </AdminSection>
 
-          <AdminSection eyebrow={t('team_property_defaults_title')}>
+          <AdminSection eyebrow={t('team_property_defaults_title')} description={t('team_property_defaults_hint')}>
             <div className="flex flex-col divide-y divide-line">
               {visibleProperties.map((p) => {
                 const currentTeamId = state.teamPropertyDefaults[p.code] || '';
