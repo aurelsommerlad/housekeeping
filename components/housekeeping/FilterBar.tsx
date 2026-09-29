@@ -2,13 +2,16 @@ import type { RoomFilter } from '@/lib/housekeeping/types';
 import type { Lang } from '@/lib/housekeeping/i18n';
 import type { I18nKey } from '@/lib/housekeeping/i18n';
 import { translate } from '@/lib/housekeeping/i18n';
+import { FORCED_CLEAN_ENABLED, INSPECTION_ENABLED } from '@/lib/housekeeping/rooms';
 import { Chip } from '@/components/ui/Chip';
 
+// Zwangsreinigung/Inspektion aktuell deaktiviert (siehe rooms.ts) - Filter-Chips dafuer daher
+// ausgeblendet, da sie sonst immer leere Ergebnisse liefern wuerden.
 const FILTERS: { id: RoomFilter; labelKey: I18nKey; dotClass?: string }[] = [
   { id: 'all', labelKey: 'filter_all' },
-  { id: 'forced', labelKey: 'filter_forced', dotClass: 'bg-status-attention' },
+  ...(FORCED_CLEAN_ENABLED ? [{ id: 'forced' as const, labelKey: 'filter_forced' as const, dotClass: 'bg-status-attention' }] : []),
   { id: 'dirty', labelKey: 'filter_dirty', dotClass: 'bg-status-dirty' },
-  { id: 'inspect', labelKey: 'filter_inspect', dotClass: 'bg-status-inspection' },
+  ...(INSPECTION_ENABLED ? [{ id: 'inspect' as const, labelKey: 'filter_inspect' as const, dotClass: 'bg-status-inspection' }] : []),
   { id: 'clean', labelKey: 'filter_clean', dotClass: 'bg-status-clean' },
   { id: 'doubleup', labelKey: 'filter_doubleup', dotClass: 'bg-sage' },
 ];

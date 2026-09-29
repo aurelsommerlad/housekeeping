@@ -1,7 +1,7 @@
 import type { Room } from '@/lib/housekeeping/types';
 import { DOUBLEUP_TYPES } from '@/lib/housekeeping/api';
 import { DoubleupIcon } from '@/components/ui/icons';
-import { formatDuration, workflowStatus } from '@/lib/housekeeping/rooms';
+import { formatDuration, INSPECTION_ENABLED, workflowStatus } from '@/lib/housekeeping/rooms';
 import type { HousekeepingApp } from '@/lib/housekeeping/useHousekeepingApp';
 import { BottomSheet } from './BottomSheet';
 import { WorkflowStatusPill } from './WorkflowStatusPill';
@@ -118,7 +118,7 @@ export function RoomDetailSheet({ app, room }: RoomDetailSheetProps) {
             })}
           </div>
 
-          {room.condition === 'CleanToBeInspected' ? (
+          {INSPECTION_ENABLED && room.condition === 'CleanToBeInspected' ? (
             <Button variant="primary" className="mt-6 w-full" onClick={() => completeInspection(room)}>
               {t('complete_inspection')}
             </Button>

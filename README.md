@@ -187,6 +187,10 @@ Ein Zimmer gilt als "Zwangsreinigung faellig", wenn:
 
 Die Regel ist im "Regeln"-Screen der App fuer Admins dokumentiert.
 
+**Hinweis:** Zwangsreinigung und der Inspektionsschritt (`CleanToBeInspected`) sind in der aktuellen
+Next.js-App auf Nutzeranforderung deaktiviert (`FORCED_CLEAN_ENABLED`/`INSPECTION_ENABLED` in
+`lib/housekeeping/rooms.ts`) - beide lassen sich dort mit einer einzigen Aenderung wieder aktivieren.
+
 ## Lokale Entwicklung
 
 ```bash

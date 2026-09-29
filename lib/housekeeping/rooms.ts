@@ -54,6 +54,17 @@ export function unitCondition(u: ApaleoUnit): string {
   return u.status?.condition || 'Clean';
 }
 
+/**
+ * Nutzeranforderung: Zwangsreinigung und Inspektionsschritt werden aktuell nicht benoetigt.
+ * Zentral hier als An-/Aus-Schalter statt an jeder Stelle einzeln zu entfernen - buildRooms(),
+ * workflowStatus(), roomConditionClass(), FilterBar, RulesScreen und der "Inspektion
+ * abschliessen"-Button in RoomDetailSheet lesen dieselben zwei Konstanten. Die zugrunde liegenden
+ * Daten (FORCED_CLEAN_INTERVAL_NIGHTS, Apaleo-Status "CleanToBeInspected") bleiben unveraendert -
+ * eine spaetere Reaktivierung braucht nur hier eine Aenderung.
+ */
+export const FORCED_CLEAN_ENABLED = false;
+export const INSPECTION_ENABLED = false;
+
 export function allowedProperties(user: StaffUser | null, propertyCodes: string[]): string[] {
   if (!user) return [];
   if (user.properties === 'alle' || user.properties === 'all') return propertyCodes;
@@ -99,8 +110,9 @@ export function buildRooms({ activeProperty, units, reservations, assignments, d
       let nights: number | null = null;
       if (currentRes?.arrival) nights = nightsSince(dateOnly(currentRes.arrival) as string, today);
 
-      const forced = condition === 'Dirty' && occupied && nights !== null && nights >= FORCED_CLEAN_INTERVAL_NIGHTS &&
-        nights % FORCED_CLEAN_INTERVAL_NIGHTS === 0 && !departsTodayFlag && !departsTomorrowFlag;
+      const forced = FORCED_CLEAN_ENABLED && condition === 'Dirty' && occupied && nights !== null &&
+        nights >= FORCED_CLEAN_INTERVAL_NIGHTS && nights % FORCED_CLEAN_INTERVAL_NIGHTS === 0 &&
+        !departsTodayFlag && !departsTomorrowFlag;
 
       const assignment = assignments[key] || null;
       const doubleup = doubleups[key] || null;
@@ -131,7 +143,7 @@ export function roomConditionClass(room: Room): 'locked' | 'forced' | 'running' 
   if (room.condition === 'OutOfService' || room.condition === 'OutOfOrder') return 'locked';
   if (room.forced) return 'forced';
   if (room.running) return 'running';
-  if (room.condition === 'CleanToBeInspected') return 'inspect';
+  if (INSPECTION_ENABLED && room.condition === 'CleanToBeInspected') return 'inspect';
   if (room.condition === 'Dirty') return 'dirty';
   return 'clean';
 }
@@ -143,8 +155,8 @@ export function roomConditionClass(room: Room): 'locked' | 'forced' | 'running' 
  */
 export function workflowStatus(room: Room): WorkflowStatus {
   if (room.condition === 'OutOfService' || room.condition === 'OutOfOrder') return 'locked';
-  if (room.condition === 'CleanToBeInspected') return 'inspect';
-  if (room.condition === 'Clean') return 'done';
+  if (INSPECTION_ENABLED && room.condition === 'CleanToBeInspected') return 'inspect';
+  if (room.condition === 'Clean' || room.condition === 'CleanToBeInspected') return 'done';
   if (room.forced) return 'forced';
   if (room.running) return 'running';
   if (room.assignment && (room.assignment.elapsedSeconds || 0) > 0) return 'paused';
