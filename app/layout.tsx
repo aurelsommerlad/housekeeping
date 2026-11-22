@@ -23,8 +23,15 @@ export const metadata: Metadata = {
     apple: '/icons/icon-192.png',
   },
   appleWebApp: {
-    capable: true,
-    statusBarStyle: 'black-translucent',
+    // Nutzerfeedback ("unscharfer Bereich oben kommt vom iPhone selbst"): 'black-translucent'
+    // laesst iOS die Statusleiste TRANSPARENT UEBER den Inhalt legen - die Seite muss dafuer per
+    // env(safe-area-inset-top) selbst genug Platz lassen (siehe StaffHeader.tsx), was auf manchen
+    // Geraeten/iOS-Versionen im installierten Homescreen-Modus trotzdem dazu fuehrte, dass der
+    // Header-Markenname im (von iOS selbst mit einem leichten Verlauf/Weichzeichner hinterlegten)
+    // Statusleisten-Bereich verschwamm. 'default' laesst iOS stattdessen eine normale, UNDURCHSICHTIGE
+    // (helle) Statusleiste reservieren, die den Seiteninhalt nicht mehr ueberlagert - kein manuelles
+    // Freihalten mehr noetig, kein Ueberlappungs-/Weichzeichnungseffekt mehr moeglich.
+    statusBarStyle: 'default',
     title: 'Housekeeping',
   },
 };
