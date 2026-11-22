@@ -223,4 +223,16 @@ textarea:focus-visible:not([data-focus-none]) {
 /* UNIQUE PLACES wird nie kursiv dargestellt - als globale Absicherung. */
 .brand-wordmark {
   font-style: normal;
+  /* Nutzerfeedback ("UNIQUE PLACES" wirkt im installierten iOS-Homescreen-Modus unscharf, waehrend
+   * derselbe Text in einem normalen Safari-Tab und in jeder getesteten Browser-Engine (inkl.
+   * echtem WebKit) gestochen scharf bleibt): bekanntes WKWebView-Standalone-Verhalten, bei dem iOS
+   * fuer bestimmte Textknoten eine eigene Compositing-Ebene mit einer falschen (zu niedrigen)
+   * Rasterungsaufloesung waehlt. `translateZ(0)` erzwingt explizit eine eigene, sauber auf die
+   * tatsaechliche Geraete-Pixeldichte gerasterte GPU-Ebene fuer genau dieses Element, statt es der
+   * (fehleranfaelligen) automatischen Heuristik des Browsers zu ueberlassen - Standardfix fuer
+   * dieses Bugmuster, ohne Layout-/Darstellungsaenderung in jeder anderen Engine. */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
