@@ -89,7 +89,11 @@ export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderPr
     // selbst erst ab Zeile 3 beginnt (siehe DesktopAdminSidebar.tsx) - so starten Sidebar und
     // Hauptinhalt auf derselben Zeile/Achse. Reine Platzierung, an Inhalt/Klassen des Headers
     // selbst aendert sich nichts.
-    <header className="shrink-0 border-b border-line bg-warm-white pt-[max(env(safe-area-inset-top),0.5rem)] pl-[max(env(safe-area-inset-left),1rem)] pr-[max(env(safe-area-inset-right),1rem)] xl:[grid-column:2/4] xl:[grid-row:1]">
+    // Nutzerfeedback: "UNIQUE PLACES" (links) minimal nach unten verschoben hat die Unschaerfe im
+    // installierten iOS-Homescreen-Modus behoben - zusaetzlicher fester Puffer OBEN DRAUF auf
+    // env(safe-area-inset-top) (statt nur dessen Minimum/Fallback wie zuvor), damit der Bereich
+    // etwas mehr Abstand zur Dynamic Island/Notch-Zone haelt.
+    <header className="shrink-0 border-b border-line bg-warm-white pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] pl-[max(env(safe-area-inset-left),1rem)] pr-[max(env(safe-area-inset-right),1rem)] xl:[grid-column:2/4] xl:[grid-row:1]">
       <div className="flex items-center justify-between gap-2 pt-1.5 pb-1">
         <div className="min-w-0 leading-none">
           {/* Dieselbe Marken-Typografie wie auf Login-/Admin-Einrichtungsseite (siehe
