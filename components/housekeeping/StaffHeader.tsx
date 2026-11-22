@@ -98,7 +98,7 @@ export function StaffHeader({ app, onOpenSettings, onOpenSearch }: StaffHeaderPr
            * statt umgekehrt (vorher war "UNIQUE PLACES" die kleine Zeile). Briefing "neue mobile
            * Ansicht" Punkt 2: kompakterer oberer Bereich - kleinere Schrift/engerer Zeilenabstand
            * statt eigener neuer Struktur (Inhalt/Reihenfolge bleiben identisch). */}
-          <p className="brand-wordmark truncate font-sans text-[13px] font-semibold tracking-[0.05em] text-ink">UNIQUE PLACES</p>
+          <p className="brand-wordmark truncate font-sans text-[13px] font-bold tracking-[0.05em] text-ink">UNIQUE PLACES</p>
           <p className="truncate text-[9px] font-medium uppercase tracking-[0.16em] text-muted">{t('app_name')}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
