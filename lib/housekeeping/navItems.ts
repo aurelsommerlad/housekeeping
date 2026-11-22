@@ -20,12 +20,12 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'rooms', icon: 'bed', labelKey: 'nav_apartments', requires: 'elevated' },
   { id: 'melden', icon: 'alert', labelKey: 'nav_report_menu', requires: 'nonElevated' },
   { id: 'stats', icon: 'chart', labelKey: 'nav_stats', requires: 'admin' },
-  // Briefing "Wäschereklamation erfassen": Analyse fuer Verbrauch/Reklamation - Admin
-  // standortuebergreifend, ein Standortverantwortlicher nur fuer seine eigenen zugeordneten
-  // Standorte (server-seitig ebenso gescoped, siehe api/linen-items.js#listReports). `requires:
-  // 'manager'` ist dasselbe bestehende Sichtbarkeitsmuster wie "Apartments" (isManagerAnywhere =
-  // Admin ODER mind. ein verwaltetes Property) - kein neuer Rechte-Wert noetig.
-  { id: 'laundry', icon: 'sparkles', labelKey: 'nav_laundry', requires: 'manager' },
+  // Nutzerfeedback: der Waesche-Menuepunkt soll ausschliesslich Admins angezeigt werden - ein
+  // Standortverantwortlicher sah ihn zuvor ebenfalls (jedes verwaltete Property reichte schon
+  // fuer `requires: 'manager'`). Der zugrunde liegende Report-Endpunkt (api/linen-items.js
+  // #listReports) bleibt fuer Standortverantwortliche weiterhin auf ihre Standorte gescoped,
+  // nur der Navigationspunkt selbst ist jetzt admin-only.
+  { id: 'laundry', icon: 'sparkles', labelKey: 'nav_laundry', requires: 'admin' },
   // Briefing "Team-/Benutzerverwaltung ueberarbeiten": nicht mehr admin-only - Standort-
   // verantwortliche (auf eigene Standorte gescopt) und Teamleader (reduzierte "Mein Team"-Ansicht,
   // siehe TeamScreen.tsx) bekommen denselben Nav-Punkt, TeamScreen entscheidet selbst anhand der

@@ -526,8 +526,15 @@ export function useHousekeepingApp() {
       const isManagerUser = isAdminUser || managedPropertyCodes(stateRef.current.user, allowed).length > 0;
       const isTeamLeadUser = isTeamLead(stateRef.current.user);
       const myTasksOnlyDefault = !(isManagerUser || isTeamLeadUser);
-      patch({ properties, activeProperty, myTasksOnly: myTasksOnlyDefault, propertyScope: 'all' });
-      stateRef.current = { ...stateRef.current, properties, activeProperty, myTasksOnly: myTasksOnlyDefault, propertyScope: 'all' };
+      // Bugfix (Nutzerfeedback "Apartments zeigt bei Standortverantwortlichen nichts an"):
+      // `myRoomsOnly` startete bisher IMMER auf `true` (siehe Initialzustand weiter oben), auch
+      // fuer Admins/Standortverantwortliche - RoomsScreen.tsx filtert dann auf "nur mir
+      // zugewiesene Zimmer", was bei einem Standortverantwortlichen (der selbst nie Zimmer
+      // zugewiesen bekommt) immer eine leere Liste ergab. Analog zu myTasksOnlyDefault oben startet
+      // ein Manager (Admin oder Standortverantwortlicher mit verwaltetem Property) jetzt auf "Alle
+      // Zimmer" statt "Meine Zimmer".
+      patch({ properties, activeProperty, myTasksOnly: myTasksOnlyDefault, myRoomsOnly: !isManagerUser, propertyScope: 'all' });
+      stateRef.current = { ...stateRef.current, properties, activeProperty, myTasksOnly: myTasksOnlyDefault, myRoomsOnly: !isManagerUser, propertyScope: 'all' };
       await loadTasksData();
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err));

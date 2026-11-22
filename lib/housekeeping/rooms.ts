@@ -65,10 +65,21 @@ export function unitCondition(u: ApaleoUnit): string {
 export const FORCED_CLEAN_ENABLED = false;
 export const INSPECTION_ENABLED = false;
 
+/**
+ * Bugfix (Nutzerfeedback "Apartments zeigt bei Standortverantwortlichen nichts an"): der
+ * Array-Zweig gab `user.properties` bisher UNGEFILTERT zurueck, statt ihn wie beim analogen
+ * managedPropertyCodes() (siehe permissions.ts) gegen die tatsaechlich aktuell existierenden/
+ * live geladenen propertyCodes zu schneiden. Enthielt `user.properties` auch nur einen Code, der
+ * in der aktuellen Apaleo-Property-Liste nicht (mehr) vorkommt, wurde dieser trotzdem als
+ * `activeProperty` gewaehlt (siehe useHousekeepingApp.ts#afterLogin) - PropertyChips fand dafuer
+ * keinen passenden Eintrag und zeigte gar keinen Property-Switcher mehr an, die Apartments-Liste
+ * blieb leer. Betraf praktisch nur Standortverantwortliche (admin/die meisten Reinigungskraefte
+ * nutzen 'alle', s.u.).
+ */
 export function allowedProperties(user: StaffUser | null, propertyCodes: string[]): string[] {
   if (!user) return [];
   if (user.properties === 'alle' || user.properties === 'all') return propertyCodes;
-  return Array.isArray(user.properties) ? user.properties : [];
+  return Array.isArray(user.properties) ? user.properties.filter((p) => propertyCodes.includes(p)) : [];
 }
 
 export interface BuildRoomsInput {
