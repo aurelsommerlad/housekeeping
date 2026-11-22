@@ -34,6 +34,18 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
     title: 'Housekeeping',
   },
+  // Next.js 16 setzt fuer appleWebApp.capable nur noch das moderne, PRAEFIXLOSE
+  // "mobile-web-app-capable" (siehe node_modules/next/dist/lib/metadata/metadata.js) - das
+  // urspruengliche, Apple-eigene "apple-mobile-web-app-capable" fehlt dadurch im HTML. iOS
+  // beachtet apple-mobile-web-app-status-bar-style (und damit auch den Fix oben) nachweislich nur
+  // zuverlaessig im echten Standalone-Modus, und manche iOS-Versionen erkennen eine zum
+  // Home-Bildschirm hinzugefuegte Seite als Standalone-Web-App ausschliesslich ueber diesen
+  // klassischen, Apple-praefigierten Tag - ohne ihn bleibt der obere Bereich dort weiterhin dem
+  // System ueberlassen. Manuell ergaenzt, da Next.js' typisierte appleWebApp-Option dafuer kein
+  // Feld mehr anbietet.
+  other: {
+    'apple-mobile-web-app-capable': 'yes',
+  },
 };
 
 export const viewport: Viewport = {
